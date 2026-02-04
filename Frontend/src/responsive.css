@@ -1,0 +1,36 @@
+.flex-col {
+    display: flex;
+    flex-direction: column;
+}
+
+/* Responsive Styles */
+@media (max-width: 768px) {
+    h1 {
+        font-size: 2.5rem !important;
+    }
+
+    h2 {
+        font-size: 2rem !important;
+    }
+
+    .field-card {
+        padding: 2rem 1.5rem !important;
+    }
+
+    .glass-card {
+        width: 100% !important;
+        position: relative !important;
+        margin-bottom: 1.5rem;
+    }
+
+    /* Make hero cards stack on mobile */
+    section#home>div>div:first-of-type {
+        grid-template-columns: 1fr !important;
+        gap: 3rem !important;
+    }
+
+    section#home>div>div:first-of-type>div:last-child {
+        height: auto !important;
+        min-height: 400px;
+    }
+}
