@@ -19,7 +19,7 @@ const Sidebar = ({ isOpen, onClose }) => {
         // Common sections for ALL roles
         const commonSections = [
             { icon: LayoutDashboard, label: 'Control Center', path: '/dashboard' },
-            { icon: Shield, label: 'Verifications', path: '/dashboard/verifications' },
+            // Verifications moved to role-specific check
             { icon: FileText, label: 'Documents', path: '/dashboard/documents' },
             {
                 icon: MessageSquare,
@@ -34,6 +34,11 @@ const Sidebar = ({ isOpen, onClose }) => {
         // Role-specific additional sections
         let roleSpecificSections = [];
         const role = currentUser?.role;
+
+        // "Verifications" is only for Admin and Land Owner
+        if (['admin', 'land_owner'].includes(role)) {
+            commonSections.splice(1, 0, { icon: Shield, label: 'Verifications', path: '/dashboard/verifications' });
+        }
 
         switch (role) {
             case 'admin':

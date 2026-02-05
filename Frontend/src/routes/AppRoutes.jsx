@@ -77,6 +77,7 @@ const AppRoutes = () => {
             case 'electrician':
             case 'plumber':
             case 'carpenter':
+            case 'tile_fixer':
                 return <WorkerDashboard roleType={currentUser.role.replace('_', ' ')} />;
 
             // Admin
@@ -118,6 +119,8 @@ const AppRoutes = () => {
                 {currentUser?.role === 'admin' && (
                     <>
                         <Route path="verifications" element={<DocumentVerification />} />
+                        <Route path="users" element={<AdminOverview initialSection="verify_users" />} />
+                        <Route path="projects" element={<AdminOverview initialSection="verify_projects" />} />
                     </>
                 )}
 

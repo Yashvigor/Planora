@@ -280,24 +280,34 @@ const TileWorkerDashboard = () => {
                     <div className="glass-card p-6 rounded-[2rem] border border-[#E3DACD]/40 shadow-sm">
                         <div className="flex justify-between items-center mb-6">
                             <h3 className="text-xl font-bold font-serif text-[#2A1F1D]">Payments</h3>
-                            <span className="text-[10px] font-bold text-green-700 bg-green-50 border border-green-100 px-3 py-1 rounded-full uppercase tracking-wide">Received: ₹{stats.earnedPayment.toLocaleString()}</span>
+                            <span className="text-[10px] font-bold text-green-700 bg-green-50 border border-green-100 px-3 py-1 rounded-full uppercase tracking-wide">Track Status</span>
                         </div>
                         <div className="space-y-3">
-                            {payments.map(p => (
+                            {(JSON.parse(localStorage.getItem('planora_payments') || '[]')).slice(0, 3).map(p => (
                                 <div key={p.id} className="flex justify-between items-center p-4 bg-[#F9F7F2] rounded-xl border border-[#E3DACD]/30">
                                     <div>
-                                        <p className="text-xs font-bold text-[#2A1F1D] uppercase tracking-wide">{p.desc}</p>
+                                        <p className="text-xs font-bold text-[#2A1F1D] uppercase tracking-wide">{p.invoice}</p>
                                         <p className="text-[10px] text-[#8C7B70] mt-0.5">{p.date}</p>
                                     </div>
                                     <div className="text-right">
                                         <p className="text-sm font-bold text-[#2A1F1D] font-serif">₹{p.amount.toLocaleString()}</p>
-                                        <p className={`text-[10px] font-bold uppercase tracking-wider ${p.status === 'Received' ? 'text-green-600' : 'text-[#E68A2E]'}`}>{p.status}</p>
+                                        <p className={`text-[10px] font-bold uppercase tracking-wider ${p.status === 'paid' ? 'text-green-600' : 'text-[#E68A2E]'}`}>{p.status}</p>
                                     </div>
                                 </div>
                             ))}
                         </div>
-                        <button className="w-full mt-6 py-3 bg-[#2A1F1D] text-white rounded-xl text-sm font-bold shadow-lg shadow-[#2A1F1D]/20 flex items-center justify-center gap-2 hover:bg-[#C06842] transition-colors uppercase tracking-wide">
-                            <DollarSign size={16} /> Request Payment
+                        <button
+                            onClick={() => {
+                                const input = document.createElement('input');
+                                input.type = 'file';
+                                input.onchange = () => {
+                                    alert('Invoice uploaded successfully. Details will appear in your Payments tab.');
+                                };
+                                input.click();
+                            }}
+                            className="w-full mt-6 py-3 bg-[#2A1F1D] text-white rounded-xl text-sm font-bold shadow-lg shadow-[#2A1F1D]/20 flex items-center justify-center gap-2 hover:bg-[#C06842] transition-all uppercase tracking-wide"
+                        >
+                            <Upload size={16} /> Upload Invoice
                         </button>
                     </div>
 

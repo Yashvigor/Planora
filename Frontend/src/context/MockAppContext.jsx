@@ -110,6 +110,15 @@ export const MockAppProvider = ({ children }) => {
         return user;
     };
 
+    const setAuthUser = (user) => {
+        setCurrentUser(user);
+        // Ensure user is in the local list for consistency if needed, 
+        // but primarily set the current user session.
+        if (!users.find(u => u.email === user.email)) {
+            setUsers(prev => [...prev, { ...user, id: `user_${Date.now()}` }]);
+        }
+    };
+
     const logout = () => {
         setCurrentUser(null);
     };
@@ -211,6 +220,7 @@ export const MockAppProvider = ({ children }) => {
         documents,
         login,
         signup,
+        setAuthUser,
         logout,
         addLand,
         addProject,

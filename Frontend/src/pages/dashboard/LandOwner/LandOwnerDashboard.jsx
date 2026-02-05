@@ -435,7 +435,7 @@ const LandOwnerDashboard = () => {
                     <Card>
                         <SectionHeader title="Alerts" action={<span className="bg-[#C06842] w-2.5 h-2.5 rounded-full animate-pulse shadow-[0_0_8px_rgba(192,104,66,0.6)]"></span>} />
                         <div className="space-y-2">
-                            <NotificationItem title="Payment exceeding budget" time="2 hours ago" type="alert" />
+                            <NotificationItem title="Project phase deadline approaching" time="2 hours ago" type="alert" />
                             <NotificationItem title="New drawing uploaded" time="Yesterday" type="info" />
                         </div>
                     </Card>

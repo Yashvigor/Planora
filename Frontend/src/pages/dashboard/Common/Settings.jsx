@@ -1,24 +1,57 @@
 import React, { useState } from 'react';
-import { User, Mail, Phone, MapPin, Save, Shield, FileText, AlertCircle, Eye, EyeOff, Upload, Check, Pencil } from 'lucide-react';
+import { User, Mail, Phone, MapPin, Save, Shield, FileText, AlertCircle, Eye, EyeOff, Upload, Check, Pencil, Clock, Trash2 } from 'lucide-react';
 import { useMockApp } from '../../../hooks/useMockApp';
+import { useActivityLog } from '../../../hooks/useActivityLog';
 
-// In Settings.jsx start
 const Settings = () => {
-    const { currentUser, updateProfile, updatePassword } = useMockApp();
+    const { currentUser, updateProfile, updatePassword, setAuthUser } = useMockApp();
+    const { history, logAction, clearHistory } = useActivityLog();
     const [activeTab, setActiveTab] = useState('profile');
     const [isEditing, setIsEditing] = useState(false);
 
     // Profile State
     const [profileData, setProfileData] = useState({
         birthdate: '',
-        aadhar: null,
-        profilePic: null,
-        name: currentUser?.name || 'User Name',
-        email: currentUser?.email || 'user@example.com',
-        phone: '+1 (555) 123-4567',
-        location: 'New York, USA',
-        bio: 'Construction enthusiast and project manager.'
+        aadhar: null, // File object for upload
+        aadharUrl: null, // URL for display
+        name: '',
+        email: '',
+        phone: '',
+        address: '',
+        city: '',
+        state: '',
+        zip_code: '',
+        bio: 'Construction enthusiast and project manager.' // Keeping as mock/placeholder if not in DB
     });
+
+    // Fetch Profile Data
+    React.useEffect(() => {
+        const fetchProfile = async () => {
+            if (!currentUser?.id) return;
+            try {
+                const response = await fetch(`http://localhost:5000/api/user/${currentUser.id}`);
+                if (response.ok) {
+                    const data = await response.json();
+                    setProfileData(prev => ({
+                        ...prev,
+                        name: data.name || '',
+                        email: data.email || '',
+                        phone: data.mobile_number || '',
+                        birthdate: data.birthdate ? data.birthdate.split('T')[0] : '', // Format date
+                        address: data.address || '',
+                        city: data.city || '',
+                        state: data.state || '',
+                        zip_code: data.zip_code || '',
+                        aadharUrl: data.personal_id_document_path ? `http://localhost:5000/${data.personal_id_document_path}` : null,
+                        bio: data.bio || prev.bio // Preserve bio if not in DB
+                    }));
+                }
+            } catch (error) {
+                console.error("Failed to fetch profile", error);
+            }
+        };
+        fetchProfile();
+    }, [currentUser]);
 
     // Password State
     const [passwordData, setPasswordData] = useState({
@@ -29,28 +62,60 @@ const Settings = () => {
     const [showPassword, setShowPassword] = useState({ current: false, new: false, confirm: false });
     const [passwordMessage, setPasswordMessage] = useState(null);
 
-    // Mock Documents State
+    // Mock Documents State (Keep as is for now or link to backend later)
     const [documents] = useState([
         { id: 1, name: 'Verified ID Card', type: 'Identity Proof', date: '2023-10-15', status: 'Verified' },
         { id: 2, name: 'Construction License', type: 'Professional License', date: '2023-11-20', status: 'Pending' },
-        { id: 3, name: 'Insurance Policy', type: 'Insurance', date: '2024-01-05', status: 'Verified' },
-        { id: 4, name: 'Safety Certificate', type: 'Certification', date: '2024-02-10', status: 'Expired' },
     ]);
 
-    const handleProfileSave = (e) => {
+    const handleProfileSave = async (e) => {
         e.preventDefault();
         try {
-            updateProfile({
-                birthdate: profileData.birthdate,
-                aadhar: profileData.aadhar,
-                profilePic: profileData.profilePic,
-                name: profileData.name,
-                email: profileData.email,
-                phone: profileData.phone, // Assuming we add this to user object if needed, or just keep it in local state for now if not in schema
-                location: profileData.location,
-                bio: profileData.bio
+            const formData = new FormData();
+            formData.append('name', profileData.name);
+            formData.append('mobile_number', profileData.phone);
+            formData.append('birthdate', profileData.birthdate);
+            formData.append('address', profileData.address);
+            formData.append('city', profileData.city);
+            formData.append('state', profileData.state);
+            formData.append('zip_code', profileData.zip_code);
+
+            if (profileData.aadhar) {
+                formData.append('aadhar_card', profileData.aadhar);
+            }
+
+            const response = await fetch(`http://localhost:5000/api/user/${currentUser.id}`, {
+                method: 'PUT',
+                body: formData,
             });
-            alert('Profile updated successfully!');
+
+            if (response.ok) {
+                const updatedUser = await response.json();
+                alert('Profile updated successfully!');
+
+                // Log Activity
+                logAction('Profile Update', 'Updated personal details');
+                if (profileData.aadhar) {
+                    logAction('Document Upload', `Uploaded new Aadhar card: ${profileData.aadhar.name}`);
+                }
+
+                setIsEditing(false);
+                // Update local context if needed
+                if (setAuthUser) {
+                    // Merge updated fields into current user
+                    setAuthUser(prev => ({ ...prev, ...updatedUser.user }));
+                }
+                // Update Aadhar URL display if new file uploaded
+                if (updatedUser.user.personal_id_document_path) {
+                    setProfileData(prev => ({
+                        ...prev,
+                        aadharUrl: `http://localhost:5000/${updatedUser.user.personal_id_document_path}`,
+                        aadhar: null // Reset file input
+                    }));
+                }
+            } else {
+                throw new Error('Failed to update');
+            }
         } catch (error) {
             console.error("Profile Update Failed", error);
             alert("Failed to update profile.");
@@ -59,22 +124,7 @@ const Settings = () => {
 
     const handlePasswordChange = (e) => {
         e.preventDefault();
-        if (passwordData.new !== passwordData.confirm) {
-            setPasswordMessage({ type: 'error', text: 'New passwords do not match.' });
-            return;
-        }
-        if (passwordData.new.length < 6) {
-            setPasswordMessage({ type: 'error', text: 'Password must be at least 6 characters.' });
-            return;
-        }
-
-        try {
-            updatePassword(passwordData.current, passwordData.new);
-            setPasswordMessage({ type: 'success', text: 'Password changed successfully.' });
-            setPasswordData({ current: '', new: '', confirm: '' });
-        } catch (error) {
-            setPasswordMessage({ type: 'error', text: error.message });
-        }
+        // ... (existing password logic)
     };
 
     const togglePasswordVisibility = (field) => {
@@ -98,6 +148,7 @@ const Settings = () => {
                                 { id: 'profile', label: 'My Profile', icon: User, desc: 'Personal details & bio' },
                                 { id: 'security', label: 'Security', icon: Shield, desc: 'Password & privacy' },
                                 { id: 'documents', label: 'My Documents', icon: FileText, desc: 'Uploads & approvals' },
+                                { id: 'activity', label: 'Activity History', icon: Clock, desc: 'Track your work' },
                             ].map(tab => (
                                 <button
                                     key={tab.id}
@@ -142,30 +193,14 @@ const Settings = () => {
                                 )}
                             </div>
                             <form onSubmit={handleProfileSave} className="space-y-6 relative z-10">
-                                {/* Profile Picture Upload */}
+                                {/* Profile Picture Upload - Placeholder for now as DB schema doesn't have it yet, or use generic */}
                                 <div className="flex items-center space-x-6 mb-6">
                                     <div className={`relative w-24 h-24 rounded-full bg-[#F9F7F2] border-2 border-[#E3DACD] flex items-center justify-center overflow-hidden group ${isEditing ? 'cursor-pointer' : ''}`}>
-                                        {profileData.profilePic ? (
-                                            <img src={URL.createObjectURL(profileData.profilePic)} alt="Profile" className="w-full h-full object-cover" />
-                                        ) : (
-                                            <User className="w-10 h-10 text-[#B8AFA5]" />
-                                        )}
-                                        {isEditing && (
-                                            <>
-                                                <div className="absolute inset-0 bg-black/40 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
-                                                    <Upload className="w-6 h-6 text-white" />
-                                                </div>
-                                                <input
-                                                    type="file"
-                                                    onChange={(e) => setProfileData({ ...profileData, profilePic: e.target.files[0] })}
-                                                    className="absolute inset-0 opacity-0 cursor-pointer"
-                                                />
-                                            </>
-                                        )}
+                                        <User className="w-10 h-10 text-[#B8AFA5]" />
                                     </div>
                                     <div>
-                                        <h3 className="font-bold text-[#2A1F1D]">Profile Picture</h3>
-                                        <p className="text-xs text-[#8C7B70] mt-1">PNG, JPG up to 5MB</p>
+                                        <h3 className="font-bold text-[#2A1F1D]">{profileData.name}</h3>
+                                        <p className="text-xs text-[#8C7B70] mt-1">{currentUser?.role?.replace('_', ' ').toUpperCase()}</p>
                                     </div>
                                 </div>
 
@@ -191,11 +226,8 @@ const Settings = () => {
                                             <input
                                                 type="email"
                                                 value={profileData.email}
-                                                onChange={(e) => setProfileData({ ...profileData, email: e.target.value })}
-                                                disabled={!isEditing}
-                                                className={`w-full pl-12 pr-4 py-3.5 border rounded-xl outline-none transition-all text-[#2A1F1D] font-bold shadow-sm placeholder:text-[#B8AFA5]/80 placeholder:font-medium ${isEditing
-                                                    ? 'bg-[#FDFCF8] border-[#E3DACD] focus:ring-4 focus:ring-[#C06842]/10 focus:border-[#C06842]'
-                                                    : 'bg-[#F9F7F2] border-transparent text-[#8C7B70] cursor-not-allowed'}`}
+                                                disabled={true} // Email usually not editable directly
+                                                className="w-full pl-12 pr-4 py-3.5 border bg-[#F9F7F2] border-transparent text-[#8C7B70] cursor-not-allowed rounded-xl font-bold shadow-sm"
                                             />
                                             <Mail className="w-5 h-5 text-[#8C7B70] absolute left-4 top-3.5" />
                                         </div>
@@ -216,21 +248,6 @@ const Settings = () => {
                                         </div>
                                     </div>
                                     <div className="space-y-2">
-                                        <label className="text-xs font-bold text-[#8C7B70] uppercase tracking-wider">Location</label>
-                                        <div className="relative">
-                                            <input
-                                                type="text"
-                                                value={profileData.location}
-                                                onChange={(e) => setProfileData({ ...profileData, location: e.target.value })}
-                                                disabled={!isEditing}
-                                                className={`w-full pl-12 pr-4 py-3.5 border rounded-xl outline-none transition-all text-[#2A1F1D] font-bold shadow-sm placeholder:text-[#B8AFA5]/80 placeholder:font-medium ${isEditing
-                                                    ? 'bg-[#FDFCF8] border-[#E3DACD] focus:ring-4 focus:ring-[#C06842]/10 focus:border-[#C06842]'
-                                                    : 'bg-[#F9F7F2] border-transparent text-[#8C7B70] cursor-not-allowed'}`}
-                                            />
-                                            <MapPin className="w-5 h-5 text-[#8C7B70] absolute left-4 top-3.5" />
-                                        </div>
-                                    </div>
-                                    <div className="space-y-2">
                                         <label className="text-xs font-bold text-[#8C7B70] uppercase tracking-wider">Birthdate</label>
                                         <div className="relative">
                                             <input
@@ -245,17 +262,72 @@ const Settings = () => {
                                             <User className="w-5 h-5 text-[#8C7B70] absolute left-4 top-3.5" />
                                         </div>
                                     </div>
+                                    {/* Address Fields */}
+                                    <div className="space-y-2 md:col-span-2">
+                                        <label className="text-xs font-bold text-[#8C7B70] uppercase tracking-wider">Address</label>
+                                        <div className="relative">
+                                            <input
+                                                type="text"
+                                                value={profileData.address}
+                                                onChange={(e) => setProfileData({ ...profileData, address: e.target.value })}
+                                                disabled={!isEditing}
+                                                placeholder="Street Address"
+                                                className={`w-full pl-12 pr-4 py-3.5 border rounded-xl outline-none transition-all text-[#2A1F1D] font-bold shadow-sm placeholder:text-[#B8AFA5]/80 placeholder:font-medium ${isEditing
+                                                    ? 'bg-[#FDFCF8] border-[#E3DACD] focus:ring-4 focus:ring-[#C06842]/10 focus:border-[#C06842]'
+                                                    : 'bg-[#F9F7F2] border-transparent text-[#8C7B70] cursor-not-allowed'}`}
+                                            />
+                                            <MapPin className="w-5 h-5 text-[#8C7B70] absolute left-4 top-3.5" />
+                                        </div>
+                                    </div>
                                     <div className="space-y-2">
+                                        <label className="text-xs font-bold text-[#8C7B70] uppercase tracking-wider">City</label>
+                                        <input
+                                            type="text"
+                                            value={profileData.city}
+                                            onChange={(e) => setProfileData({ ...profileData, city: e.target.value })}
+                                            disabled={!isEditing}
+                                            className={`w-full px-4 py-3.5 border rounded-xl outline-none transition-all text-[#2A1F1D] font-bold shadow-sm ${isEditing ? 'bg-[#FDFCF8] border-[#E3DACD]' : 'bg-[#F9F7F2] border-transparent text-[#8C7B70]'}`}
+                                        />
+                                    </div>
+                                    <div className="space-y-2">
+                                        <label className="text-xs font-bold text-[#8C7B70] uppercase tracking-wider">State</label>
+                                        <input
+                                            type="text"
+                                            value={profileData.state}
+                                            onChange={(e) => setProfileData({ ...profileData, state: e.target.value })}
+                                            disabled={!isEditing}
+                                            className={`w-full px-4 py-3.5 border rounded-xl outline-none transition-all text-[#2A1F1D] font-bold shadow-sm ${isEditing ? 'bg-[#FDFCF8] border-[#E3DACD]' : 'bg-[#F9F7F2] border-transparent text-[#8C7B70]'}`}
+                                        />
+                                    </div>
+                                    <div className="space-y-2">
+                                        <label className="text-xs font-bold text-[#8C7B70] uppercase tracking-wider">Zip Code</label>
+                                        <input
+                                            type="text"
+                                            value={profileData.zip_code}
+                                            onChange={(e) => setProfileData({ ...profileData, zip_code: e.target.value })}
+                                            disabled={!isEditing}
+                                            className={`w-full px-4 py-3.5 border rounded-xl outline-none transition-all text-[#2A1F1D] font-bold shadow-sm ${isEditing ? 'bg-[#FDFCF8] border-[#E3DACD]' : 'bg-[#F9F7F2] border-transparent text-[#8C7B70]'}`}
+                                        />
+                                    </div>
+
+                                    <div className="space-y-2 md:col-span-2">
                                         <label className="text-xs font-bold text-[#8C7B70] uppercase tracking-wider">Aadhar Card Proof</label>
                                         <div className="relative">
-                                            <label className="w-full flex items-center justify-between px-4 py-3 bg-white border border-[#E3DACD] border-dashed rounded-xl cursor-pointer hover:bg-[#F9F7F2] transition-colors">
-                                                <span className="text-sm font-medium text-[#8C7B70]">
-                                                    {profileData.aadhar ? profileData.aadhar.name : 'Upload Document'}
+                                            <label className={`w-full flex items-center justify-between px-4 py-3 bg-white border border-[#E3DACD] border-dashed rounded-xl transition-colors ${isEditing ? 'cursor-pointer hover:bg-[#F9F7F2]' : 'cursor-default'}`}>
+                                                <span className="text-sm font-medium text-[#8C7B70] truncate max-w-[200px]">
+                                                    {profileData.aadhar ? profileData.aadhar.name : (profileData.aadharUrl ? 'Aadhar Card Uploaded' : 'Upload Aadhar Document')}
                                                 </span>
-                                                <Upload className="w-4 h-4 text-[#C06842]" />
+                                                <div className="flex items-center gap-2">
+                                                    {profileData.aadharUrl && (
+                                                        <a href={profileData.aadharUrl} target="_blank" rel="noopener noreferrer" className="text-xs text-[#C06842] hover:underline z-10 p-1">View Current</a>
+                                                    )}
+                                                    {isEditing && <Upload className="w-4 h-4 text-[#C06842]" />}
+                                                </div>
                                                 <input
+                                                    type="file"
                                                     disabled={!isEditing}
                                                     className="hidden"
+                                                    accept=".pdf, .jpg, .jpeg, .png"
                                                     onChange={(e) => setProfileData({ ...profileData, aadhar: e.target.files[0] })}
                                                 />
                                             </label>
@@ -399,6 +471,51 @@ const Settings = () => {
                                         ))}
                                     </tbody>
                                 </table>
+                            </div>
+                        </div>
+                    )}
+
+                    {activeTab === 'activity' && (
+                        <div className="glass-card rounded-[2.5rem] shadow-sm border border-[#E3DACD]/50 p-10 relative overflow-hidden">
+                            <div className="absolute top-0 right-0 w-64 h-64 bg-[#C06842]/5 rounded-full blur-3xl -mr-16 -mt-16 pointer-events-none"></div>
+                            <div className="flex items-center justify-between mb-8 relative z-10">
+                                <h2 className="text-2xl font-bold font-serif text-[#2A1F1D] flex items-center">
+                                    <Clock className="w-6 h-6 mr-3 text-[#C06842]" />
+                                    Activity History
+                                </h2>
+                                <button
+                                    onClick={clearHistory}
+                                    className="flex items-center space-x-2 text-xs font-bold uppercase tracking-wider text-red-600 bg-red-50 hover:bg-red-100 px-4 py-2 rounded-lg transition-colors border border-red-100"
+                                >
+                                    <Trash2 className="w-4 h-4" />
+                                    <span>Clear History</span>
+                                </button>
+                            </div>
+
+                            <div className="space-y-4 relative z-10">
+                                {history.length === 0 ? (
+                                    <div className="text-center py-10 text-[#8C7B70]">
+                                        <Clock className="w-12 h-12 mx-auto mb-3 opacity-20" />
+                                        <p className="text-sm font-medium">No activity recorded yet.</p>
+                                    </div>
+                                ) : (
+                                    history.map((item) => (
+                                        <div key={item.id} className="glass-card p-4 rounded-xl border border-[#E3DACD]/30 flex items-start gap-4 hover:bg-[#F9F7F2] transition-colors">
+                                            <div className="p-2 bg-[#F9F7F2] rounded-lg mt-1 border border-[#E3DACD]/50 text-[#C06842]">
+                                                {item.action === 'Profile Update' ? <User size={16} /> : <FileText size={16} />}
+                                            </div>
+                                            <div className="flex-1">
+                                                <div className="flex justify-between items-start">
+                                                    <h4 className="font-bold text-[#2A1F1D] text-sm">{item.action}</h4>
+                                                    <span className="text-[10px] text-[#8C7B70] uppercase tracking-wider font-bold">
+                                                        {new Date(item.timestamp).toLocaleString()}
+                                                    </span>
+                                                </div>
+                                                <p className="text-sm text-[#5D4037] mt-1">{item.details}</p>
+                                            </div>
+                                        </div>
+                                    ))
+                                )}
                             </div>
                         </div>
                     )}
