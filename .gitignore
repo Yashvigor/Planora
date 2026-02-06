@@ -1,0 +1,18 @@
+# Dependencies
+node_modules/
+
+# Package files (these should only be in Backend/ and Frontend/)
+/package-lock.json
+/package.json
+
+# Environment variables
+.env
+.env.local
+
+# IDE
+.vscode/
+.idea/
+
+# OS
+.DS_Store
+Thumbs.db
