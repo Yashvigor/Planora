@@ -11,10 +11,10 @@ import Auth from '../pages/Auth';
 import ComingSoon from '../components/ComingSoon';
 
 // Dashboard Pages
-import LandOwnerOverview from '../pages/dashboard/LandOwner/LandOwnerDashboard';
-import MyLands from '../pages/dashboard/LandOwner/MyLands';
-import MyProjects from '../pages/dashboard/LandOwner/MyProjects';
-import FindProfessionals from '../pages/dashboard/LandOwner/FindProfessionals';
+import ClientDashboard from '../pages/dashboard/Client/LandOwnerDashboard';
+import MyLands from '../pages/dashboard/Client/MyLands';
+import MyProjects from '../pages/dashboard/Client/MyProjects';
+import FindProfessionals from '../pages/dashboard/Client/FindProfessionals';
 
 // Planning
 import ArchitectDashboard from '../pages/dashboard/Planning/ArchitectDashboard';
@@ -40,7 +40,6 @@ import Messages from '../pages/dashboard/Common/Messages';
 import ProjectWorkspace from '../pages/dashboard/Common/ProjectWorkspace';
 import Documents from '../pages/dashboard/Common/Documents';
 import Verifications from '../pages/dashboard/Common/Verifications';
-import Disputes from '../pages/dashboard/Common/Disputes';
 import Payments from '../pages/dashboard/Common/Payments';
 
 // Design Pages
@@ -54,7 +53,7 @@ const AppRoutes = () => {
         if (!currentUser) return <Navigate to="/login" replace />;
 
         switch (currentUser.role) {
-            case 'land_owner': return <LandOwnerOverview />;
+            case 'land_owner': return <ClientDashboard />;
 
             // Planning
             case 'architect': return <ArchitectDashboard />;
@@ -102,7 +101,6 @@ const AppRoutes = () => {
                 <Route path="verifications" element={<Verifications />} />
                 <Route path="documents" element={<Documents />} />
                 <Route path="messages" element={<Messages />} />
-                <Route path="disputes" element={<Disputes />} />
                 <Route path="payments" element={<Payments />} />
                 <Route path="settings" element={<Settings />} />
                 <Route path="project/:id" element={<ProjectWorkspace />} />

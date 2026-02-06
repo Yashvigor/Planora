@@ -2,44 +2,78 @@ import React, { useState } from 'react';
 import { useMockApp } from '../../hooks/useMockApp';
 import { Upload, FileText, CheckCircle, Clock, AlertTriangle, Download, Trash2 } from 'lucide-react';
 
-const DocumentManager = ({ title = "Documents", filterType = null, allowUpload = true }) => {
-    const { documents, uploadDocument, deleteDocument, currentUser } = useMockApp();
+const DocumentManager = ({ title = "Documents", filterType = null, allowUpload = true, projectId = null, onUploadSuccess = null }) => {
+    const { currentUser } = useMockApp();
+    const [documents, setDocuments] = useState([]);
     const [isDragging, setIsDragging] = useState(false);
     const [uploading, setUploading] = useState(false);
     const [progress, setProgress] = useState(0);
 
-    // Filter documents based on filterType (if provided) and user access
-    // For now, we show documents uploaded by current user OR if they are relevant to the project
-    // But per the original Documents.jsx, it filtered by uploadedBy === currentUser.email.
-    // We will keep similar logic but maybe broaden it later.
-    const myDocs = documents.filter(doc => {
-        if (filterType && doc.type !== filterType) return false;
-        return doc.uploadedBy === currentUser?.email;
-    });
-
-    const handleFile = (file) => {
-        if (!file) return;
-        setUploading(true);
-
-        // Simulating upload progress
-        let p = 0;
-        const interval = setInterval(() => {
-            p += Math.random() * 20;
-            if (p > 100) {
-                clearInterval(interval);
-                // Actually "upload"
-                uploadDocument({
-                    name: file.name,
-                    size: (file.size / 1024).toFixed(1) + ' KB',
-                    type: filterType || 'User Upload',
-                    uploadedBy: currentUser.email
-                });
-                setUploading(false);
-                setProgress(0);
-            } else {
-                setProgress(p);
+    const fetchDocs = React.useCallback(async () => {
+        if (!projectId) return;
+        try {
+            const res = await fetch(`http://localhost:5000/api/documents/project/${projectId}`);
+            if (res.ok) {
+                const data = await res.json();
+                setDocuments(filterType ? data.filter(d => d.category === filterType) : data);
             }
-        }, 300);
+        } catch (err) {
+            console.error("Failed to fetch documents:", err);
+        }
+    }, [projectId, filterType]);
+
+    React.useEffect(() => {
+        fetchDocs();
+    }, [fetchDocs]);
+
+    const handleFile = async (file) => {
+        if (!file || !projectId) {
+            if (!projectId) alert("Please select a project first.");
+            return;
+        }
+
+        setUploading(true);
+        const formData = new FormData();
+        formData.append('file', file);
+        formData.append('project_id', projectId);
+        formData.append('uploaded_by', currentUser.user_id || currentUser.id);
+        formData.append('category', filterType || 'General');
+        formData.append('name', file.name);
+
+        try {
+            const response = await fetch('http://localhost:5000/api/documents', {
+                method: 'POST',
+                body: formData,
+            });
+
+            if (response.ok) {
+                fetchDocs();
+                if (onUploadSuccess) onUploadSuccess();
+                alert("File uploaded successfully!");
+            } else {
+                alert("Upload failed.");
+            }
+        } catch (err) {
+            console.error("Upload error:", err);
+            alert("An error occurred during upload.");
+        } finally {
+            setUploading(false);
+            setProgress(0);
+        }
+    };
+
+    const handleDelete = async (docId) => {
+        if (!window.confirm("Are you sure you want to delete this document?")) return;
+        try {
+            const res = await fetch(`http://localhost:5000/api/documents/${docId}`, {
+                method: 'DELETE'
+            });
+            if (res.ok) {
+                fetchDocs();
+            }
+        } catch (err) {
+            console.error("Delete failed:", err);
+        }
     };
 
     return (
@@ -92,7 +126,7 @@ const DocumentManager = ({ title = "Documents", filterType = null, allowUpload =
 
             {/* Documents Grid */}
             <div>
-                {myDocs.length === 0 ? (
+                {documents.length === 0 ? (
                     <div className="glass-card rounded-[2rem] p-8 text-center text-[#8C7B70] border border-[#E3DACD] bg-[#F9F7F2]/50">
                         <FileText size={32} className="mx-auto mb-3 opacity-20" />
                         <p className="font-bold">No documents found.</p>
@@ -100,14 +134,14 @@ const DocumentManager = ({ title = "Documents", filterType = null, allowUpload =
                     </div>
                 ) : (
                     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                        {myDocs.map(doc => (
-                            <div key={doc.id} className="glass-card p-5 rounded-[1.5rem] border border-[#E3DACD]/50 shadow-sm hover:shadow-lg hover:border-[#C06842]/30 transition-all group relative flex flex-col h-full bg-white/60">
+                        {documents.map(doc => (
+                            <div key={doc.doc_id || doc.id} className="glass-card p-5 rounded-[1.5rem] border border-[#E3DACD]/50 shadow-sm hover:shadow-lg hover:border-[#C06842]/30 transition-all group relative flex flex-col h-full bg-white/60">
                                 <div className="flex justify-between items-start mb-4">
                                     <div className="bg-[#F9F7F2] p-3 rounded-xl text-[#C06842] border border-[#E3DACD]/30 group-hover:bg-[#2A1F1D] group-hover:text-white transition-colors duration-300">
                                         <FileText size={20} strokeWidth={1.5} />
                                     </div>
                                     <div>
-                                        {doc.status === 'Verified' && <span className="bg-green-50 text-green-700 border border-green-100 text-[10px] font-bold px-2 py-0.5 rounded-lg uppercase tracking-wider flex items-center gap-1"><CheckCircle size={10} />Verified</span>}
+                                        {doc.status === 'Approved' && <span className="bg-green-50 text-green-700 border border-green-100 text-[10px] font-bold px-2 py-0.5 rounded-lg uppercase tracking-wider flex items-center gap-1"><CheckCircle size={10} />Verified</span>}
                                         {doc.status === 'Pending' && <span className="bg-amber-50 text-amber-700 border border-amber-100 text-[10px] font-bold px-2 py-0.5 rounded-lg uppercase tracking-wider flex items-center gap-1"><Clock size={10} />Review</span>}
                                         {doc.status === 'Rejected' && <span className="bg-red-50 text-red-700 border border-red-100 text-[10px] font-bold px-2 py-0.5 rounded-lg uppercase tracking-wider flex items-center gap-1"><AlertTriangle size={10} />Action</span>}
                                     </div>
@@ -115,15 +149,20 @@ const DocumentManager = ({ title = "Documents", filterType = null, allowUpload =
 
                                 <div className="flex-1">
                                     <h4 className="font-bold text-base text-[#2A1F1D] mb-1 leading-tight group-hover:text-[#C06842] transition-colors truncate">{doc.name}</h4>
-                                    <p className="text-[10px] text-[#8C7B70] font-bold uppercase tracking-wider mt-2 bg-[#F9F7F2] w-fit px-2 py-0.5 rounded-md">{doc.size || '350 KB'} • {doc.date}</p>
+                                    <p className="text-[10px] text-[#8C7B70] font-bold uppercase tracking-wider mt-2 bg-[#F9F7F2] w-fit px-2 py-0.5 rounded-md">File Size Unknown • {new Date(doc.created_at).toLocaleDateString()}</p>
                                 </div>
 
                                 <div className="pt-4 mt-4 border-t border-[#E3DACD]/50 flex justify-between items-center gap-3">
-                                    <button className="flex-1 flex items-center justify-center gap-1.5 text-xs font-bold text-white bg-[#2A1F1D] hover:bg-[#C06842] py-2 rounded-lg transition-all shadow-md">
-                                        <Download size={14} /> Download
-                                    </button>
+                                    <a
+                                        href={`http://localhost:5000/${doc.file_path}`}
+                                        target="_blank"
+                                        rel="noopener noreferrer"
+                                        className="flex-1 flex items-center justify-center gap-1.5 text-xs font-bold text-white bg-[#2A1F1D] hover:bg-[#C06842] py-2 rounded-lg transition-all shadow-md"
+                                    >
+                                        <Download size={14} /> View/Download
+                                    </a>
                                     <button
-                                        onClick={() => deleteDocument(doc.id)}
+                                        onClick={() => handleDelete(doc.doc_id || doc.id)}
                                         className="p-2 text-[#8C7B70] hover:text-red-500 hover:bg-red-50 rounded-lg transition-all border border-transparent hover:border-red-100" title="Remove">
                                         <Trash2 size={16} />
                                     </button>

@@ -1,4 +1,5 @@
 ﻿const { sendWelcomeEmail, sendOTPEmail } = require('./utils/emailService');
+const { geocodeAddress } = require('./utils/geocodingService');
 
 const express = require('express');
 const cors = require('cors');
@@ -40,18 +41,38 @@ pool.connect()
     .catch(err => console.error('Connection error', err.stack));
 
 // Ensure uploads directory exists
-const uploadDir = path.join(__dirname, 'uploads');
-if (!fs.existsSync(uploadDir)) {
-    fs.mkdirSync(uploadDir);
+const baseUploadDir = path.join(__dirname, 'uploads');
+if (!fs.existsSync(baseUploadDir)) {
+    fs.mkdirSync(baseUploadDir);
 }
 
-// Multer Configuration
+// Helper to log activities
+const logActivity = async (userId, projectId, action, details) => {
+    try {
+        await pool.query(
+            'INSERT INTO ActivityLog (user_id, project_id, action, details) VALUES ($1, $2, $3, $4)',
+            [userId, projectId, action, details]
+        );
+    } catch (err) {
+        console.error('Activity Logging Error:', err);
+    }
+};
+
+// Multer Configuration with Dynamic Categorical Folders
 const storage = multer.diskStorage({
     destination: (req, file, cb) => {
-        cb(null, 'uploads/');
+        // We expect category/sub_category to be passed in body or determined by user
+        // For simplicity, we'll use a 'category' field from body or default to 'General'
+        const category = req.body.category || 'General';
+        const dest = path.join('uploads', category);
+
+        if (!fs.existsSync(dest)) {
+            fs.mkdirSync(dest, { recursive: true });
+        }
+        cb(null, dest);
     },
     filename: (req, file, cb) => {
-        cb(null, Date.now() + path.extname(file.originalname));
+        cb(null, Date.now() + '-' + file.originalname);
     }
 });
 const upload = multer({ storage });
@@ -118,6 +139,7 @@ app.post('/api/signup', async (req, res) => {
 
         res.status(201).json({
             message: 'User registered successfully',
+            status: 'incomplete', // New users always need to complete profile
             user: { user_id: userId, name, email, role }
         });
     } catch (err) {
@@ -244,8 +266,11 @@ app.post('/api/login', async (req, res) => {
             roleKey = roleMap[user.sub_category];
         }
 
+        const isComplete = user.category && user.sub_category && user.latitude && user.longitude;
+
         res.json({
             message: 'Login successful',
+            status: isComplete ? 'success' : 'incomplete',
             user: {
                 id: user.user_id,
                 name: user.name,
@@ -255,6 +280,10 @@ app.post('/api/login', async (req, res) => {
                 role: roleKey
             }
         });
+
+        if (!isComplete) {
+            console.log(`[Auth] User ${user.email} profile incomplete. Category: ${user.category}, Sub: ${user.sub_category}, Lat: ${user.latitude}`);
+        }
 
     } catch (err) {
         console.error('Login error:', err);
@@ -440,6 +469,62 @@ app.post('/api/auth/google', async (req, res) => {
     }
 });
 
+// --- User Management & Verifications ---
+
+// Get all users (Admin)
+app.get('/api/users', async (req, res) => {
+    try {
+        const result = await pool.query('SELECT user_id, name, email, category, status, personal_id_document_path, created_at FROM Users ORDER BY created_at DESC');
+        res.json(result.rows);
+    } catch (err) {
+        console.error('Error fetching users:', err);
+        res.status(500).json({ error: 'Failed to fetch users' });
+    }
+});
+
+// Get all users for verification (Admin only)
+app.get('/api/users/verifications', async (req, res) => {
+    try {
+        const result = await pool.query(
+            'SELECT user_id, name, email, category, status, created_at FROM Users WHERE status != $1 ORDER BY created_at DESC',
+            ['Suspended']
+        );
+        res.json(result.rows);
+    } catch (err) {
+        console.error('Error fetching verifications:', err);
+        res.status(500).json({ error: 'Failed to fetch verification requests' });
+    }
+});
+
+// Update User Status (Approve/Reject)
+app.put('/api/users/:userId/status', async (req, res) => {
+    const { userId } = req.params;
+    const { status } = req.body;
+
+    if (!['Approved', 'Rejected', 'Suspended', 'Pending'].includes(status)) {
+        return res.status(400).json({ error: 'Invalid status' });
+    }
+
+    try {
+        const result = await pool.query(
+            'UPDATE Users SET status = $1, updated_at = CURRENT_TIMESTAMP WHERE user_id = $2 RETURNING user_id, name, status',
+            [status, userId]
+        );
+
+        if (result.rows.length === 0) {
+            return res.status(404).json({ error: 'User not found' });
+        }
+
+        const user = result.rows[0];
+        await logActivity(user.user_id, null, 'Status Update', `User status updated to ${status}`);
+
+        res.json({ message: `User ${status} successfully`, user });
+    } catch (err) {
+        console.error(' Error updating user status:', err);
+        res.status(500).json({ error: 'Failed to update user status' });
+    }
+});
+
 // Complete Google Profile
 app.post('/api/auth/google/complete', async (req, res) => {
     const { userId, role } = req.body;
@@ -478,6 +563,8 @@ app.post('/api/auth/google/complete', async (req, res) => {
         // Send Welcome Email for new users (if not already sent)
         sendWelcomeEmail(user.email, user.name).catch(console.error);
 
+        logActivity(userId, null, 'Profile Completed', `User ${user.name} completed profile as ${role}`);
+
         res.json({
             message: 'Profile completed successfully',
             user: {
@@ -490,6 +577,477 @@ app.post('/api/auth/google/complete', async (req, res) => {
     } catch (err) {
         console.error('Profile Completion Error:', err);
         res.status(500).json({ error: 'Failed to complete profile' });
+    }
+});
+
+// Update User Profile (including Address & Geocoding)
+app.put('/api/users/:userId/profile', async (req, res) => {
+    const { userId } = req.params;
+    const { phone, address, city, state, zip_code, birthdate, bio } = req.body;
+
+    console.log(`[Profile Update] Received request for user ${userId}`);
+    console.log('[Profile Update] Request body:', { phone, address, city, state, zip_code, birthdate, bio });
+
+    try {
+        let latitude = null;
+        let longitude = null;
+
+        // Auto-geocode if address is provided
+        if (address) {
+            const fullAddress = `${address}, ${city || ''}, ${state || ''}, ${zip_code || ''}`.trim();
+            const coords = await geocodeAddress(fullAddress);
+            if (coords) {
+                latitude = coords.lat;
+                longitude = coords.lon;
+                console.log(`[Profile Update] Geocoded address for user ${userId}: ${fullAddress} -> (${latitude}, ${longitude})`);
+            } else {
+                console.log(`[Profile Update] Failed to geocode address for user ${userId}: ${fullAddress}`);
+            }
+        }
+
+        const result = await pool.query(
+            `UPDATE Users SET 
+                mobile_number = COALESCE($1, mobile_number), 
+                address = COALESCE($2, address), 
+                city = COALESCE($3, city),
+                state = COALESCE($4, state),
+                zip_code = COALESCE($5, zip_code),
+                birthdate = COALESCE($6, birthdate),
+                bio = COALESCE($7, bio),
+                latitude = COALESCE($8, latitude), 
+                longitude = COALESCE($9, longitude), 
+                updated_at = CURRENT_TIMESTAMP 
+            WHERE user_id = $10 
+            RETURNING *`,
+            [phone, address, city, state, zip_code, birthdate, bio, latitude, longitude, userId]
+        );
+
+        if (result.rows.length === 0) return res.status(404).json({ error: 'User not found' });
+
+        console.log(`[Profile Update] Successfully updated profile for user ${userId}`);
+        res.json({ message: 'Profile updated successfully', user: result.rows[0] });
+    } catch (err) {
+        console.error('Profile Update Error:', err);
+        res.status(500).json({ error: 'Failed to update profile', details: err.message });
+    }
+});
+
+// --- Professional Discovery & Team Management ---
+
+// Fetch Nearby Professionals by Category (within 50km radius)
+app.get('/api/professionals/nearby', async (req, res) => {
+    const { category, sub_category, lat, lon } = req.query;
+
+    // Validate that user location is provided
+    if (!lat || !lon) {
+        return res.status(400).json({ error: 'User location (lat, lon) is required for proximity search' });
+    }
+
+    const userLat = parseFloat(lat);
+    const userLon = parseFloat(lon);
+    const maxDistanceKm = 50;
+
+    try {
+        // Fetch users who are NOT landowners or admins and have coordinates
+        let query = `
+            SELECT 
+                user_id, name, email, category, sub_category, latitude, longitude, 
+                address, status, bio, resume_path, portfolio_url, experience_years, specialization,
+                (6371 * acos(
+                    cos(radians($1)) * cos(radians(latitude)) * 
+                    cos(radians(longitude) - radians($2)) + 
+                    sin(radians($1)) * sin(radians(latitude))
+                )) AS distance_km
+            FROM Users 
+            WHERE category != $3 AND category != $4 
+            AND latitude IS NOT NULL AND longitude IS NOT NULL
+        `;
+        const params = [userLat, userLon, 'Land Owner', 'Admin'];
+
+        if (category && category !== 'All') {
+            query += ' AND category = $' + (params.length + 1);
+            params.push(category);
+        }
+        if (sub_category && sub_category !== 'All') {
+            query += ' AND sub_category = $' + (params.length + 1);
+            params.push(sub_category);
+        }
+
+        query += ` HAVING (6371 * acos(
+            cos(radians($1)) * cos(radians(latitude)) * 
+            cos(radians(longitude) - radians($2)) + 
+            sin(radians($1)) * sin(radians(latitude))
+        )) <= ${maxDistanceKm}`;
+
+        query += ' ORDER BY distance_km ASC';
+
+        const result = await pool.query(query, params);
+        console.log(`[Discovery] Found ${result.rows.length} professionals within ${maxDistanceKm}km of (${userLat}, ${userLon})`);
+        res.json(result.rows);
+    } catch (err) {
+        console.error('Error fetching professionals:', err);
+        res.status(500).json({ error: 'Failed to fetch professionals' });
+    }
+});
+
+// Get Public Profile for a Professional
+app.get('/api/professionals/:id/public', async (req, res) => {
+    const { id } = req.params;
+    try {
+        const result = await pool.query(
+            'SELECT user_id, name, email, category, sub_category, bio, resume_path, portfolio_url, experience_years, specialization, latitude, longitude, address FROM Users WHERE user_id = $1',
+            [id]
+        );
+        if (result.rows.length === 0) return res.status(404).json({ error: 'Professional not found' });
+        res.json(result.rows[0]);
+    } catch (err) {
+        console.error('Error fetching public profile:', err);
+        res.status(500).json({ error: 'Failed to fetch profile' });
+    }
+});
+
+// Complete Profile (Onboarding)
+app.put('/api/user/:id/complete-profile', upload.single('resume'), async (req, res) => {
+    const { id } = req.params;
+    const { name, phone, address, gender, bio, category, sub_category, portfolio_url, experience_years, specialization } = req.body;
+    let resume_path = null;
+
+    if (req.file) {
+        resume_path = req.file.path.replace(/\\/g, "/");
+    }
+
+    try {
+        let latitude = null;
+        let longitude = null;
+        if (address) {
+            const coords = await geocodeAddress(address);
+            if (coords) {
+                latitude = coords.lat;
+                longitude = coords.lon;
+            }
+        }
+
+        const result = await pool.query(
+            `UPDATE Users SET 
+                name = COALESCE($1, name), 
+                mobile_number = COALESCE($2, mobile_number), 
+                address = COALESCE($3, address), 
+                bio = COALESCE($4, bio), 
+                category = COALESCE($5, category), 
+                sub_category = COALESCE($6, sub_category), 
+                portfolio_url = COALESCE($7, portfolio_url), 
+                experience_years = COALESCE($8::INT, experience_years), 
+                specialization = COALESCE($9, specialization),
+                latitude = COALESCE($10, latitude),
+                longitude = COALESCE($11, longitude),
+                resume_path = COALESCE($12, resume_path),
+                updated_at = CURRENT_TIMESTAMP 
+            WHERE user_id = $13 RETURNING *`,
+            [name, phone, address, bio, category, sub_category, portfolio_url, experience_years, specialization, latitude, longitude, resume_path, id]
+        );
+
+        if (result.rows.length === 0) return res.status(404).json({ error: 'User not found' });
+
+        await logActivity(id, null, 'Profile Completed', `User completed profile as ${sub_category}`);
+        res.json({ message: 'Profile completed successfully', user: result.rows[0] });
+    } catch (err) {
+        console.error('Profile Completion Error:', err);
+        res.status(500).json({ error: 'Failed to complete profile' });
+    }
+});
+
+// Assign Professional to Project
+app.post('/api/projects/:projectId/assign', async (req, res) => {
+    const { projectId } = req.params;
+    const { userId, role } = req.body;
+
+    try {
+        await pool.query(
+            'INSERT INTO ProjectAssignments (project_id, user_id, assigned_role) VALUES ($1, $2, $3) ON CONFLICT (project_id, user_id) DO UPDATE SET assigned_role = $3, updated_at = CURRENT_TIMESTAMP',
+            [projectId, userId, role]
+        );
+
+        const userRes = await pool.query('SELECT name FROM Users WHERE user_id = $1', [userId]);
+        const userName = userRes.rows[0]?.name || 'Professional';
+
+        await logActivity(null, projectId, 'Team Assignment', `Assigned ${userName} as ${role}`);
+        res.json({ message: 'Professional assigned successfully' });
+    } catch (err) {
+        console.error('Error assigning professional:', err);
+        res.status(500).json({ error: 'Failed to assign professional' });
+    }
+});
+
+// Get Project Team
+app.get('/api/projects/:projectId/team', async (req, res) => {
+    const { projectId } = req.params;
+    try {
+        const result = await pool.query(
+            `SELECT u.user_id, u.name, u.email, u.category, u.sub_category, pa.assigned_role, pa.status, pa.assigned_at 
+             FROM Users u 
+             JOIN ProjectAssignments pa ON u.user_id = pa.user_id 
+             WHERE pa.project_id = $1`,
+            [projectId]
+        );
+        res.json(result.rows);
+    } catch (err) {
+        console.error('Error fetching project team:', err);
+        res.status(500).json({ error: 'Failed to fetch project team' });
+    }
+});
+
+// --- Project Routes ---
+
+// Create Project
+app.post('/api/projects', async (req, res) => {
+    const { owner_id, name, type, location, description, budget } = req.body;
+    console.log(`[Project Creation] Owner: ${owner_id}, Name: ${name}, Budget: ${budget}`);
+
+    try {
+        const result = await pool.query(
+            'INSERT INTO Projects (owner_id, name, type, location, description, budget) VALUES ($1, $2, $3, $4, $5, $6) RETURNING *',
+            [owner_id, name, type, location, description, budget]
+        );
+        const project = result.rows[0];
+        logActivity(owner_id, project.project_id, 'Project Created', `Initialized project: ${name}`);
+        res.status(201).json(project);
+    } catch (err) {
+        console.error('Error creating project:', err);
+        res.status(500).json({ error: 'Failed to create project' });
+    }
+});
+
+// Delete Project
+app.delete('/api/projects/:id', async (req, res) => {
+    const { id } = req.params;
+    try {
+        const result = await pool.query('DELETE FROM Projects WHERE project_id = $1 RETURNING *', [id]);
+        if (result.rows.length === 0) return res.status(404).json({ error: 'Project not found' });
+        const project = result.rows[0];
+        logActivity(project.owner_id, null, 'Project Deleted', `Deleted project: ${project.name}`);
+        res.json({ message: 'Project deleted successfully' });
+    } catch (err) {
+        console.error('Error deleting project:', err);
+        res.status(500).json({ error: 'Failed to delete project' });
+    }
+});
+
+// Get User Projects
+app.get('/api/projects/user/:userId', async (req, res) => {
+    const { userId } = req.params;
+    try {
+        const result = await pool.query('SELECT * FROM Projects WHERE owner_id = $1 ORDER BY created_at DESC', [userId]);
+        res.json(result.rows);
+    } catch (err) {
+        console.error('Error fetching projects:', err);
+        res.status(500).json({ error: 'Failed to fetch projects' });
+    }
+});
+
+// --- Document Routes ---
+
+// Update Document Status (Approve/Reject)
+app.put('/api/documents/:docId/status', async (req, res) => {
+    const { docId } = req.params;
+    const { status } = req.body;
+
+    if (!['Approved', 'Rejected', 'Pending'].includes(status)) {
+        return res.status(400).json({ error: 'Invalid status' });
+    }
+
+    try {
+        const result = await pool.query(
+            'UPDATE Documents SET status = $1 WHERE doc_id = $2 RETURNING doc_id, project_id, name, status',
+            [status, docId]
+        );
+
+        if (result.rows.length === 0) {
+            return res.status(404).json({ error: 'Document not found' });
+        }
+
+        const doc = result.rows[0];
+        await logActivity(null, doc.project_id, 'Document Status Update', `Document "${doc.name}" updated to ${status}`);
+
+        res.json({ message: `Document ${status} successfully`, doc });
+    } catch (err) {
+        console.error('Error updating document status:', err);
+        res.status(500).json({ error: 'Failed to update document status' });
+    }
+});
+
+// Upload Document
+app.post('/api/documents', upload.single('file'), async (req, res) => {
+    const { project_id, uploaded_by, name } = req.body;
+    if (!req.file) return res.status(400).json({ error: 'No file uploaded' });
+
+    const filePath = req.file.path.replace(/\\/g, "/");
+    const fileSize = (req.file.size / 1024).toFixed(2) + ' KB';
+    const fileType = path.extname(req.file.originalname).substring(1).toUpperCase();
+
+    try {
+        const result = await pool.query(
+            'INSERT INTO Documents (project_id, uploaded_by, name, file_path, file_type, file_size) VALUES ($1, $2, $3, $4, $5, $6) RETURNING *',
+            [project_id, uploaded_by, name || req.file.originalname, filePath, fileType, fileSize]
+        );
+        const doc = result.rows[0];
+        logActivity(uploaded_by, project_id, 'Document Uploaded', `Uploaded: ${doc.name}`);
+        res.status(201).json(doc);
+    } catch (err) {
+        console.error('Error uploading document:', err);
+        res.status(500).json({ error: 'Failed to upload document' });
+    }
+});
+
+// Delete Document
+app.delete('/api/documents/:id', async (req, res) => {
+    const { id } = req.params;
+    try {
+        const docResult = await pool.query('SELECT * FROM Documents WHERE doc_id = $1', [id]);
+        if (docResult.rows.length === 0) return res.status(404).json({ error: 'Document not found' });
+
+        const doc = docResult.rows[0];
+        // Remove file from disk
+        if (fs.existsSync(doc.file_path)) {
+            fs.unlinkSync(doc.file_path);
+        }
+
+        await pool.query('DELETE FROM Documents WHERE doc_id = $1', [id]);
+        logActivity(doc.uploaded_by, doc.project_id, 'Document Deleted', `Deleted: ${doc.name}`);
+        res.json({ message: 'Document deleted successfully' });
+    } catch (err) {
+        console.error('Error deleting document:', err);
+        res.status(500).json({ error: 'Failed to delete document' });
+    }
+});
+
+// Get Project Documents
+app.get('/api/documents/project/:projectId', async (req, res) => {
+    const { projectId } = req.params;
+    try {
+        const result = await pool.query('SELECT * FROM Documents WHERE project_id = $1 ORDER BY created_at DESC', [projectId]);
+        res.json(result.rows);
+    } catch (err) {
+        console.error('Error fetching documents:', err);
+        res.status(500).json({ error: 'Failed to fetch documents' });
+    }
+});
+
+// --- Activity Routes ---
+app.get('/api/activity/:projectId', async (req, res) => {
+    const { projectId } = req.params;
+    try {
+        const result = await pool.query(`
+            SELECT a.*, u.name as user_name 
+            FROM ActivityLog a
+            LEFT JOIN Users u ON a.user_id = u.user_id
+            WHERE a.project_id = $1
+            ORDER BY a.created_at DESC
+        `, [projectId]);
+        res.json(result.rows);
+    } catch (err) {
+        console.error('Error fetching activity:', err);
+        res.status(500).json({ error: 'Failed to fetch activity' });
+    }
+});
+
+// --- Payment Routes ---
+
+// Create/Update Manual Payment (Simplified)
+app.post('/api/payments', async (req, res) => {
+    const { project_id, client_id, invoice_number, amount, due_date, notes } = req.body;
+    try {
+        const result = await pool.query(
+            'INSERT INTO Payments (project_id, client_id, invoice_number, amount, due_date, notes) VALUES ($1, $2, $3, $4, $5, $6) RETURNING *',
+            [project_id, client_id, invoice_number, amount, due_date, notes]
+        );
+        const payment = result.rows[0];
+        logActivity(client_id, project_id, 'Payment Record Created', `Invoice: ${invoice_number}, Amount: ${amount}`);
+        res.status(201).json(payment);
+    } catch (err) {
+        console.error('Error creating payment record:', err);
+        res.status(500).json({ error: 'Failed to create payment record' });
+    }
+});
+
+app.patch('/api/payments/:id', async (req, res) => {
+    const { id } = req.params;
+    const { status, notes, amount } = req.body;
+    try {
+        const result = await pool.query(
+            'UPDATE Payments SET status = COALESCE($1, status), notes = COALESCE($2, notes), amount = COALESCE($3, amount) WHERE payment_id = $4 RETURNING *',
+            [status, notes, amount, id]
+        );
+        if (result.rows.length === 0) return res.status(404).json({ error: 'Payment record not found' });
+        const payment = result.rows[0];
+        logActivity(payment.client_id, payment.project_id, 'Payment Updated', `Status: ${status}`);
+        res.json(payment);
+    } catch (err) {
+        console.error('Error updating payment:', err);
+        res.status(500).json({ error: 'Failed to update payment' });
+    }
+});
+
+// Get User Payments
+app.get('/api/payments/user/:userId', async (req, res) => {
+    const { userId } = req.params;
+    try {
+        const result = await pool.query('SELECT * FROM Payments WHERE client_id = $1 OR vendor_id = $1 ORDER BY created_at DESC', [userId]);
+        res.json(result.rows);
+    } catch (err) {
+        console.error('Error fetching payments:', err);
+        res.status(500).json({ error: 'Failed to fetch payments' });
+    }
+});
+
+// --- Admin Routes ---
+
+// Get All Users
+app.get('/api/users', async (req, res) => {
+    try {
+        const result = await pool.query('SELECT user_id, name, email, category, sub_category, status, created_at FROM Users ORDER BY created_at DESC');
+        res.json(result.rows);
+    } catch (err) {
+        console.error('Error fetching users:', err);
+        res.status(500).json({ error: 'Failed to fetch users' });
+    }
+});
+
+// Update User Status
+app.patch('/api/users/:userId/status', async (req, res) => {
+    const { userId } = req.params;
+    const { status } = req.body;
+    if (!['Pending', 'Approved', 'Rejected', 'Suspended'].includes(status)) {
+        return res.status(400).json({ error: 'Invalid status' });
+    }
+
+    try {
+        const result = await pool.query(
+            'UPDATE Users SET status = $1, updated_at = CURRENT_TIMESTAMP WHERE user_id = $2 RETURNING *',
+            [status, userId]
+        );
+        if (result.rows.length === 0) return res.status(404).json({ error: 'User not found' });
+        res.json(result.rows[0]);
+    } catch (err) {
+        console.error('Error updating user status:', err);
+        res.status(500).json({ error: 'Failed to update user status' });
+    }
+});
+
+// Get Projects assigned to a professional
+app.get('/api/professionals/:userId/projects', async (req, res) => {
+    const { userId } = req.params;
+    try {
+        const result = await pool.query(
+            `SELECT p.*, pa.assigned_role, pa.status as assignment_status 
+             FROM Projects p 
+             JOIN ProjectAssignments pa ON p.project_id = pa.project_id 
+             WHERE pa.user_id = $1`,
+            [userId]
+        );
+        res.json(result.rows);
+    } catch (err) {
+        console.error('Error fetching professional projects:', err);
+        res.status(500).json({ error: 'Failed to fetch assigned projects' });
     }
 });
 

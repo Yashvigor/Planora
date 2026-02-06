@@ -42,21 +42,21 @@ const sendWelcomeEmail = async (toEmail, name) => {
                     <div class="email-container">
                         <div class="content-card">
                             <div class="header">
-                                <span class="logo-text">Planora</span>
+                                <span class="logo-text" style="display: block; font-size: 32px; color: #4A342E; margin-bottom: 5px;">Planora</span>
                             </div>
                             
-                            <h1 class="welcome-title">Welcome Aboard, ${name}</h1>
+                            <h1 class="welcome-title" style="color: #C06842; font-size: 24px; margin-top: 0;">Welcome Aboard, ${name}</h1>
                             
                             <p class="body-text">We are delighted to formally welcome you to <strong>Planora</strong>. You have taken a significant step toward modernizing your construction management experience.</p>
                             
                             <p class="body-text">Planora is more than just a tool; it is your digital partner in ensuring every structural detail, design choice, and project milestone is managed with absolute precision.</p>
 
                             <div class="section-title">What you can do with Planora:</div>
-                            <ul class="feature-list">
-                                <li class="feature-item"><span class="feature-icon">✓</span> Real-time project tracking and site progress</li>
-                                <li class="feature-item"><span class="feature-icon">✓</span> Seamless collaboration between landowners and professionals</li>
-                                <li class="feature-item"><span class="feature-icon">✓</span> Centralized document and drawing management</li>
-                                <li class="feature-item"><span class="feature-icon">✓</span> Integrated material and budget monitoring</li>
+                             <ul class="feature-list" style="list-style: none; padding: 0;">
+                                <li class="feature-item" style="padding: 10px 0; border-bottom: 1px solid #F9F7F2; color: #4A342E; font-size: 15px;"><span style="color: #C06842; font-weight: bold; margin-right: 12px;">✓</span> Real-time project tracking and site progress</li>
+                                <li class="feature-item" style="padding: 10px 0; border-bottom: 1px solid #F9F7F2; color: #4A342E; font-size: 15px;"><span style="color: #C06842; font-weight: bold; margin-right: 12px;">✓</span> Seamless collaboration between landowners and professionals</li>
+                                <li class="feature-item" style="padding: 10px 0; border-bottom: 1px solid #F9F7F2; color: #4A342E; font-size: 15px;"><span style="color: #C06842; font-weight: bold; margin-right: 12px;">✓</span> Centralized document and drawing management</li>
+                                <li class="feature-item" style="padding: 10px 0; border-bottom: 1px solid #F9F7F2; color: #4A342E; font-size: 15px;"><span style="color: #C06842; font-weight: bold; margin-right: 12px;">✓</span> Integrated material and budget monitoring</li>
                             </ul>
 
                             <div style="text-align: center;">
@@ -65,7 +65,7 @@ const sendWelcomeEmail = async (toEmail, name) => {
 
                             <p class="body-text">We are committed to providing you with the most efficient platform to bring your construction vision to life. Should you have any inquiries regarding the platform's capabilities, our specialist support team is available to assist you.</p>
                             
-                            <p class="body-text" style="margin-top: 30px;">Professional Regards,<br/><strong>The Planora Executive Team</strong></p>
+                             <p class="body-text" style="margin-top: 30px;">Regards,<br/><strong>The Planora Team</strong></p>
                             
                             <div class="footer">
                                 &copy; 2026 Planora Technologies. All rights reserved.<br/>

@@ -27,7 +27,6 @@ const Sidebar = ({ isOpen, onClose }) => {
                 path: '/dashboard/messages',
                 badge: unreadCount > 0 ? unreadCount : null
             },
-            { icon: Scale, label: 'Disputes', path: '/dashboard/disputes' },
             { icon: DollarSign, label: 'Payments', path: '/dashboard/payments' },
         ];
 

@@ -1,0 +1,295 @@
+import React, { useState, useEffect } from 'react';
+import { MapContainer, TileLayer, Marker, Popup, useMap } from 'react-leaflet';
+import { motion, AnimatePresence } from 'framer-motion';
+import L from 'leaflet';
+import 'leaflet/dist/leaflet.css';
+import { User, Briefcase, MapPin, Star, Phone, MessageSquare, Plus, X, FileText } from 'lucide-react';
+
+// Fix Leaflet marker icons in React
+import icon from 'leaflet/dist/images/marker-icon.png';
+import iconShadow from 'leaflet/dist/images/marker-shadow.png';
+
+let DefaultIcon = L.icon({
+    iconUrl: icon,
+    shadowUrl: iconShadow,
+    iconSize: [25, 41],
+    iconAnchor: [12, 41]
+});
+L.Marker.prototype.options.icon = DefaultIcon;
+
+// Custom function to animate map movements
+const SetViewOnClick = ({ coords }) => {
+    const map = useMap();
+    useEffect(() => {
+        if (coords) map.setView(coords, 13, { animate: true });
+    }, [coords, map]);
+    return null;
+};
+
+const ExpertMap = ({ currentProjectId, category, subCategory, onAssign }) => {
+    const [professionals, setProfessionals] = useState([]);
+    const [loading, setLoading] = useState(true);
+    const [mapCenter, setMapCenter] = useState([20.5937, 78.9629]);
+    const [selectedPro, setSelectedPro] = useState(null);
+    const [activeCategory, setActiveCategory] = useState(category || 'All');
+    const [activeSubCategory, setActiveSubCategory] = useState(subCategory || 'All');
+    const [isProfileOpen, setIsProfileOpen] = useState(false);
+
+    const categories = ['All', 'Planning', 'Design and Finish', 'SiteWork'];
+    const subCategories = {
+        'All': ['All'],
+        'Planning': ['All', 'Architect', 'Structural Engineer', 'Civil Engineer'],
+        'Design and Finish': ['All', 'Interior Designer', 'False Ceiling Worker', 'Fabrication Worker'],
+        'SiteWork': ['All', 'Mason', 'Electrician', 'Plumber', 'Carpenter', 'Tile Worker', 'Painter']
+    };
+
+    const [userLocation, setUserLocation] = useState(null);
+
+    // Fetch current user's location
+    useEffect(() => {
+        const fetchUserLocation = async () => {
+            try {
+                const userId = JSON.parse(localStorage.getItem('user'))?.id;
+                if (!userId) {
+                    setLoading(false);
+                    return;
+                }
+
+                const res = await fetch(`http://localhost:5000/api/user/${userId}`);
+                const data = await res.json();
+
+                if (data.latitude && data.longitude) {
+                    setUserLocation({ lat: data.latitude, lon: data.longitude });
+                    setMapCenter([data.latitude, data.longitude]);
+                } else {
+                    console.log('User location not found, defaulting to map center');
+                    setLoading(false);
+                }
+            } catch (err) {
+                console.error('Error fetching user location:', err);
+                setLoading(false);
+            }
+        };
+
+        fetchUserLocation();
+    }, []);
+
+    const fetchProfessionals = async () => {
+        if (!userLocation) {
+            console.log('[ExpertMap] Waiting for user location...');
+            return;
+        }
+
+        setLoading(true);
+        try {
+            let url = 'http://localhost:5000/api/professionals/nearby';
+            const params = new URLSearchParams();
+            params.append('lat', userLocation.lat);
+            params.append('lon', userLocation.lon);
+            if (activeCategory !== 'All') params.append('category', activeCategory);
+            if (activeSubCategory !== 'All') params.append('sub_category', activeSubCategory);
+
+            url += `?${params.toString()}`;
+
+            const res = await fetch(url);
+            const data = await res.json();
+
+            if (res.ok) {
+                setProfessionals(data);
+                console.log(`[ExpertMap] Found ${data.length} professionals within 50km`);
+            } else {
+                console.error('[ExpertMap] API Error:', data.error);
+                setProfessionals([]);
+            }
+        } catch (err) {
+            console.error('Error fetching professionals:', err);
+            setProfessionals([]);
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    useEffect(() => {
+        fetchProfessionals();
+    }, [activeCategory, activeSubCategory, userLocation]);
+
+    const handleAssign = async (proId, proName, proRole) => {
+        if (!currentProjectId) {
+            alert("Please select or create a project first.");
+            return;
+        }
+
+        try {
+            const res = await fetch(`http://localhost:5000/api/projects/${currentProjectId}/assign`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ userId: proId, role: proRole })
+            });
+
+            if (res.ok) {
+                alert(`${proName} assigned to your project successfully!`);
+                if (onAssign) onAssign();
+                setIsProfileOpen(false);
+            }
+        } catch (err) {
+            alert("Failed to assign professional.");
+        }
+    };
+
+    return (
+        <div className="relative w-full h-[600px] rounded-[2rem] overflow-hidden border-4 border-white shadow-2xl bg-[#F9F7F2]">
+            {loading && (
+                <div className="absolute inset-0 z-[1001] bg-white/60 backdrop-blur-sm flex items-center justify-center">
+                    <div className="flex flex-col items-center">
+                        <div className="w-12 h-12 border-4 border-[#C06842] border-t-transparent rounded-full animate-spin"></div>
+                        <p className="mt-4 font-bold text-[#8C7B70] animate-pulse uppercase tracking-widest text-xs">Mapping Professionals...</p>
+                    </div>
+                </div>
+            )}
+
+            {/* Internal Filter Bar */}
+            <div className="absolute top-6 left-1/2 -translate-x-1/2 z-[1000] flex gap-2 bg-white/90 backdrop-blur-md p-2 rounded-2xl shadow-xl border border-[#E3DACD]/50">
+                <select
+                    value={activeCategory}
+                    onChange={(e) => { setActiveCategory(e.target.value); setActiveSubCategory('All'); }}
+                    className="bg-transparent text-xs font-bold text-[#3E2B26] outline-none px-4 py-2 border-r border-[#E3DACD]"
+                >
+                    {categories.map(cat => <option key={cat} value={cat}>{cat}</option>)}
+                </select>
+                <select
+                    value={activeSubCategory}
+                    onChange={(e) => setActiveSubCategory(e.target.value)}
+                    className="bg-transparent text-xs font-bold text-[#3E2B26] outline-none px-4 py-2"
+                >
+                    {subCategories[activeCategory].map(sub => <option key={sub} value={sub}>{sub}</option>)}
+                </select>
+            </div>
+
+            <MapContainer center={mapCenter} zoom={13} style={{ height: '100%', width: '100%' }} zoomControl={false}>
+                <TileLayer
+                    url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+                    attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+                />
+                <SetViewOnClick coords={mapCenter} />
+
+                {professionals.map((pro) => (
+                    <Marker
+                        key={pro.user_id}
+                        position={[pro.latitude, pro.longitude]}
+                        eventHandlers={{
+                            click: () => setSelectedPro(pro),
+                        }}
+                    >
+                        <Popup className="custom-popup">
+                            <div className="p-1 min-w-[200px]">
+                                <div className="flex items-center gap-3 mb-3">
+                                    <div className="w-10 h-10 rounded-full bg-[#fceee0] border border-[#C06842]/20 flex items-center justify-center text-[#C06842]">
+                                        <Briefcase size={18} />
+                                    </div>
+                                    <div>
+                                        <h4 className="font-bold text-sm text-[#2A1F1D]">{pro.name}</h4>
+                                        <p className="text-[10px] text-[#8C7B70] uppercase font-bold">{pro.sub_category || pro.category}</p>
+                                    </div>
+                                </div>
+                                <div className="space-y-2 mb-4">
+                                    <div className="flex items-center gap-2 text-[10px] text-[#6E5E56]">
+                                        <MapPin size={12} className="text-[#C06842]" />
+                                        <span className="truncate max-w-[150px]">{pro.address || 'Location Verified'}</span>
+                                    </div>
+                                    {pro.experience_years && (
+                                        <div className="flex items-center gap-2 text-[10px] text-[#6E5E56]">
+                                            <Star size={12} className="text-yellow-500" />
+                                            <span>{pro.experience_years} Years Experience</span>
+                                        </div>
+                                    )}
+                                </div>
+                                <div className="flex gap-2">
+                                    <button
+                                        onClick={() => { setSelectedPro(pro); setIsProfileOpen(true); }}
+                                        className="flex-1 py-1.5 bg-[#2A1F1D] text-white rounded-lg text-[10px] font-bold hover:bg-[#C06842] transition-colors flex items-center justify-center gap-1"
+                                    >
+                                        <User size={10} /> View Profile
+                                    </button>
+                                </div>
+                            </div>
+                        </Popup>
+                    </Marker>
+                ))}
+            </MapContainer>
+
+            {/* Profile Sidebar/Modal */}
+            <AnimatePresence>
+                {isProfileOpen && selectedPro && (
+                    <motion.div
+                        initial={{ x: '100%' }}
+                        animate={{ x: 0 }}
+                        exit={{ x: '100%' }}
+                        className="absolute top-0 right-0 h-full w-80 bg-white z-[1001] shadow-2xl border-l border-[#E3DACD] flex flex-col"
+                    >
+                        <div className="p-6 bg-[#FDFCF8] border-b border-[#E3DACD] flex justify-between items-center">
+                            <h3 className="font-serif font-bold text-[#3E2B26]">Professional Details</h3>
+                            <button onClick={() => setIsProfileOpen(false)} className="text-[#8C7B70] hover:text-[#3E2B26]"><X size={20} /></button>
+                        </div>
+                        <div className="flex-1 overflow-y-auto p-6 space-y-8 custom-scrollbar">
+                            <div className="text-center">
+                                <div className="w-20 h-20 mx-auto rounded-3xl bg-[#F9F7F2] border-2 border-[#E3DACD] flex items-center justify-center text-[#A65D3B] shadow-inner mb-4">
+                                    <User size={40} />
+                                </div>
+                                <h4 className="text-lg font-serif font-bold text-[#3E2B26]">{selectedPro.name}</h4>
+                                <span className="text-[10px] font-black uppercase tracking-widest text-[#A65D3B]">{selectedPro.sub_category}</span>
+                            </div>
+
+                            <div className="space-y-4">
+                                <div className="space-y-1">
+                                    <label className="text-[10px] font-black text-[#8C7B70] uppercase tracking-widest block">Bio</label>
+                                    <p className="text-xs text-[#5D4037] leading-relaxed italic">"{selectedPro.bio || 'Professional building the future with Planora.'}"</p>
+                                </div>
+
+                                <div className="grid grid-cols-2 gap-4">
+                                    <div className="p-3 bg-[#F9F7F2] rounded-xl border border-[#E3DACD]/50 text-center">
+                                        <span className="block text-xl font-bold text-[#3E2B26]">{selectedPro.experience_years || '5+'}</span>
+                                        <span className="text-[9px] font-black text-[#8C7B70] uppercase">Experience</span>
+                                    </div>
+                                    <div className="p-3 bg-[#F9F7F2] rounded-xl border border-[#E3DACD]/50 text-center">
+                                        <span className="block text-xl font-bold text-[#3E2B26] truncate" title={selectedPro.specialization || 'General'}>{selectedPro.specialization || 'Expert'}</span>
+                                        <span className="text-[9px] font-black text-[#8C7B70] uppercase">Specialty</span>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div className="space-y-3">
+                                <label className="text-[10px] font-black text-[#8C7B70] uppercase tracking-widest block">Credentials</label>
+                                {selectedPro.resume_path ? (
+                                    <a href={`http://localhost:5000/${selectedPro.resume_path}`} target="_blank" rel="noreferrer" className="flex items-center gap-3 p-3 border-2 border-[#E3DACD] rounded-xl hover:border-[#A65D3B] text-[#5D4037] transition-all">
+                                        <FileText size={16} />
+                                        <span className="text-xs font-bold">View Resume</span>
+                                    </a>
+                                ) : (
+                                    <div className="p-3 border-2 border-dashed border-[#E3DACD] rounded-xl text-center text-[#8C7B70]">
+                                        <span className="text-[10px] font-bold">Resume Not Available</span>
+                                    </div>
+                                )}
+                                {selectedPro.portfolio_url && (
+                                    <a href={selectedPro.portfolio_url} target="_blank" rel="noreferrer" className="flex items-center gap-3 p-3 border-2 border-[#E3DACD] rounded-xl hover:border-[#A65D3B] text-[#5D4037] transition-all">
+                                        <Star size={16} />
+                                        <span className="text-xs font-bold">Portfolio Link</span>
+                                    </a>
+                                )}
+                            </div>
+                        </div>
+                        <div className="p-6 bg-white border-t border-[#E3DACD]">
+                            <button
+                                onClick={() => handleAssign(selectedPro.user_id, selectedPro.name, selectedPro.sub_category)}
+                                className="w-full py-4 bg-[#3E2B26] text-white rounded-2xl font-black text-xs uppercase tracking-widest hover:bg-[#2A1F1D] shadow-xl transition-all"
+                            >
+                                Hire for Project
+                            </button>
+                        </div>
+                    </motion.div>
+                )}
+            </AnimatePresence>
+        </div>
+    );
+};
+
+export default ExpertMap;

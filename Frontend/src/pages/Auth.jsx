@@ -4,6 +4,7 @@ import { useMockApp } from '../hooks/useMockApp';
 import { Eye, EyeOff, ArrowRight, User, Check } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useGoogleLogin } from '@react-oauth/google';
+import Onboarding from '../components/dashboard/Common/Onboarding';
 
 const Auth = () => {
     const navigate = useNavigate();
@@ -280,7 +281,13 @@ const Auth = () => {
             }
 
             setAuthUser(data.user);
-            navigate('/dashboard');
+
+            if (data.status === 'incomplete') {
+                setFormData(prev => ({ ...prev, userId: data.user.id || data.user.user_id, name: data.user.name, email: data.user.email }));
+                setAuthState('onboarding');
+            } else {
+                navigate('/dashboard');
+            }
         } catch (err) {
             setError(err.message);
         } finally {
@@ -586,6 +593,20 @@ const Auth = () => {
                                     </motion.div>
                                 )}
                             </AnimatePresence>
+
+                            <Onboarding
+                                isOpen={authState === 'onboarding'}
+                                onClose={() => {
+                                    setAuthState('auth');
+                                    navigate('/dashboard');
+                                }}
+                                user={{ id: formData.userId, name: formData.name }}
+                                onComplete={(updatedUser) => {
+                                    setAuthUser(updatedUser);
+                                    setAuthState('auth');
+                                    navigate('/dashboard');
+                                }}
+                            />
 
                         </div>
                     </div>

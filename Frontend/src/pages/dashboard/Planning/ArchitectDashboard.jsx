@@ -1,12 +1,13 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { useMockApp } from '../../../hooks/useMockApp';
 import {
     Layers, PenTool, CheckCircle, Upload, AlertTriangle,
     MessageCircle, Calendar, Camera, FileText,
     Briefcase, Layout, ArrowRight, Clock, MoreHorizontal,
     Plus, Search, Filter, Eye, Download, Archive, Trash2,
-    X, User, AlertOctagon, HelpCircle
+    X, User, AlertOctagon, HelpCircle, MapPin, ChevronDown
 } from 'lucide-react';
+import DocumentManager from '../../../components/Common/DocumentManager';
 
 const StatusBadge = ({ status }) => {
     const styles = {
@@ -34,17 +35,12 @@ const SectionHeader = ({ title, action }) => (
 
 const ArchitectDashboard = () => {
     const { currentUser } = useMockApp();
-    const [activeTab, setActiveTab] = useState('drawings');
-    const [showUploadModal, setShowUploadModal] = useState(false);
+    const [projects, setProjects] = useState([]);
+    const [activeProject, setActiveProject] = useState(null);
+    const [loading, setLoading] = useState(true);
 
     // --- State & Persistence ---
     const initialData = {
-        stats: {
-            activeProjects: 3,
-            selectedProject: 'Skyline Apartments',
-            projectType: 'Residential Complex',
-            currentPhase: 'Execution'
-        },
         designStatus: [
             { id: 1, title: 'Concept Design', status: 'Approved', info: 'Finalized on Jan 15' },
             { id: 2, title: 'Working Drawings', status: 'In Progress', info: 'Struc. coordination ongoing' },
@@ -52,11 +48,7 @@ const ArchitectDashboard = () => {
             { id: 4, title: 'Structural Coord.', status: 'Review', info: 'Beam clash resolved' },
             { id: 5, title: 'Approval Submission', status: 'Not Started', info: 'Due by Feb 20' },
         ],
-        drawings: [
-            { id: 1, name: 'Ground Floor Plan.pdf', type: 'Plan', version: 'v3.2', date: 'Today, 10:30 AM', author: 'Ar. Sarah', status: 'Approved' },
-            { id: 2, name: 'Section A-A.pdf', type: 'Section', version: 'v2.1', date: 'Yesterday', author: 'Ar. Sarah', status: 'Review' },
-            { id: 3, name: 'Front Elevation.jpg', type: 'Elevation', version: 'v1.5', date: 'Jan 28', author: 'Ar. Arjun', status: 'Pending' },
-        ],
+        drawings: [],
         coordination: [
             { id: 1, type: 'Structural', message: 'Increase column C4 size to 450x600mm.', from: 'Er. Civil', date: '2h ago', priority: 'High' },
             { id: 2, type: 'MEP', message: 'HVAC duct clash with beam at grid 3-B.', from: 'MEP Consultant', date: '5h ago', priority: 'Medium' },
@@ -72,28 +64,31 @@ const ArchitectDashboard = () => {
         ]
     };
 
-    const [data, setData] = useState(() => {
-        const saved = localStorage.getItem('planora_architect_data');
-        return saved ? JSON.parse(saved) : initialData;
-    });
+    const [data, setData] = useState(initialData);
+
+    const fetchProfessionalProjects = useCallback(async () => {
+        if (!currentUser?.user_id && !currentUser?.id) return;
+        const uid = currentUser.user_id || currentUser.id;
+        setLoading(true);
+        try {
+            const res = await fetch(`http://localhost:5000/api/professionals/${uid}/projects`);
+            if (res.ok) {
+                const projectsData = await res.json();
+                setProjects(projectsData);
+                if (projectsData.length > 0 && !activeProject) {
+                    setActiveProject(projectsData[0]);
+                }
+            }
+        } catch (err) {
+            console.error('Failed to fetch assigned projects:', err);
+        } finally {
+            setLoading(false);
+        }
+    }, [currentUser, activeProject]);
 
     useEffect(() => {
-        localStorage.setItem('planora_architect_data', JSON.stringify(data));
-    }, [data]);
-
-    const handleUpload = () => {
-        const newDoc = {
-            id: Date.now(),
-            name: `Revision_${data.drawings.length + 1}.pdf`,
-            type: 'Plan',
-            version: 'v1.0',
-            date: 'Just Now',
-            author: currentUser?.name || 'Architect',
-            status: 'Review'
-        };
-        setData(prev => ({ ...prev, drawings: [newDoc, ...prev.drawings] }));
-        setShowUploadModal(false);
-    };
+        fetchProfessionalProjects();
+    }, [fetchProfessionalProjects]);
 
     return (
         <div className="max-w-7xl mx-auto space-y-8 animate-fade-in font-sans pb-20 text-[#2A1F1D]">
@@ -114,26 +109,30 @@ const ArchitectDashboard = () => {
                         <div className="flex flex-wrap gap-4 text-sm mt-6">
                             <div className="px-4 py-2 bg-[#F9F7F2] rounded-xl border border-[#E3DACD] flex items-center space-x-2 text-[#5D4037] shadow-sm">
                                 <Layout size={16} className="text-[#C06842]" />
-                                <span>Active Projects: <strong className="text-[#2A1F1D] ml-1">{data.stats.activeProjects}</strong></span>
+                                <span>Active Projects: <strong className="text-[#2A1F1D] ml-1">{projects.length}</strong></span>
                             </div>
-                            <div className="px-4 py-2 bg-[#F9F7F2] rounded-xl border border-[#E3DACD] flex items-center space-x-2 text-[#5D4037] shadow-sm">
-                                <Eye size={16} className="text-[#E68A2E]" />
-                                <span>Selected: <strong className="text-[#2A1F1D] ml-1">{data.stats.selectedProject}</strong></span>
-                            </div>
+                            {activeProject && (
+                                <div className="px-4 py-2 bg-[#F9F7F2] rounded-xl border border-[#E3DACD] flex items-center space-x-2 text-[#5D4037] shadow-sm">
+                                    <MapPin size={16} className="text-[#E68A2E]" />
+                                    <span>Selected: <strong className="text-[#2A1F1D] ml-1">{activeProject.name}</strong></span>
+                                </div>
+                            )}
                         </div>
                     </div>
 
-                    <div className="bg-[#FDFCF8]/60 backdrop-blur-md p-6 rounded-2xl border border-[#E3DACD]/50 min-w-[220px] shadow-sm group-hover:shadow-md transition-all">
-                        <div className="flex justify-between items-center mb-3">
-                            <span className="text-xs text-[#8C7B70] font-bold uppercase tracking-widest">Current Phase</span>
-                            <MoreHorizontal size={16} className="text-[#B8AFA5]" />
+                    {activeProject && (
+                        <div className="bg-[#FDFCF8]/60 backdrop-blur-md p-6 rounded-2xl border border-[#E3DACD]/50 min-w-[220px] shadow-sm group-hover:shadow-md transition-all">
+                            <div className="flex justify-between items-center mb-3">
+                                <span className="text-xs text-[#8C7B70] font-bold uppercase tracking-widest">Current Phase</span>
+                                <MoreHorizontal size={16} className="text-[#B8AFA5]" />
+                            </div>
+                            <div className="text-2xl font-bold text-[#C06842] flex items-center space-x-3">
+                                <span>Active</span>
+                                <div className="h-2.5 w-2.5 bg-green-500 rounded-full animate-pulse shadow-[0_0_8px_rgba(34,197,94,0.4)]"></div>
+                            </div>
+                            <p className="text-xs text-[#6E5E56] font-medium mt-1">{activeProject.type}</p>
                         </div>
-                        <div className="text-2xl font-bold text-[#C06842] flex items-center space-x-3">
-                            <span>{data.stats.currentPhase}</span>
-                            <div className="h-2.5 w-2.5 bg-green-500 rounded-full animate-pulse shadow-[0_0_8px_rgba(34,197,94,0.4)]"></div>
-                        </div>
-                        <p className="text-xs text-[#6E5E56] font-medium mt-1">{data.stats.projectType}</p>
-                    </div>
+                    )}
                 </div>
             </div>
 
@@ -154,51 +153,40 @@ const ArchitectDashboard = () => {
 
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
                 {/* 3. DRAWINGS & DESIGN MANAGEMENT */}
-                <div className="lg:col-span-2 glass-card rounded-[2rem] border border-[#E3DACD]/40 shadow-sm overflow-hidden flex flex-col min-h-[500px]">
+                <div className="lg:col-span-2 glass-card rounded-[2rem] border border-[#E3DACD]/40 shadow-sm overflow-hidden flex flex-col min-h-[600px]">
                     <div className="p-8 border-b border-[#E3DACD]/30 flex flex-wrap justify-between items-center gap-4 bg-[#F9F7F2]/30">
                         <div className="flex items-center space-x-4">
                             <div className="p-3 bg-[#C06842]/10 rounded-xl text-[#C06842]"><Layers size={22} /></div>
-                            <h3 className="text-xl font-serif font-bold text-[#2A1F1D]">Drawings & Design</h3>
+                            <h3 className="text-xl font-serif font-bold text-[#2A1F1D]">Project Drawings</h3>
                         </div>
-                        <div className="flex space-x-2">
-                            <button
-                                onClick={() => setShowUploadModal(true)}
-                                className="flex items-center space-x-2 bg-[#2A1F1D] hover:bg-[#C06842] text-white px-5 py-2.5 rounded-xl text-sm font-bold transition-all shadow-lg hover:shadow-xl active:scale-95"
-                            >
-                                <Upload size={18} /> <span>Upload New</span>
-                            </button>
-                        </div>
+                        {projects.length > 1 && (
+                            <div className="relative">
+                                <select
+                                    value={activeProject?.project_id}
+                                    onChange={(e) => setActiveProject(projects.find(p => p.project_id === e.target.value))}
+                                    className="appearance-none bg-white border border-[#E3DACD] rounded-xl px-4 py-2 pr-10 text-xs font-bold text-[#5D4037] outline-none shadow-sm focus:border-[#C06842]"
+                                >
+                                    {projects.map(p => <option key={p.project_id} value={p.project_id}>{p.name}</option>)}
+                                </select>
+                                <ChevronDown className="absolute right-3 top-2.5 text-[#8C7B70] pointer-events-none" size={14} />
+                            </div>
+                        )}
                     </div>
 
-                    <div className="p-6 flex-1 overflow-y-auto custom-scrollbar">
-                        <div className="space-y-4">
-                            {data.drawings.map((doc) => (
-                                <div key={doc.id} className="flex items-center justify-between p-4 rounded-2xl border border-[#E3DACD]/40 hover:border-[#C06842]/30 bg-[#FDFCF8] hover:bg-white hover:shadow-md transition-all group">
-                                    <div className="flex items-center space-x-5">
-                                        <div className="h-12 w-12 bg-red-50 text-red-500 rounded-xl flex items-center justify-center font-bold text-xs uppercase shadow-sm group-hover:scale-105 transition-transform">PDF</div>
-                                        <div>
-                                            <h5 className="font-bold text-[#2A1F1D] text-lg group-hover:text-[#C06842] transition-colors">{doc.name}</h5>
-                                            <div className="flex items-center space-x-3 text-xs text-[#8C7B70] mt-1 font-medium">
-                                                <span className="bg-[#E3DACD]/30 px-2 py-0.5 rounded text-[#5D4037]">{doc.version}</span>
-                                                <span>•</span>
-                                                <span>{doc.type}</span>
-                                                <span>•</span>
-                                                <span>{doc.date}</span>
-                                            </div>
-                                        </div>
-                                    </div>
-                                    <div className="flex items-center space-x-4">
-                                        <div className="text-right hidden sm:block">
-                                            <StatusBadge status={doc.status} />
-                                            <p className="text-[10px] text-[#8C7B70] mt-1 font-bold uppercase tracking-wider">by {doc.author}</p>
-                                        </div>
-                                        <button className="p-2 text-[#B8AFA5] hover:text-[#C06842] hover:bg-[#F9F7F2] rounded-lg transition-colors">
-                                            <MoreHorizontal size={20} />
-                                        </button>
-                                    </div>
-                                </div>
-                            ))}
-                        </div>
+                    <div className="p-8 flex-1">
+                        {activeProject ? (
+                            <DocumentManager
+                                projectId={activeProject.project_id}
+                                filterType="Planning"
+                                title="Architectural Drawings"
+                            />
+                        ) : (
+                            <div className="flex flex-col items-center justify-center h-full text-[#8C7B70] space-y-4">
+                                <Archive size={48} className="opacity-20" />
+                                <p className="font-bold">No active projects assigned.</p>
+                                <p className="text-xs">Once you are assigned to a project, drawings will appear here.</p>
+                            </div>
+                        )}
                     </div>
                 </div>
 
@@ -246,75 +234,28 @@ const ArchitectDashboard = () => {
                             title="Site Progress"
                             action={<button className="p-2 bg-[#F9F7F2] rounded-full text-[#8C7B70] hover:text-[#C06842] transition-colors"><Camera size={20} /></button>}
                         />
-                        <div className="grid grid-cols-2 gap-4">
-                            {data.siteProgress.map((photo) => (
-                                <div key={photo.id} className="relative group rounded-2xl overflow-hidden aspect-square border border-[#E3DACD] shadow-sm hover:shadow-md transition-all">
-                                    <img src={photo.img} alt="Site" className="w-full h-full object-cover transform group-hover:scale-110 transition-transform duration-700" />
-                                    {photo.alert && (
-                                        <div className="absolute top-2 right-2 bg-red-500 text-white p-1.5 rounded-full animate-pulse shadow-md tooltip-trigger z-10">
-                                            <AlertTriangle size={14} />
-                                        </div>
-                                    )}
-                                    <div className="absolute inset-0 bg-gradient-to-t from-[#2A1F1D]/90 via-transparent to-transparent flex flex-col justify-end p-3 opacity-0 group-hover:opacity-100 transition-opacity duration-300">
-                                        {photo.alert && <p className="text-red-300 text-[10px] font-bold mb-1 flex items-center gap-1"><AlertTriangle size={10} /> Deviation</p>}
-                                        <p className="text-white text-xs font-bold leading-tight drop-shadow-md">{photo.note}</p>
-                                        <p className="text-white/70 text-[10px] font-medium mt-0.5">{photo.date}</p>
+                        <div className="space-y-4">
+                            {data.siteProgress.map((item) => (
+                                <div key={item.id} className="group relative rounded-2xl overflow-hidden border border-[#E3DACD]/50 hover:shadow-lg transition-all">
+                                    <img src={item.img} alt="progress" className="w-full h-40 object-cover group-hover:scale-110 transition-transform duration-500" />
+                                    <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/20 to-transparent p-4 flex flex-col justify-end">
+                                        <p className="text-white text-xs font-bold">{item.note}</p>
+                                        <p className="text-white/60 text-[10px] mt-1">{item.date}</p>
+                                        {item.alert && (
+                                            <div className="absolute top-3 right-3 bg-red-500/90 text-white text-[9px] font-bold px-2 py-1 rounded-md flex items-center gap-1 shadow-lg backdrop-blur-sm">
+                                                <AlertTriangle size={10} /> {item.alert}
+                                            </div>
+                                        )}
                                     </div>
                                 </div>
                             ))}
                         </div>
+                        <button className="w-full mt-6 py-3 bg-[#F9F7F2] text-[#5D4037] rounded-xl text-xs font-bold hover:bg-[#2A1F1D] hover:text-white transition-all border border-[#E3DACD]/50">
+                            View Site Gallery
+                        </button>
                     </div>
                 </div>
             </div>
-
-            {/* 6. QUICK ACTIONS */}
-            <div className="fixed bottom-8 left-1/2 transform -translate-x-1/2 bg-[#2A1F1D]/90 backdrop-blur-md text-white p-2.5 rounded-full shadow-2xl flex items-center space-x-2 z-50 scale-90 sm:scale-100 border border-white/10 ring-1 ring-white/20">
-                {[
-                    { icon: Upload, label: 'Upload Drawing', action: () => setShowUploadModal(true) },
-                    { icon: MessageCircle, label: 'Respond to Site', action: () => { } },
-                    { icon: CheckCircle, label: 'Approve Work', action: () => { } },
-                    { icon: Calendar, label: 'Schedule Visit', action: () => { } },
-                ].map((action, i) => (
-                    <button
-                        key={i}
-                        onClick={action.action}
-                        className="p-3.5 rounded-full hover:bg-[#C06842] transition-all tooltip-trigger relative group"
-                    >
-                        <action.icon size={22} />
-                        <span className="absolute -top-12 left-1/2 -translate-x-1/2 bg-[#2A1F1D] text-white text-xs font-bold px-3 py-1.5 rounded-lg opacity-0 group-hover:opacity-100 transition-all whitespace-nowrap pointer-events-none shadow-xl -translate-y-2 group-hover:translate-y-0">
-                            {action.label}
-                            <div className="absolute -bottom-1 left-1/2 -translate-x-1/2 w-2 h-2 bg-[#2A1F1D] rotate-45"></div>
-                        </span>
-                    </button>
-                ))}
-            </div>
-
-            {/* Upload Modal (Simulation) */}
-            {showUploadModal && (
-                <div className="fixed inset-0 bg-[#2A1F1D]/60 backdrop-blur-sm z-[60] flex items-center justify-center p-4">
-                    <div className="bg-[#FDFCF8] rounded-[2rem] p-10 max-w-lg w-full shadow-2xl animate-scale-up border border-[#E3DACD]">
-                        <div className="flex justify-between items-center mb-8">
-                            <h3 className="text-3xl font-serif font-bold text-[#2A1F1D]">Upload Drawing</h3>
-                            <button onClick={() => setShowUploadModal(false)} className="bg-[#F9F7F2] p-2.5 rounded-full hover:bg-[#E3DACD] transition-colors"><X size={24} className="text-[#5D4037]" /></button>
-                        </div>
-                        <div className="space-y-6">
-                            <div className="border-3 border-dashed border-[#E3DACD] rounded-3xl p-10 text-center bg-[#F9F7F2]/50 hover:bg-[#F9F7F2] hover:border-[#C06842] transition-all cursor-pointer group">
-                                <div className="w-16 h-16 bg-[#E3DACD]/30 rounded-full flex items-center justify-center mx-auto mb-4 group-hover:scale-110 transition-transform">
-                                    <Upload className="text-[#8C7B70] group-hover:text-[#C06842] transition-colors" size={32} />
-                                </div>
-                                <p className="text-[#5D4037] font-bold text-lg">Click to browse</p>
-                                <p className="text-[#8C7B70] text-sm mt-1">or drag files here</p>
-                            </div>
-                            <button
-                                onClick={handleUpload}
-                                className="w-full py-4 bg-[#2A1F1D] text-white rounded-2xl font-bold text-lg shadow-xl shadow-[#2A1F1D]/20 hover:bg-[#C06842] hover:shadow-[#C06842]/30 hover:-translate-y-1 active:scale-95 transition-all"
-                            >
-                                Upload & Notify Team
-                            </button>
-                        </div>
-                    </div>
-                </div>
-            )}
         </div>
     );
 };

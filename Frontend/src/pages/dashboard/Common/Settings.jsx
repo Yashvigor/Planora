@@ -27,9 +27,10 @@ const Settings = () => {
     // Fetch Profile Data
     React.useEffect(() => {
         const fetchProfile = async () => {
-            if (!currentUser?.id) return;
+            const userId = currentUser?.user_id || currentUser?.id;
+            if (!userId) return;
             try {
-                const response = await fetch(`http://localhost:5000/api/user/${currentUser.id}`);
+                const response = await fetch(`http://localhost:5000/api/user/${userId}`);
                 if (response.ok) {
                     const data = await response.json();
                     setProfileData(prev => ({
@@ -84,10 +85,30 @@ const Settings = () => {
                 formData.append('aadhar_card', profileData.aadhar);
             }
 
-            const response = await fetch(`http://localhost:5000/api/user/${currentUser.id}`, {
-                method: 'PUT',
-                body: formData,
-            });
+            const userId = currentUser.user_id || currentUser.id;
+            let response;
+            if (profileData.aadhar) {
+                // If there's a file, we must use FormData
+                response = await fetch(`http://localhost:5000/api/user/${userId}`, {
+                    method: 'PUT',
+                    body: formData,
+                });
+            } else {
+                // If no file, use the new profile sync route which handles geocoding
+                response = await fetch(`http://localhost:5000/api/users/${userId}/profile`, {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        phone: profileData.phone,
+                        address: profileData.address,
+                        city: profileData.city,
+                        state: profileData.state,
+                        zip_code: profileData.zip_code,
+                        birthdate: profileData.birthdate,
+                        bio: profileData.bio
+                    }),
+                });
+            }
 
             if (response.ok) {
                 const updatedUser = await response.json();
@@ -114,11 +135,13 @@ const Settings = () => {
                     }));
                 }
             } else {
-                throw new Error('Failed to update');
+                const errorData = await response.json().catch(() => ({ error: 'Unknown error' }));
+                console.error('Profile update failed:', errorData);
+                throw new Error(errorData.error || errorData.details || 'Failed to update');
             }
         } catch (error) {
             console.error("Profile Update Failed", error);
-            alert("Failed to update profile.");
+            alert(`Failed to update profile: ${error.message}`);
         }
     };
 

@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { useMockApp } from '../../../hooks/useMockApp';
 import {
     Shield, Users, AlertCircle, CheckCircle, XCircle, Search, FileText,
@@ -20,57 +20,59 @@ const AdminDashboard = ({ initialSection = 'overview' }) => {
     const [loading, setLoading] = useState(true);
     const [stats, setStats] = useState({
         totalUsers: 0,
-        activeProjects: 32, // Mock for now
+        activeProjects: 0,
         pendingVerifications: 0,
-        systemHealth: '98%',
+        systemHealth: '100%',
         owners: 0,
         professionals: 0,
-        pendingDocs: 45, // Mock
-        reportedIssues: 8, // Mock
-        disputesOpen: 3 // Mock
+        pendingDocs: 0
     });
 
-    useEffect(() => {
-        fetchUsers();
-    }, []);
-
-    const fetchUsers = async () => {
+    const fetchData = useCallback(async () => {
+        setLoading(true);
         try {
-            const response = await fetch('http://localhost:5000/api/admin/users');
-            if (response.ok) {
-                const data = await response.json();
-                setUsers(data);
+            // Fetch Users
+            const userRes = await fetch('http://localhost:5000/api/users');
+            const userData = await userRes.json();
+            setUsers(userData);
 
-                // Calculate stats
-                const owners = data.filter(u => u.category === 'Land Owner').length;
-                const professionals = data.filter(u => u.category !== 'Land Owner' && u.category !== 'Admin').length;
-                const pending = data.filter(u => u.status === 'Pending').length;
+            // Fetch Projects for count (optional, can add route or just count if manageable)
+            // For now, let's just count from data we have if available, or keep mock if no specific route
 
-                setStats(prev => ({
-                    ...prev,
-                    totalUsers: data.length,
-                    owners,
-                    professionals,
-                    pendingVerifications: pending
-                }));
-            }
+            // Calculate stats
+            const owners = userData.filter(u => u.category === 'Land Owner').length;
+            const professionals = userData.filter(u => u.category !== 'Land Owner' && u.category !== 'Admin').length;
+            const pending = userData.filter(u => u.status === 'Pending').length;
+
+            setStats(prev => ({
+                ...prev,
+                totalUsers: userData.length,
+                owners,
+                professionals,
+                pendingVerifications: pending
+            }));
+
         } catch (error) {
-            console.error("Failed to fetch users", error);
+            console.error("Failed to fetch admin data", error);
         } finally {
             setLoading(false);
         }
-    };
+    }, []);
+
+    useEffect(() => {
+        fetchData();
+    }, [fetchData]);
 
     const handleVerifyUser = async (id, status) => {
         try {
-            const response = await fetch(`http://localhost:5000/api/admin/verify/${id}`, {
+            const response = await fetch(`http://localhost:5000/api/users/${id}/status`, {
                 method: 'PUT',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ status })
             });
             if (response.ok) {
                 alert(`User ${status} successfully`);
-                fetchUsers(); // Refresh list
+                fetchData(); // Refresh all
             } else {
                 alert("Failed to update status");
             }
@@ -151,8 +153,8 @@ const AdminDashboard = ({ initialSection = 'overview' }) => {
                             </td>
                             <td className="px-5 py-4">
                                 <span className={`px-2 py-1 rounded-lg text-[10px] font-bold uppercase border ${item.status === 'Approved' ? 'bg-green-50 text-green-700 border-green-100' :
-                                        item.status === 'Rejected' ? 'bg-red-50 text-red-700 border-red-100' :
-                                            'bg-amber-50 text-amber-700 border-amber-100'
+                                    item.status === 'Rejected' ? 'bg-red-50 text-red-700 border-red-100' :
+                                        'bg-amber-50 text-amber-700 border-amber-100'
                                     }`}>{item.status}</span>
                             </td>
                             <td className="px-5 py-4">
@@ -223,7 +225,7 @@ const AdminDashboard = ({ initialSection = 'overview' }) => {
                 <StatCard label="Land Owners" value={stats.owners} icon={Home} color="bg-[#C06842]/10" iconColor="text-[#C06842]" />
                 <StatCard label="Professionals" value={stats.professionals} icon={Briefcase} color="bg-[#E68A2E]/10" iconColor="text-[#E68A2E]" />
                 <StatCard label="Pending Verifications" value={stats.pendingVerifications} icon={UserCheck} color="bg-[#8C7B70]/10" iconColor="text-[#8C7B70]" />
-                <StatCard label="Open Disputes" value={stats.disputesOpen} icon={Gavel} color="bg-red-50" iconColor="text-red-600" />
+                <StatCard label="System Health" value={stats.systemHealth} icon={Activity} color="bg-green-50" iconColor="text-green-600" />
             </div>
 
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
@@ -282,7 +284,6 @@ const AdminDashboard = ({ initialSection = 'overview' }) => {
 
                     <p className="px-4 text-[10px] font-bold text-[#B8AFA5] uppercase tracking-widest mt-6 mb-3">Management</p>
                     <SidebarItem id="documents" label="Documents" icon={FileText} />
-                    <SidebarItem id="disputes" label="Disputes" icon={Gavel} />
                     <SidebarItem id="payments" label="Payments" icon={DollarSign} />
 
                     <p className="px-4 text-[10px] font-bold text-[#B8AFA5] uppercase tracking-widest mt-6 mb-3">Platform</p>
@@ -360,7 +361,7 @@ const AdminDashboard = ({ initialSection = 'overview' }) => {
                     </div>
                 )}
 
-                {['documents', 'disputes', 'payments', 'qc', 'access', 'reports', 'notifications'].includes(activeSection) && (
+                {['documents', 'payments', 'qc', 'access', 'reports', 'notifications'].includes(activeSection) && (
                     <div className="h-full flex flex-col items-center justify-center text-center pb-20 animate-fade-in">
                         <div className="bg-[#F9F7F2] p-8 rounded-full mb-6 border border-[#E3DACD] shadow-inner">
                             <Briefcase size={48} className="text-[#C06842]/40" />

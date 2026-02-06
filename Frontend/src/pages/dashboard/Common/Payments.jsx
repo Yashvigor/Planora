@@ -1,54 +1,80 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
+import { useMockApp } from '../../../hooks/useMockApp';
 import { DollarSign, TrendingUp, Clock, CheckCircle, Download, Calendar, CreditCard, FileText, Upload, Edit2, X, Save } from 'lucide-react';
 
 const Payments = () => {
+    const { currentUser, projects } = useMockApp(); // Still using useMockApp for currentUser
     const [payments, setPayments] = useState([]);
+    const [realProjects, setRealProjects] = useState([]);
     const [activeTab, setActiveTab] = useState('overview');
     const [isEditModalOpen, setIsEditModalOpen] = useState(false);
     const [editingPayment, setEditingPayment] = useState(null);
+    const [loading, setLoading] = useState(true);
 
-    // Initial static data if localStorage is empty
-    const initialData = [
-        { id: 1, invoice: 'INV-2026-001', client: 'Rajesh Kumar', amount: 250000, status: 'paid', date: '2026-02-01', method: 'Bank Transfer' },
-        { id: 2, invoice: 'INV-2026-002', client: 'BuildWell Constructions', amount: 180000, status: 'pending', date: '2026-02-03', method: 'Cheque' },
-        { id: 3, invoice: 'INV-2026-003', client: 'Priya Patel', amount: 95000, status: 'overdue', date: '2026-01-25', method: 'UPI' },
-        { id: 4, invoice: 'INV-2026-004', client: 'Amit Sharma', amount: 320000, status: 'paid', date: '2026-01-30', method: 'Bank Transfer' },
-    ];
+    const fetchPayments = useCallback(async () => {
+        if (!currentUser?.id) return;
+        setLoading(true);
+        try {
+            const res = await fetch(`http://localhost:5000/api/payments/user/${currentUser.id}`);
+            const data = await res.json();
+            setPayments(data);
+        } catch (err) {
+            console.error('Error fetching payments:', err);
+        } finally {
+            setLoading(false);
+        }
+    }, [currentUser]);
+
+    const fetchProjects = useCallback(async () => {
+        if (!currentUser?.id) return;
+        try {
+            const res = await fetch(`http://localhost:5000/api/projects/user/${currentUser.id}`);
+            const data = await res.json();
+            setRealProjects(data);
+        } catch (err) {
+            console.error('Error fetching projects:', err);
+        }
+    }, [currentUser]);
 
     useEffect(() => {
-        const storedPayments = localStorage.getItem('planora_payments');
-        if (storedPayments) {
-            setPayments(JSON.parse(storedPayments));
-        } else {
-            setPayments(initialData);
-            localStorage.setItem('planora_payments', JSON.stringify(initialData));
+        fetchPayments();
+        fetchProjects();
+    }, [fetchPayments, fetchProjects]);
+
+    const handleUploadInvoice = async () => {
+        if (realProjects.length === 0) {
+            alert('Please create a project first before uploading invoices!');
+            return;
         }
-    }, []);
 
-    const savePayments = (updatedPayments) => {
-        setPayments(updatedPayments);
-        localStorage.setItem('planora_payments', JSON.stringify(updatedPayments));
-    };
-
-    const handleUploadInvoice = () => {
-        // Simplified file upload trigger
         const input = document.createElement('input');
         input.type = 'file';
         input.accept = 'application/pdf,image/*';
-        input.onchange = (e) => {
+        input.onchange = async (e) => {
             const file = e.target.files[0];
             if (file) {
-                const newPayment = {
-                    id: Date.now(),
-                    invoice: `INV-${new Date().getFullYear()}-${String(payments.length + 1).padStart(3, '0')}`,
-                    client: 'New Client (Manually Set)',
-                    amount: 0,
-                    status: 'pending',
-                    date: new Date().toISOString().split('T')[0],
-                    method: 'Pending'
-                };
-                savePayments([newPayment, ...payments]);
-                alert(`Invoice ${file.name} uploaded successfully! You can now edit the details.`);
+                // For simplicity in this demo, we auto-create a payment record 
+                // In a real app, we'd show a form first.
+                try {
+                    const res = await fetch('http://localhost:5000/api/payments', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            project_id: realProjects[0].project_id,
+                            client_id: currentUser.id,
+                            vendor_id: null, // To be assigned
+                            invoice_number: `INV-${Date.now().toString().slice(-6)}`,
+                            amount: 1000, // Placeholder
+                            due_date: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0]
+                        })
+                    });
+                    if (res.ok) {
+                        fetchPayments();
+                        alert(`Invoice ${file.name} uploaded and tracked!`);
+                    }
+                } catch (err) {
+                    console.error('Error creating payment:', err);
+                }
             }
         };
         input.click();
@@ -59,22 +85,37 @@ const Payments = () => {
         setIsEditModalOpen(true);
     };
 
-    const handleUpdatePayment = () => {
-        const updatedPayments = payments.map(p =>
-            p.id === editingPayment.id ? editingPayment : p
-        );
-        savePayments(updatedPayments);
-        setIsEditModalOpen(false);
-        setEditingPayment(null);
+    const handleUpdatePayment = async () => {
+        if (!editingPayment) return;
+        try {
+            const res = await fetch(`http://localhost:5000/api/payments/${editingPayment.payment_id}`, {
+                method: 'PATCH',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    status: editingPayment.status,
+                    notes: editingPayment.notes,
+                    amount: editingPayment.amount
+                })
+            });
+            if (res.ok) {
+                fetchPayments();
+                setIsEditModalOpen(false);
+                setEditingPayment(null);
+            } else {
+                alert('Failed to update payment details');
+            }
+        } catch (err) {
+            console.error('Error updating payment:', err);
+        }
     };
 
     const filteredPayments = payments.filter(p =>
-        activeTab === 'overview' ? true : p.status === activeTab
+        activeTab === 'overview' ? true : p.status?.toLowerCase() === activeTab
     );
 
-    const totalRevenue = payments.filter(p => p.status === 'paid').reduce((sum, p) => sum + p.amount, 0);
-    const pendingAmount = payments.filter(p => p.status === 'pending').reduce((sum, p) => sum + p.amount, 0);
-    const overdueAmount = payments.filter(p => p.status === 'overdue').reduce((sum, p) => sum + p.amount, 0);
+    const totalRevenue = payments.filter(p => p.status?.toLowerCase() === 'paid').reduce((sum, p) => sum + parseFloat(p.amount), 0);
+    const pendingAmount = payments.filter(p => p.status?.toLowerCase() === 'pending').reduce((sum, p) => sum + parseFloat(p.amount), 0);
+    const overdueAmount = payments.filter(p => p.status?.toLowerCase() === 'overdue').reduce((sum, p) => sum + parseFloat(p.amount), 0);
 
     const getStatusBadge = (status) => {
         const styles = {
@@ -195,24 +236,24 @@ const Payments = () => {
                         </thead>
                         <tbody className="divide-y divide-[#E3DACD]/50">
                             {filteredPayments.map((payment) => (
-                                <tr key={payment.id} className="hover:bg-[#F9F7F2]/50 transition-colors group">
+                                <tr key={payment.payment_id} className="hover:bg-[#F9F7F2]/50 transition-colors group">
                                     <td className="px-8 py-5 whitespace-nowrap">
                                         <div className="flex items-center gap-3">
                                             <div className="p-2 bg-white rounded-lg border border-[#E3DACD]/50 text-[#C06842]">
                                                 <FileText size={16} />
                                             </div>
-                                            <span className="font-bold text-[#2A1F1D] text-sm group-hover:text-[#C06842] transition-colors">{payment.invoice}</span>
+                                            <span className="font-bold text-[#2A1F1D] text-sm group-hover:text-[#C06842] transition-colors">{payment.invoice_number}</span>
                                         </div>
                                     </td>
                                     <td className="px-8 py-5 whitespace-nowrap">
                                         <div className="flex items-center gap-2">
-                                            <div className="w-6 h-6 rounded-full bg-[#E3DACD] text-[#5D4037] flex items-center justify-center text-[10px] font-bold">{payment.client?.charAt(0)}</div>
-                                            <span className="text-[#5D4037] font-medium text-sm">{payment.client}</span>
+                                            <div className="w-6 h-6 rounded-full bg-[#E3DACD] text-[#5D4037] flex items-center justify-center text-[10px] font-bold">P</div>
+                                            <span className="text-[#5D4037] font-medium text-sm">Project Client</span>
                                         </div>
                                     </td>
                                     <td className="px-8 py-5 whitespace-nowrap font-serif font-bold text-[#2A1F1D] text-base">{formatCurrency(payment.amount)}</td>
-                                    <td className="px-8 py-5 whitespace-nowrap text-[#8C7B70] text-sm font-medium">{payment.date}</td>
-                                    <td className="px-8 py-5 whitespace-nowrap">{getStatusBadge(payment.status)}</td>
+                                    <td className="px-8 py-5 whitespace-nowrap text-[#8C7B70] text-sm font-medium">{new Date(payment.created_at).toLocaleDateString()}</td>
+                                    <td className="px-8 py-5 whitespace-nowrap">{getStatusBadge(payment.status?.toLowerCase())}</td>
                                     <td className="px-8 py-5 whitespace-nowrap">
                                         <div className="flex items-center justify-center gap-2">
                                             <button
@@ -252,17 +293,8 @@ const Payments = () => {
                                 <input
                                     type="text"
                                     disabled
-                                    value={editingPayment.invoice}
+                                    value={editingPayment.invoice_number}
                                     className="w-full bg-[#F9F7F2] border border-[#E3DACD] rounded-xl px-4 py-3 text-[#2A1F1D] font-bold opacity-60"
-                                />
-                            </div>
-                            <div>
-                                <label className="block text-xs font-bold text-[#8C7B70] uppercase tracking-wider mb-2">Client Name</label>
-                                <input
-                                    type="text"
-                                    value={editingPayment.client}
-                                    onChange={(e) => setEditingPayment({ ...editingPayment, client: e.target.value })}
-                                    className="w-full bg-[#FDFCF8] border border-[#E3DACD] rounded-xl px-4 py-3 text-[#2A1F1D] focus:ring-2 focus:ring-[#C06842]/20 focus:border-[#C06842] outline-none transition-all font-medium"
                                 />
                             </div>
                             <div className="grid grid-cols-2 gap-4">
@@ -278,23 +310,23 @@ const Payments = () => {
                                 <div>
                                     <label className="block text-xs font-bold text-[#8C7B70] uppercase tracking-wider mb-2">Status</label>
                                     <select
-                                        value={editingPayment.status}
+                                        value={editingPayment.status?.toLowerCase()}
                                         onChange={(e) => setEditingPayment({ ...editingPayment, status: e.target.value })}
-                                        className="w-full bg-[#FDFCF8] border border-[#E3DACD] rounded-xl px-4 py-3 text-[#2A1F1D] focus:ring-2 focus:ring-[#C06842]/20 focus:border-[#C06842] outline-none transition-all font-bold appearance-none"
+                                        className="w-full bg-[#FDFCF8] border border-[#E3DACD] rounded-xl px-4 py-3 text-[#2A1F1D] focus:ring-2 focus:ring-[#C06842]/20 focus:border-[#C06842] outline-none transition-all font-bold"
                                     >
-                                        <option value="paid">Paid</option>
                                         <option value="pending">Pending</option>
+                                        <option value="paid">Paid</option>
                                         <option value="overdue">Overdue</option>
                                     </select>
                                 </div>
                             </div>
                             <div>
-                                <label className="block text-xs font-bold text-[#8C7B70] uppercase tracking-wider mb-2">Payment Date</label>
-                                <input
-                                    type="date"
-                                    value={editingPayment.date}
-                                    onChange={(e) => setEditingPayment({ ...editingPayment, date: e.target.value })}
-                                    className="w-full bg-[#FDFCF8] border border-[#E3DACD] rounded-xl px-4 py-3 text-[#2A1F1D] focus:ring-2 focus:ring-[#C06842]/20 focus:border-[#C06842] outline-none transition-all font-medium"
+                                <label className="block text-xs font-bold text-[#8C7B70] uppercase tracking-wider mb-2">Notes</label>
+                                <textarea
+                                    value={editingPayment.notes || ''}
+                                    onChange={(e) => setEditingPayment({ ...editingPayment, notes: e.target.value })}
+                                    className="w-full bg-[#FDFCF8] border border-[#E3DACD] rounded-xl px-4 py-3 text-[#2A1F1D] focus:ring-2 focus:ring-[#C06842]/20 focus:border-[#C06842] outline-none transition-all font-medium h-24"
+                                    placeholder="Add any internal notes..."
                                 />
                             </div>
                         </div>
