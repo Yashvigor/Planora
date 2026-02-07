@@ -33,6 +33,33 @@ const DashboardLayout = () => {
         setPrevMessageCount(myMessages.length);
     }, [messages, currentUser, prevMessageCount]);
 
+    // Live Location Update
+    useEffect(() => {
+        const updateLocation = async () => {
+            if (!currentUser || !navigator.geolocation) return;
+
+            navigator.geolocation.getCurrentPosition(async (position) => {
+                const { latitude, longitude } = position.coords;
+                const uid = currentUser.user_id || currentUser.id;
+
+                try {
+                    console.log('[Dashboard] Updating live location:', latitude, longitude);
+                    await fetch(`http://localhost:5000/api/users/${uid}/profile`, {
+                        method: 'PUT',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ latitude, longitude })
+                    });
+                } catch (err) {
+                    console.error('[Dashboard] Failed to update live location:', err);
+                }
+            }, (err) => {
+                console.warn('[Dashboard] Location access denied:', err.message);
+            }, { enableHighAccuracy: true });
+        };
+
+        updateLocation();
+    }, [currentUser]);
+
     if (!currentUser) return null;
 
     return (

@@ -6,6 +6,8 @@ const Onboarding = ({ isOpen, onClose, user, onComplete }) => {
     const [step, setStep] = useState(1);
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState('');
+    const isLandOwner = user.role === 'land_owner';
+    const totalSteps = isLandOwner ? 2 : 3;
     const [formData, setFormData] = useState({
         phone: '',
         address: '',
@@ -78,9 +80,9 @@ const Onboarding = ({ isOpen, onClose, user, onComplete }) => {
                         <div className="space-y-6">
                             {[
                                 { id: 1, label: 'Contact Info', icon: <Phone size={18} /> },
-                                { id: 2, label: 'Professional Profile', icon: <Briefcase size={18} /> },
-                                { id: 3, label: 'Resume & Work', icon: <FileText size={18} /> }
-                            ].map(item => (
+                                { id: 2, label: isLandOwner ? 'Project Details' : 'Professional Profile', icon: <Briefcase size={18} /> },
+                                !isLandOwner && { id: 3, label: 'Resume & Work', icon: <FileText size={18} /> }
+                            ].filter(Boolean).map(item => (
                                 <div key={item.id} className={`flex items-center gap-4 transition-colors ${step === item.id ? 'text-[#3E2B26]' : 'text-[#8C7B70]/50'}`}>
                                     <div className={`w-10 h-10 rounded-xl flex items-center justify-center border-2 transition-all ${step === item.id ? 'bg-[#3E2B26] border-[#3E2B26] text-white' : 'border-[#E3DACD]'}`}>
                                         {item.icon}
@@ -112,21 +114,23 @@ const Onboarding = ({ isOpen, onClose, user, onComplete }) => {
 
                             {step === 2 && (
                                 <motion.div initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} className="space-y-6">
-                                    <h3 className="text-xl font-serif font-bold text-[#3E2B26]">Professional Details</h3>
+                                    <h3 className="text-xl font-serif font-bold text-[#3E2B26]">{isLandOwner ? 'Project Details' : 'Professional Details'}</h3>
                                     <div className="space-y-4">
-                                        <div className="grid grid-cols-2 gap-4">
-                                            <div>
-                                                <label className="block text-[10px] font-black text-[#8C7B70] uppercase tracking-widest mb-2">Years of Experience</label>
-                                                <input required name="experience_years" type="number" value={formData.experience_years} onChange={handleChange} className="w-full bg-[#F9F7F2] border-2 border-transparent focus:border-[#A65D3B] p-4 rounded-2xl outline-none" />
+                                        {!isLandOwner && (
+                                            <div className="grid grid-cols-2 gap-4">
+                                                <div>
+                                                    <label className="block text-[10px] font-black text-[#8C7B70] uppercase tracking-widest mb-2">Years of Experience</label>
+                                                    <input required name="experience_years" type="number" value={formData.experience_years} onChange={handleChange} className="w-full bg-[#F9F7F2] border-2 border-transparent focus:border-[#A65D3B] p-4 rounded-2xl outline-none" />
+                                                </div>
+                                                <div>
+                                                    <label className="block text-[10px] font-black text-[#8C7B70] uppercase tracking-widest mb-2">Specialization</label>
+                                                    <input name="specialization" type="text" value={formData.specialization} onChange={handleChange} className="w-full bg-[#F9F7F2] border-2 border-transparent focus:border-[#A65D3B] p-4 rounded-2xl outline-none" placeholder="e.g. Modern Architecture" />
+                                                </div>
                                             </div>
-                                            <div>
-                                                <label className="block text-[10px] font-black text-[#8C7B70] uppercase tracking-widest mb-2">Specialization</label>
-                                                <input name="specialization" type="text" value={formData.specialization} onChange={handleChange} className="w-full bg-[#F9F7F2] border-2 border-transparent focus:border-[#A65D3B] p-4 rounded-2xl outline-none" placeholder="e.g. Modern Architecture" />
-                                            </div>
-                                        </div>
+                                        )}
                                         <div>
-                                            <label className="block text-[10px] font-black text-[#8C7B70] uppercase tracking-widest mb-2">Quick Bio</label>
-                                            <textarea required name="bio" value={formData.bio} onChange={handleChange} className="w-full bg-[#F9F7F2] border-2 border-transparent focus:border-[#A65D3B] p-4 rounded-2xl outline-none min-h-[100px]" placeholder="Tell landowners about your expertise..." />
+                                            <label className="block text-[10px] font-black text-[#8C7B70] uppercase tracking-widest mb-2">{isLandOwner ? 'Project Vision / Site Description' : 'Quick Bio'}</label>
+                                            <textarea required name="bio" value={formData.bio} onChange={handleChange} className="w-full bg-[#F9F7F2] border-2 border-transparent focus:border-[#A65D3B] p-4 rounded-2xl outline-none min-h-[100px]" placeholder={isLandOwner ? "Describe your land and what you want to build..." : "Tell landowners about your expertise..."} />
                                         </div>
                                     </div>
                                 </motion.div>
@@ -165,7 +169,7 @@ const Onboarding = ({ isOpen, onClose, user, onComplete }) => {
                                         Back
                                     </button>
                                 )}
-                                {step < 3 ? (
+                                {step < totalSteps ? (
                                     <button type="button" onClick={() => setStep(step + 1)} className="flex-[2] py-4 bg-[#3E2B26] text-white rounded-2xl font-black text-[10px] uppercase tracking-widest transition-all shadow-lg shadow-[#3E2B26]/20">
                                         Continue
                                     </button>

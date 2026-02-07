@@ -600,7 +600,7 @@ const Auth = () => {
                                     setAuthState('auth');
                                     navigate('/dashboard');
                                 }}
-                                user={{ id: formData.userId, name: formData.name }}
+                                user={{ id: formData.userId, name: formData.name, role: formData.role }}
                                 onComplete={(updatedUser) => {
                                     setAuthUser(updatedUser);
                                     setAuthState('auth');

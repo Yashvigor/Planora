@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { MapContainer, TileLayer, Marker, Popup, useMap } from 'react-leaflet';
+import { MapContainer, TileLayer, Marker, Popup, useMap, Circle, LayersControl } from 'react-leaflet';
 import { motion, AnimatePresence } from 'framer-motion';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
@@ -21,7 +21,7 @@ L.Marker.prototype.options.icon = DefaultIcon;
 const SetViewOnClick = ({ coords }) => {
     const map = useMap();
     useEffect(() => {
-        if (coords) map.setView(coords, 13, { animate: true });
+        if (coords) map.setView(coords, map.getZoom(), { animate: true });
     }, [coords, map]);
     return null;
 };
@@ -47,31 +47,96 @@ const ExpertMap = ({ currentProjectId, category, subCategory, onAssign }) => {
 
     // Fetch current user's location
     useEffect(() => {
+        let watchId = null;
+
         const fetchUserLocation = async () => {
+            setLoading(true);
+
+            // 1. Try Browser Geolocation with watchPosition for Realtime Updates
+            if (navigator.geolocation) {
+                watchId = navigator.geolocation.watchPosition(
+                    (position) => {
+                        const { latitude, longitude } = position.coords;
+                        // (removed)
+                        setUserLocation({ lat: latitude, lon: longitude });
+
+                        // Only center map initially if default
+                        setMapCenter(prev => (prev[0] === 20.5937 && prev[1] === 78.9629) ? [latitude, longitude] : prev);
+                        setLoading(false);
+                    },
+                    (error) => {
+                        console.warn('[ExpertMap] Realtime location denied/error:', error.message);
+                        // If watch fails, fall back to profile data
+                        fetchProfileLocation();
+                    },
+                    {
+                        enableHighAccuracy: true,
+                        timeout: 10000,
+                        maximumAge: 0
+                    }
+                );
+            } else {
+                fetchProfileLocation();
+            }
+        };
+
+        const fetchProfileLocation = async () => {
             try {
-                const userId = JSON.parse(localStorage.getItem('user'))?.id;
+                const storedUser = localStorage.getItem('planora_current_user') || localStorage.getItem('user');
+                const userId = storedUser ? JSON.parse(storedUser).id : null;
+
                 if (!userId) {
+                    console.error('[ExpertMap] No user found in localStorage');
                     setLoading(false);
                     return;
                 }
 
+                // Get User Profile
                 const res = await fetch(`http://localhost:5000/api/user/${userId}`);
                 const data = await res.json();
+                // (removed)
 
-                if (data.latitude && data.longitude) {
-                    setUserLocation({ lat: data.latitude, lon: data.longitude });
-                    setMapCenter([data.latitude, data.longitude]);
-                } else {
-                    console.log('User location not found, defaulting to map center');
-                    setLoading(false);
+                let lat = data.latitude;
+                let lon = data.longitude;
+
+                // Geocode city if lat/lon missing
+                if ((!lat || !lon) && data.city) {
+                    console.log(`[ExpertMap] Coordinates missing. Geocoding city: ${data.city}`);
+                    try {
+                        const geoRes = await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(data.city)}&limit=1`, {
+                            headers: { 'User-Agent': 'PlanoraApp/1.0' }
+                        });
+                        const geoData = await geoRes.json();
+                        if (geoData && geoData.length > 0) {
+                            lat = parseFloat(geoData[0].lat);
+                            lon = parseFloat(geoData[0].lon);
+                            console.log(`[ExpertMap] Geocoded ${data.city} to:`, lat, lon);
+                        }
+                    } catch (geoErr) {
+                        console.error('[ExpertMap] Geocoding failed:', geoErr);
+                    }
                 }
+
+                if (lat && lon) {
+                    setUserLocation({ lat, lon });
+                    setMapCenter([lat, lon]);
+                } else {
+                    console.warn('[ExpertMap] Could not determine location.');
+                    // alert("We couldn't get your location from your browser or profile. Please enable location services or update your profile city.");
+                }
+
             } catch (err) {
-                console.error('Error fetching user location:', err);
+                console.error('Error fetching user location fallback:', err);
+            } finally {
                 setLoading(false);
             }
         };
 
         fetchUserLocation();
+
+        return () => {
+            if (watchId !== null) navigator.geolocation.clearWatch(watchId);
+        };
     }, []);
 
     const fetchProfessionals = async () => {
@@ -82,10 +147,12 @@ const ExpertMap = ({ currentProjectId, category, subCategory, onAssign }) => {
 
         setLoading(true);
         try {
+            // New endpoint with radius parameter (default 50km)
             let url = 'http://localhost:5000/api/professionals/nearby';
             const params = new URLSearchParams();
             params.append('lat', userLocation.lat);
             params.append('lon', userLocation.lon);
+            params.append('radius', 50); // 50km radius
             if (activeCategory !== 'All') params.append('category', activeCategory);
             if (activeSubCategory !== 'All') params.append('sub_category', activeSubCategory);
 
@@ -96,7 +163,7 @@ const ExpertMap = ({ currentProjectId, category, subCategory, onAssign }) => {
 
             if (res.ok) {
                 setProfessionals(data);
-                console.log(`[ExpertMap] Found ${data.length} professionals within 50km`);
+                // (removed)
             } else {
                 console.error('[ExpertMap] API Error:', data.error);
                 setProfessionals([]);
@@ -165,12 +232,75 @@ const ExpertMap = ({ currentProjectId, category, subCategory, onAssign }) => {
                 </select>
             </div>
 
-            <MapContainer center={mapCenter} zoom={13} style={{ height: '100%', width: '100%' }} zoomControl={false}>
-                <TileLayer
-                    url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
-                    attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
-                />
+            {/* Recenter Button */}
+            <button
+                onClick={() => userLocation && setMapCenter([userLocation.lat, userLocation.lon])}
+                className="absolute bottom-6 left-6 z-[1000] p-3 bg-white text-[#3E2B26] rounded-full shadow-xl hover:bg-[#F9F7F2] hover:scale-110 transition-all border border-[#E3DACD]"
+                title="Recenter on Me"
+            >
+                <MapPin size={20} className="fill-[#C06842] text-[#C06842]" />
+            </button>
+
+            <MapContainer center={mapCenter} zoom={18} maxZoom={19} style={{ height: '100%', width: '100%' }} zoomControl={false}>
+                <LayersControl position="bottomright">
+                    <LayersControl.BaseLayer checked name="Google Maps">
+                        <TileLayer
+                            url="https://mt1.google.com/vt/lyrs=m&x={x}&y={y}&z={z}"
+                            attribution='&copy; Google Maps'
+                            maxZoom={20}
+                        />
+                    </LayersControl.BaseLayer>
+                    <LayersControl.BaseLayer name="Satellite (Hybrid)">
+                        <TileLayer
+                            url="https://mt1.google.com/vt/lyrs=y&x={x}&y={y}&z={z}"
+                            attribution='&copy; Google Maps'
+                            maxZoom={20}
+                        />
+                    </LayersControl.BaseLayer>
+                    <LayersControl.BaseLayer name="Satellite (Clean)">
+                        <TileLayer
+                            url="https://mt1.google.com/vt/lyrs=s&x={x}&y={y}&z={z}"
+                            attribution='&copy; Google Maps'
+                            maxZoom={20}
+                        />
+                    </LayersControl.BaseLayer>
+                    <LayersControl.BaseLayer name="Terrain">
+                        <TileLayer
+                            url="https://mt1.google.com/vt/lyrs=p&x={x}&y={y}&z={z}"
+                            attribution='&copy; Google Maps'
+                            maxZoom={20}
+                        />
+                    </LayersControl.BaseLayer>
+                </LayersControl>
+
                 <SetViewOnClick coords={mapCenter} />
+
+                {/* User Location Marker */}
+                {userLocation && (
+                    <>
+                        <Circle
+                            center={[userLocation.lat, userLocation.lon]}
+                            pathOptions={{ color: '#C06842', fillColor: '#C06842', fillOpacity: 0.15, weight: 2, dashArray: '10, 10' }}
+                            radius={50000}
+                        />
+                        <Marker
+                            position={[userLocation.lat, userLocation.lon]}
+                            icon={L.divIcon({
+                                className: 'custom-user-marker',
+                                html: `<div style="background-color: #3E2B26; width: 20px; height: 20px; border-radius: 50%; border: 3px solid white; box-shadow: 0 0 0 4px rgba(192, 104, 66, 0.4);"></div>`,
+                                iconSize: [20, 20],
+                                iconAnchor: [10, 10]
+                            })}
+                            zIndexOffset={1000}
+                        >
+                            <Popup closeButton={false} offset={[0, -10]} className="custom-popup-minimal">
+                                <div className="px-3 py-1 bg-[#3E2B26] text-white text-[10px] font-bold rounded-full shadow-lg">
+                                    You are here
+                                </div>
+                            </Popup>
+                        </Marker>
+                    </>
+                )}
 
                 {professionals.map((pro) => (
                     <Marker

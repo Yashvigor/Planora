@@ -266,7 +266,7 @@ app.post('/api/login', async (req, res) => {
             roleKey = roleMap[user.sub_category];
         }
 
-        const isComplete = user.category && user.sub_category && user.latitude && user.longitude;
+        const isComplete = user.profile_completed;
 
         res.json({
             message: 'Login successful',
@@ -444,7 +444,7 @@ app.post('/api/auth/google', async (req, res) => {
         const user = userResult.rows[0];
 
         // Check internal status (category/sub_category)
-        if (!user.category || !user.sub_category) {
+        if (!user.profile_completed) {
             return res.json({
                 status: 'incomplete',
                 message: 'Please complete your profile',
@@ -585,23 +585,26 @@ app.put('/api/users/:userId/profile', async (req, res) => {
     const { userId } = req.params;
     const { phone, address, city, state, zip_code, birthdate, bio } = req.body;
 
-    console.log(`[Profile Update] Received request for user ${userId}`);
-    console.log('[Profile Update] Request body:', { phone, address, city, state, zip_code, birthdate, bio });
+    // (removed)
 
     try {
         let latitude = null;
         let longitude = null;
 
-        // Auto-geocode if address is provided
-        if (address) {
+        // Auto-geocode if address is provided, unless lat/lon are explicitly provided
+        if (req.body.latitude && req.body.longitude) {
+            latitude = parseFloat(req.body.latitude);
+            longitude = parseFloat(req.body.longitude);
+            // (removed)
+        } else if (address) {
             const fullAddress = `${address}, ${city || ''}, ${state || ''}, ${zip_code || ''}`.trim();
             const coords = await geocodeAddress(fullAddress);
             if (coords) {
                 latitude = coords.lat;
                 longitude = coords.lon;
-                console.log(`[Profile Update] Geocoded address for user ${userId}: ${fullAddress} -> (${latitude}, ${longitude})`);
+                // (removed)
             } else {
-                console.log(`[Profile Update] Failed to geocode address for user ${userId}: ${fullAddress}`);
+                // (removed)
             }
         }
 
@@ -619,12 +622,23 @@ app.put('/api/users/:userId/profile', async (req, res) => {
                 updated_at = CURRENT_TIMESTAMP 
             WHERE user_id = $10 
             RETURNING *`,
-            [phone, address, city, state, zip_code, birthdate, bio, latitude, longitude, userId]
+            [
+                phone || null,
+                address || null,
+                city || null,
+                state || null,
+                zip_code || null,
+                birthdate || null,
+                bio || null,
+                latitude || null,
+                longitude || null,
+                userId
+            ]
         );
 
         if (result.rows.length === 0) return res.status(404).json({ error: 'User not found' });
 
-        console.log(`[Profile Update] Successfully updated profile for user ${userId}`);
+        // (removed)
         res.json({ message: 'Profile updated successfully', user: result.rows[0] });
     } catch (err) {
         console.error('Profile Update Error:', err);
@@ -632,61 +646,56 @@ app.put('/api/users/:userId/profile', async (req, res) => {
     }
 });
 
-// --- Professional Discovery & Team Management ---
-
-// Fetch Nearby Professionals by Category (within 50km radius)
+// Find Nearby Professionals
 app.get('/api/professionals/nearby', async (req, res) => {
-    const { category, sub_category, lat, lon } = req.query;
+    const { lat, lon, category, sub_category, radius = 50 } = req.query;
 
-    // Validate that user location is provided
     if (!lat || !lon) {
-        return res.status(400).json({ error: 'User location (lat, lon) is required for proximity search' });
+        return res.status(400).json({ error: 'Latitude and Longitude are required' });
     }
 
     const userLat = parseFloat(lat);
     const userLon = parseFloat(lon);
-    const maxDistanceKm = 50;
+    const radiusKm = parseFloat(radius);
 
     try {
-        // Fetch users who are NOT landowners or admins and have coordinates
-        let query = `
+        // (removed)
+
+        // Haversine formula in SQL
+        // 6371 is Earth radius in km
+        const query = `
             SELECT 
-                user_id, name, email, category, sub_category, latitude, longitude, 
-                address, status, bio, resume_path, portfolio_url, experience_years, specialization,
-                (6371 * acos(
-                    cos(radians($1)) * cos(radians(latitude)) * 
-                    cos(radians(longitude) - radians($2)) + 
-                    sin(radians($1)) * sin(radians(latitude))
-                )) AS distance_km
-            FROM Users 
-            WHERE category != $3 AND category != $4 
-            AND latitude IS NOT NULL AND longitude IS NOT NULL
+                user_id, name, email, category, sub_category, address, city, state, experience_years, specialization, bio, resume_path, portfolio_url, latitude, longitude,
+                (
+                    6371 * acos(
+                        cos(radians($1)) * cos(radians(latitude)) * cos(radians(longitude) - radians($2)) + 
+                        sin(radians($1)) * sin(radians(latitude))
+                    )
+                ) AS distance
+            FROM Users
+            WHERE 
+                latitude IS NOT NULL AND longitude IS NOT NULL
+                AND ($3::text = 'All' OR category = $3)
+                AND ($4::text = 'All' OR sub_category = $4)
+                AND (
+                    6371 * acos(
+                        cos(radians($1)) * cos(radians(latitude)) * cos(radians(longitude) - radians($2)) + 
+                        sin(radians($1)) * sin(radians(latitude))
+                    )
+                ) < $5
+            ORDER BY distance ASC
+            LIMIT 50;
         `;
-        const params = [userLat, userLon, 'Land Owner', 'Admin'];
 
-        if (category && category !== 'All') {
-            query += ' AND category = $' + (params.length + 1);
-            params.push(category);
-        }
-        if (sub_category && sub_category !== 'All') {
-            query += ' AND sub_category = $' + (params.length + 1);
-            params.push(sub_category);
-        }
+        const values = [userLat, userLon, category || 'All', sub_category || 'All', radiusKm];
+        const result = await pool.query(query, values);
 
-        query += ` HAVING (6371 * acos(
-            cos(radians($1)) * cos(radians(latitude)) * 
-            cos(radians(longitude) - radians($2)) + 
-            sin(radians($1)) * sin(radians(latitude))
-        )) <= ${maxDistanceKm}`;
-
-        query += ' ORDER BY distance_km ASC';
-
-        const result = await pool.query(query, params);
-        console.log(`[Discovery] Found ${result.rows.length} professionals within ${maxDistanceKm}km of (${userLat}, ${userLon})`);
+        // (removed)
         res.json(result.rows);
+
     } catch (err) {
-        console.error('Error fetching professionals:', err);
-        res.status(500).json({ error: 'Failed to fetch professionals' });
+        console.error('Error fetching nearby professionals:', err);
+        res.status(500).json({ error: 'Server error fetching professionals', details: err.message });
     }
 });
 
@@ -709,6 +718,7 @@ app.get('/api/professionals/:id/public', async (req, res) => {
 // Complete Profile (Onboarding)
 app.put('/api/user/:id/complete-profile', upload.single('resume'), async (req, res) => {
     const { id } = req.params;
+    // (removed)
     const { name, phone, address, gender, bio, category, sub_category, portfolio_url, experience_years, specialization } = req.body;
     let resume_path = null;
 
@@ -736,14 +746,29 @@ app.put('/api/user/:id/complete-profile', upload.single('resume'), async (req, r
                 category = COALESCE($5, category), 
                 sub_category = COALESCE($6, sub_category), 
                 portfolio_url = COALESCE($7, portfolio_url), 
-                experience_years = COALESCE($8::INT, experience_years), 
+                experience_years = COALESCE($8, experience_years), 
                 specialization = COALESCE($9, specialization),
                 latitude = COALESCE($10, latitude),
                 longitude = COALESCE($11, longitude),
                 resume_path = COALESCE($12, resume_path),
-                updated_at = CURRENT_TIMESTAMP 
+                updated_at = CURRENT_TIMESTAMP,
+                profile_completed = TRUE 
             WHERE user_id = $13 RETURNING *`,
-            [name, phone, address, bio, category, sub_category, portfolio_url, experience_years, specialization, latitude, longitude, resume_path, id]
+            [
+                name || null,
+                phone || null,
+                address || null,
+                bio || null,
+                category || null,
+                sub_category || null,
+                portfolio_url || null,
+                experience_years && !isNaN(parseInt(experience_years)) ? parseInt(experience_years) : null,
+                specialization || null,
+                latitude || null,
+                longitude || null,
+                resume_path || null,
+                id
+            ]
         );
 
         if (result.rows.length === 0) return res.status(404).json({ error: 'User not found' });
@@ -752,7 +777,8 @@ app.put('/api/user/:id/complete-profile', upload.single('resume'), async (req, r
         res.json({ message: 'Profile completed successfully', user: result.rows[0] });
     } catch (err) {
         console.error('Profile Completion Error:', err);
-        res.status(500).json({ error: 'Failed to complete profile' });
+        console.error('Stack:', err.stack);
+        res.status(500).json({ error: 'Failed to complete profile', details: err.message });
     }
 });
 
@@ -801,7 +827,7 @@ app.get('/api/projects/:projectId/team', async (req, res) => {
 // Create Project
 app.post('/api/projects', async (req, res) => {
     const { owner_id, name, type, location, description, budget } = req.body;
-    console.log(`[Project Creation] Owner: ${owner_id}, Name: ${name}, Budget: ${budget}`);
+    // (removed)
 
     try {
         const result = await pool.query(

@@ -76,7 +76,6 @@ const AppRoutes = () => {
             case 'electrician':
             case 'plumber':
             case 'carpenter':
-            case 'tile_fixer':
                 return <WorkerDashboard roleType={currentUser.role.replace('_', ' ')} />;
 
             // Admin
