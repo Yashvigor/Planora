@@ -1,34 +1,34 @@
-# 🏗️ Planora
+# 🏗️ Planora - Unified Construction Management Platform
 
-Planora is a unified digital construction management platform designed to connect land owners with verified construction professionals while enabling transparent, role-based project tracking in one place. It provides a centralized dashboard for monitoring project progress, budgets, documents, tasks, and communication — helping eliminate confusion, delays, and disputes in construction projects.
+Planora is a comprehensive digital construction management platform designed to bridge the gap between land owners and verified construction professionals. It facilitates transparent, role-based project tracking, real-time collaboration, and simplified workflow management to eliminate confusion, delays, and disputes in construction projects.
 
-The platform focuses on simplicity, real-time updates, and accountability, while being scalable for advanced features such as analytics, automated reports, smart notifications, and end-to-end project lifecycle management.
+The platform empowers users to manage every stage of construction—from planning and design to execution and finishing—within a single, unified interface.
 
 ---
 
-## 🛠️ Project Setup
+## ⚡ Installation & Setup
 
-To run Planora locally, you need to set up the **Database**, **Backend**, and **Frontend**.
+Follow these steps to get Planora running on your local machine.
 
 ### 1. Prerequisites
-- **Node.js** (v18 or higher)
-- **PostgreSQL** (v14 or higher)
-- **npm** (v9 or higher)
+- **Node.js** (v18+)
+- **PostgreSQL** (v14+)
+- **Git**
 
-### 2. Database Setup (PostgreSQL)
-1. Open your PostgreSQL terminal (psql) or a GUI like pgAdmin.
-2. Create a new database named `Planora`:
+### 2. Database Setup
+1. Open your PostgreSQL terminal (psql) or pgAdmin.
+2. Create the database:
    ```sql
    CREATE DATABASE "Planora";
    ```
-3. Navigate to the `Backend` directory and import the schema:
+3. Import the schema (run from project root):
    ```bash
    psql -U postgres -d Planora -f Backend/Planora.sql
    ```
-   *(Replace `postgres` with your username if different.)*
+   *(Replace `postgres` with your database username if distinct)*
 
 ### 3. Backend Setup
-1. Navigate to the Backend directory:
+1. Navigate to the backend folder:
    ```bash
    cd Backend
    ```
@@ -36,51 +36,48 @@ To run Planora locally, you need to set up the **Database**, **Backend**, and **
    ```bash
    npm install
    ```
-3. Configure environment variables (Create a `.env` file or update the existing one):
+3. Create a `.env` file in `Backend/` with the following variables:
    ```env
+   PORT=5000
    DB_USER=postgres
    DB_HOST=localhost
    DB_NAME=Planora
-   DB_PASSWORD=YOUR_PASSWORD
+   DB_PASSWORD=your_db_password
    DB_PORT=5432
-   PORT=5000
-   GOOGLE_CLIENT_ID=YOUR_GOOGLE_CLIENT_ID
-   SMTP_USER=YOUR_EMAIL_USER
-   SMTP_PASS=YOUR_EMAIL_PASSWORD
-   ```
-4. Start the backend server:
-   ```bash
-   node server.js
+   
+   # Email Service (Gmail App Password recommended)
+   SMTP_USER=your_email@gmail.com
+   SMTP_PASS=your_email_app_password
+   
+   # Google Auth
+   GOOGLE_CLIENT_ID=your_google_client_id
    ```
 
-### 4. Frontend Setup
-1. Navigate to the Frontend directory:
+### 4. Run the Application
+1. Open a new terminal and navigate to the **Frontend** folder:
    ```bash
    cd Frontend
    ```
-2. Install dependencies:
+2. Install dependencies (if not done yet):
    ```bash
    npm install
    ```
-3. Configure Google Client ID in `src/main.jsx`:
-   ```javascript
-   const GOOGLE_CLIENT_ID = "YOUR_GOOGLE_CLIENT_ID";
-   ```
-4. Start the development server:
+3. Configure Environment:
+   *   Open `src/main.jsx` and ensure your `GOOGLE_CLIENT_ID` matches the one in your backend `.env`.
+4. Start both **Frontend** and **Backend** with one command:
    ```bash
    npm run dev
    ```
 
 ---
 
-## 🌐 Access
-- **Frontend**: [http://localhost:5173](http://localhost:5173)
-- **Backend API**: [http://localhost:5000](http://localhost:5000)
+## 🌐 Accessing the App
 
-## 🗂️ Project Structure
-- **/Frontend**: React + Vite application (Auth UI, Role-based Dashboards).
-- **/Backend**: Node.js + Express + PostgreSQL (Auth Logic, OTP, Cloudinary Uploads).
-- **/Backend/Planora.sql**: Database schema and initial data.
+*   **Frontend**: [http://localhost:5173](http://localhost:5173)
+*   **Backend API**: [http://localhost:5000](http://localhost:5000)
 
 ---
-© 2026 Planora Technologies. All rights reserved.
+
+## � License
+
+© 2026 Planora Technologies. All Rights Reserved.
