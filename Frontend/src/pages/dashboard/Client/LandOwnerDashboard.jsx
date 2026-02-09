@@ -457,12 +457,7 @@ const LandOwnerDashboard = () => {
                         <div className="p-8 border-b border-[#E3DACD]/40 flex justify-between items-center bg-[#FDFCF8]">
                             <h2 className="text-2xl font-serif font-bold">Expert Discovery</h2>
                             <div className="flex items-center gap-3">
-                                <button
-                                    onClick={() => setIsDiscoveryOpen(false)}
-                                    className="px-6 py-2 bg-[#2A1F1D] text-white rounded-xl font-bold text-sm hover:bg-[#C06842] transition-all flex items-center gap-2"
-                                >
-                                    Back to Dashboard
-                                </button>
+
                                 <button
                                     onClick={() => setIsDiscoveryOpen(false)}
                                     className="p-2 text-red-500 hover:bg-red-50 rounded-full transition-all"
@@ -472,7 +467,7 @@ const LandOwnerDashboard = () => {
                             </div>
                         </div>
                         <div className="flex-1">
-                            <ExpertMap currentProjectId={activeProject?.project_id} subCategory={selectedRole} siteLocation={activeProject?.location || "India"} onAssign={() => { fetchData(); setIsDiscoveryOpen(false); }} />
+                            <ExpertMap currentProjectId={activeProject?.project_id} subCategory={selectedRole} siteLocation={activeProject?.location || "India"} onAssign={() => { fetchData(); setIsDiscoveryOpen(false); }} onClose={() => setIsDiscoveryOpen(false)} />
                         </div>
                     </div>
                 </div>

@@ -3,7 +3,7 @@ import { MapContainer, TileLayer, Marker, Popup, useMap, Circle, LayersControl }
 import { motion, AnimatePresence } from 'framer-motion';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
-import { User, Briefcase, MapPin, Star, Phone, MessageSquare, Plus, X, FileText } from 'lucide-react';
+import { User, Briefcase, MapPin, Star, Phone, MessageSquare, Plus, X, FileText, ArrowLeft } from 'lucide-react';
 
 // Fix Leaflet marker icons in React
 import icon from 'leaflet/dist/images/marker-icon.png';
@@ -26,7 +26,7 @@ const SetViewOnClick = ({ coords }) => {
     return null;
 };
 
-const ExpertMap = ({ currentProjectId, category, subCategory, onAssign }) => {
+const ExpertMap = ({ currentProjectId, category, subCategory, onAssign, onClose }) => {
     const [professionals, setProfessionals] = useState([]);
     const [loading, setLoading] = useState(true);
     const [mapCenter, setMapCenter] = useState([20.5937, 78.9629]);
@@ -204,7 +204,7 @@ const ExpertMap = ({ currentProjectId, category, subCategory, onAssign }) => {
     };
 
     return (
-        <div className="relative w-full h-[600px] rounded-[2rem] overflow-hidden border-4 border-white shadow-2xl bg-[#F9F7F2]">
+        <div className="relative w-full h-full rounded-[2rem] overflow-hidden border-4 border-white shadow-2xl bg-[#F9F7F2]">
             {loading && (
                 <div className="absolute inset-0 z-[1001] bg-white/60 backdrop-blur-sm flex items-center justify-center">
                     <div className="flex flex-col items-center">
@@ -214,34 +214,9 @@ const ExpertMap = ({ currentProjectId, category, subCategory, onAssign }) => {
                 </div>
             )}
 
-            {/* Internal Filter Bar */}
-            <div className="absolute top-6 left-1/2 -translate-x-1/2 z-[1000] flex gap-2 bg-white/90 backdrop-blur-md p-2 rounded-2xl shadow-xl border border-[#E3DACD]/50">
-                <select
-                    value={activeCategory}
-                    onChange={(e) => { setActiveCategory(e.target.value); setActiveSubCategory('All'); }}
-                    className="bg-transparent text-xs font-bold text-[#3E2B26] outline-none px-4 py-2 border-r border-[#E3DACD]"
-                >
-                    {categories.map(cat => <option key={cat} value={cat}>{cat}</option>)}
-                </select>
-                <select
-                    value={activeSubCategory}
-                    onChange={(e) => setActiveSubCategory(e.target.value)}
-                    className="bg-transparent text-xs font-bold text-[#3E2B26] outline-none px-4 py-2"
-                >
-                    {subCategories[activeCategory].map(sub => <option key={sub} value={sub}>{sub}</option>)}
-                </select>
-            </div>
 
-            {/* Recenter Button */}
-            <button
-                onClick={() => userLocation && setMapCenter([userLocation.lat, userLocation.lon])}
-                className="absolute bottom-6 left-6 z-[1000] p-3 bg-white text-[#3E2B26] rounded-full shadow-xl hover:bg-[#F9F7F2] hover:scale-110 transition-all border border-[#E3DACD]"
-                title="Recenter on Me"
-            >
-                <MapPin size={20} className="fill-[#C06842] text-[#C06842]" />
-            </button>
 
-            <MapContainer center={mapCenter} zoom={18} maxZoom={19} style={{ height: '100%', width: '100%' }} zoomControl={false}>
+            <MapContainer center={mapCenter} zoom={18} maxZoom={19} style={{ height: '100%', width: '100%' }} zoomControl={false} attributionControl={false}>
                 <LayersControl position="bottomright">
                     <LayersControl.BaseLayer checked name="Google Maps">
                         <TileLayer
@@ -346,6 +321,45 @@ const ExpertMap = ({ currentProjectId, category, subCategory, onAssign }) => {
                     </Marker>
                 ))}
             </MapContainer>
+
+            {/* Controls moved after MapContainer to ensure visibility */}
+
+            {/* Internal Filter Bar - kept at top, increased z-index */}
+            <div className="absolute top-6 left-1/2 -translate-x-1/2 z-[2000] flex gap-2 bg-white/90 backdrop-blur-md p-2 rounded-2xl shadow-xl border border-[#E3DACD]/50">
+                <select
+                    value={activeCategory}
+                    onChange={(e) => { setActiveCategory(e.target.value); setActiveSubCategory('All'); }}
+                    className="bg-transparent text-xs font-bold text-[#3E2B26] outline-none px-4 py-2 border-r border-[#E3DACD]"
+                >
+                    {categories.map(cat => <option key={cat} value={cat}>{cat}</option>)}
+                </select>
+                <select
+                    value={activeSubCategory}
+                    onChange={(e) => setActiveSubCategory(e.target.value)}
+                    className="bg-transparent text-xs font-bold text-[#3E2B26] outline-none px-4 py-2"
+                >
+                    {subCategories[activeCategory].map(sub => <option key={sub} value={sub}>{sub}</option>)}
+                </select>
+            </div>
+
+            {/* Recenter Button */}
+            <button
+                onClick={() => userLocation && setMapCenter([userLocation.lat, userLocation.lon])}
+                className="absolute bottom-6 left-6 z-[2000] p-3 bg-white text-[#3E2B26] rounded-full shadow-xl hover:bg-[#F9F7F2] hover:scale-110 transition-all border border-[#E3DACD]"
+                title="Recenter on Me"
+            >
+                <MapPin size={20} className="fill-[#C06842] text-[#C06842]" />
+            </button>
+
+            {/* Back to Dashboard Button */}
+            {(onClose || onAssign) && (
+                <button
+                    onClick={onClose || onAssign}
+                    className="absolute bottom-6 right-6 z-[2000] px-6 py-3 bg-[#2A1F1D] text-white rounded-xl shadow-2xl hover:bg-[#C06842] hover:scale-105 transition-all border-2 border-white/20 flex items-center gap-2 font-bold text-xs uppercase tracking-wider"
+                >
+                    <ArrowLeft size={16} /> Back to Dashboard
+                </button>
+            )}
 
             {/* Profile Sidebar/Modal */}
             <AnimatePresence>
