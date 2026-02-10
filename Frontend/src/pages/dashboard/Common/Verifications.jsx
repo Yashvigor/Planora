@@ -11,7 +11,7 @@ const Verifications = () => {
     const fetchVerifications = useCallback(async () => {
         setLoading(true);
         try {
-            const response = await fetch('http://localhost:5000/api/users/verifications');
+            const response = await fetch(`${import.meta.env.VITE_API_URL}/api/users/verifications`);
             const data = await response.json();
             if (!response.ok) throw new Error(data.error || 'Failed to fetch verifications');
             setVerifications(data);
@@ -28,7 +28,7 @@ const Verifications = () => {
 
     const handleStatusUpdate = async (userId, newStatus) => {
         try {
-            const response = await fetch(`http://localhost:5000/api/users/${userId}/status`, {
+            const response = await fetch(`${import.meta.env.VITE_API_URL}/api/users/${userId}/status`, {
                 method: 'PUT',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ status: newStatus }),

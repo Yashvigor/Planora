@@ -15,7 +15,7 @@ const Payments = () => {
         if (!currentUser?.id) return;
         setLoading(true);
         try {
-            const res = await fetch(`http://localhost:5000/api/payments/user/${currentUser.id}`);
+            const res = await fetch(`${import.meta.env.VITE_API_URL}/api/payments/user/${currentUser.id}`);
             const data = await res.json();
             setPayments(data);
         } catch (err) {
@@ -28,7 +28,7 @@ const Payments = () => {
     const fetchProjects = useCallback(async () => {
         if (!currentUser?.id) return;
         try {
-            const res = await fetch(`http://localhost:5000/api/projects/user/${currentUser.id}`);
+            const res = await fetch(`${import.meta.env.VITE_API_URL}/api/projects/user/${currentUser.id}`);
             const data = await res.json();
             setRealProjects(data);
         } catch (err) {
@@ -56,7 +56,7 @@ const Payments = () => {
                 // For simplicity in this demo, we auto-create a payment record 
                 // In a real app, we'd show a form first.
                 try {
-                    const res = await fetch('http://localhost:5000/api/payments', {
+                    const res = await fetch(`${import.meta.env.VITE_API_URL}/api/payments`, {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify({
@@ -88,7 +88,7 @@ const Payments = () => {
     const handleUpdatePayment = async () => {
         if (!editingPayment) return;
         try {
-            const res = await fetch(`http://localhost:5000/api/payments/${editingPayment.payment_id}`, {
+            const res = await fetch(`${import.meta.env.VITE_API_URL}/api/payments/${editingPayment.payment_id}`, {
                 method: 'PATCH',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({

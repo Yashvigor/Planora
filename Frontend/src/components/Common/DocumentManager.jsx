@@ -12,7 +12,7 @@ const DocumentManager = ({ title = "Documents", filterType = null, allowUpload =
     const fetchDocs = React.useCallback(async () => {
         if (!projectId) return;
         try {
-            const res = await fetch(`http://localhost:5000/api/documents/project/${projectId}`);
+            const res = await fetch(`${import.meta.env.VITE_API_URL}/api/documents/project/${projectId}`);
             if (res.ok) {
                 const data = await res.json();
                 setDocuments(filterType ? data.filter(d => d.category === filterType) : data);
@@ -41,7 +41,7 @@ const DocumentManager = ({ title = "Documents", filterType = null, allowUpload =
         formData.append('name', file.name);
 
         try {
-            const response = await fetch('http://localhost:5000/api/documents', {
+            const response = await fetch(`${import.meta.env.VITE_API_URL}/api/documents`, {
                 method: 'POST',
                 body: formData,
             });
@@ -65,7 +65,7 @@ const DocumentManager = ({ title = "Documents", filterType = null, allowUpload =
     const handleDelete = async (docId) => {
         if (!window.confirm("Are you sure you want to delete this document?")) return;
         try {
-            const res = await fetch(`http://localhost:5000/api/documents/${docId}`, {
+            const res = await fetch(`${import.meta.env.VITE_API_URL}/api/documents/${docId}`, {
                 method: 'DELETE'
             });
             if (res.ok) {
@@ -86,7 +86,7 @@ const DocumentManager = ({ title = "Documents", filterType = null, allowUpload =
             {/* Upload Area */}
             {allowUpload && (
                 <div
-                    className={`border-3 border-dashed rounded-[2rem] p-8 flex flex-col items-center justify-center text-center transition-all duration-300 ${isDragging ? 'border-[#C06842] bg-[#C06842]/5 scale-[1.01] shadow-xl' : 'border-[#E3DACD] bg-[#FDFCF8] hover:border-[#C06842]/50 hover:bg-[#F9F7F2]'
+                    className={`border - 3 border - dashed rounded - [2rem] p - 8 flex flex - col items - center justify - center text - center transition - all duration - 300 ${isDragging ? 'border-[#C06842] bg-[#C06842]/5 scale-[1.01] shadow-xl' : 'border-[#E3DACD] bg-[#FDFCF8] hover:border-[#C06842]/50 hover:bg-[#F9F7F2]'
                         }`}
                     onDragOver={(e) => { e.preventDefault(); setIsDragging(true); }}
                     onDragLeave={() => setIsDragging(false)}
@@ -97,7 +97,7 @@ const DocumentManager = ({ title = "Documents", filterType = null, allowUpload =
                         handleFile(file);
                     }}
                 >
-                    <div className={`w-16 h-16 rounded-full flex items-center justify-center mb-4 transition-colors ${isDragging ? 'bg-[#C06842] text-white' : 'bg-[#F9F7F2] text-[#C06842]'}`}>
+                    <div className={`w - 16 h - 16 rounded - full flex items - center justify - center mb - 4 transition - colors ${isDragging ? 'bg-[#C06842] text-white' : 'bg-[#F9F7F2] text-[#C06842]'}`}>
                         <Upload size={24} strokeWidth={2} />
                     </div>
                     <h4 className="text-lg font-bold font-serif text-[#2A1F1D] mb-1">Upload Files</h4>
@@ -117,7 +117,7 @@ const DocumentManager = ({ title = "Documents", filterType = null, allowUpload =
                                 <span>{Math.round(progress)}%</span>
                             </div>
                             <div className="h-1.5 bg-[#E3DACD] rounded-full overflow-hidden">
-                                <div className="h-full bg-[#C06842] transition-all duration-300 ease-out" style={{ width: `${progress}%` }}></div>
+                                <div className="h-full bg-[#C06842] transition-all duration-300 ease-out" style={{ width: `${progress} % ` }}></div>
                             </div>
                         </div>
                     )}
@@ -154,7 +154,7 @@ const DocumentManager = ({ title = "Documents", filterType = null, allowUpload =
 
                                 <div className="pt-4 mt-4 border-t border-[#E3DACD]/50 flex justify-between items-center gap-3">
                                     <a
-                                        href={`http://localhost:5000/${doc.file_path}`}
+                                        href={`${import.meta.env.VITE_API_URL}/${doc.file_path}`}
                                         target="_blank"
                                         rel="noopener noreferrer"
                                         className="flex-1 flex items-center justify-center gap-1.5 text-xs font-bold text-white bg-[#2A1F1D] hover:bg-[#C06842] py-2 rounded-lg transition-all shadow-md"

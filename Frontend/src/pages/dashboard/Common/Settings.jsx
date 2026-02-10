@@ -30,7 +30,7 @@ const Settings = () => {
             const userId = currentUser?.user_id || currentUser?.id;
             if (!userId) return;
             try {
-                const response = await fetch(`http://localhost:5000/api/user/${userId}`);
+                const response = await fetch(`${import.meta.env.VITE_API_URL}/api/user/${userId}`);
                 if (response.ok) {
                     const data = await response.json();
                     setProfileData(prev => ({
@@ -43,7 +43,7 @@ const Settings = () => {
                         city: data.city || '',
                         state: data.state || '',
                         zip_code: data.zip_code || '',
-                        aadharUrl: data.personal_id_document_path ? `http://localhost:5000/${data.personal_id_document_path}` : null,
+                        aadharUrl: data.personal_id_document_path ? `${import.meta.env.VITE_API_URL}/${data.personal_id_document_path}` : null,
                         bio: data.bio || prev.bio // Preserve bio if not in DB
                     }));
                 }
@@ -89,13 +89,13 @@ const Settings = () => {
             let response;
             if (profileData.aadhar) {
                 // If there's a file, we must use FormData
-                response = await fetch(`http://localhost:5000/api/user/${userId}`, {
+                response = await fetch(`${import.meta.env.VITE_API_URL}/api/user/${userId}`, {
                     method: 'PUT',
                     body: formData,
                 });
             } else {
                 // If no file, use the new profile sync route which handles geocoding
-                response = await fetch(`http://localhost:5000/api/users/${userId}/profile`, {
+                response = await fetch(`${import.meta.env.VITE_API_URL}/api/users/${userId}/profile`, {
                     method: 'PUT',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
@@ -130,7 +130,7 @@ const Settings = () => {
                 if (updatedUser.user.personal_id_document_path) {
                     setProfileData(prev => ({
                         ...prev,
-                        aadharUrl: `http://localhost:5000/${updatedUser.user.personal_id_document_path}`,
+                        aadharUrl: `${import.meta.env.VITE_API_URL}/${updatedUser.user.personal_id_document_path}`,
                         aadhar: null // Reset file input
                     }));
                 }

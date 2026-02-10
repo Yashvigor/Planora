@@ -32,7 +32,7 @@ const AdminDashboard = ({ initialSection = 'overview' }) => {
         setLoading(true);
         try {
             // Fetch Users
-            const userRes = await fetch('http://localhost:5000/api/users');
+            const userRes = await fetch(`${import.meta.env.VITE_API_URL}/api/users`);
             const userData = await userRes.json();
             setUsers(userData);
 
@@ -65,7 +65,7 @@ const AdminDashboard = ({ initialSection = 'overview' }) => {
 
     const handleVerifyUser = async (id, status) => {
         try {
-            const response = await fetch(`http://localhost:5000/api/users/${id}/status`, {
+            const response = await fetch(`${import.meta.env.VITE_API_URL}/api/users/${id}/status`, {
                 method: 'PUT',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ status })
@@ -84,7 +84,7 @@ const AdminDashboard = ({ initialSection = 'overview' }) => {
     const handleDeleteUser = async (id) => {
         if (!window.confirm("Are you sure you want to delete this user? This action cannot be undone.")) return;
         try {
-            const response = await fetch(`http://localhost:5000/api/admin/user/${id}`, {
+            const response = await fetch(`${import.meta.env.VITE_API_URL}/api/admin/user/${id}`, {
                 method: 'DELETE'
             });
             if (response.ok) {
@@ -159,7 +159,7 @@ const AdminDashboard = ({ initialSection = 'overview' }) => {
                             </td>
                             <td className="px-5 py-4">
                                 {item.personal_id_document_path ? (
-                                    <a href={`http://localhost:5000/${item.personal_id_document_path}`} target="_blank" rel="noopener noreferrer" className="text-[#C06842] bg-[#C06842]/5 px-3 py-1.5 rounded-lg text-xs font-bold cursor-pointer hover:bg-[#C06842]/10 flex items-center w-max gap-2 border border-[#C06842]/10 transition-colors">
+                                    <a href={`${import.meta.env.VITE_API_URL}/${item.personal_id_document_path}`} target="_blank" rel="noopener noreferrer" className="text-[#C06842] bg-[#C06842]/5 px-3 py-1.5 rounded-lg text-xs font-bold cursor-pointer hover:bg-[#C06842]/10 flex items-center w-max gap-2 border border-[#C06842]/10 transition-colors">
                                         <FileText size={12} /> View Doc
                                     </a>
                                 ) : (

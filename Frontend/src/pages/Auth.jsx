@@ -46,6 +46,7 @@ const Auth = () => {
             icon: '📐',
             domains: [
                 { id: 'architect', label: 'Architect' },
+                { id: 'contractor', label: 'Contractor' },
                 { id: 'structural_engineer', label: 'Structural Engineer' },
                 { id: 'civil_engineer', label: 'Civil Engineer' }
             ]
@@ -98,7 +99,7 @@ const Auth = () => {
             setLoading(true);
             setError('');
             try {
-                const response = await fetch('http://localhost:5000/api/auth/google', {
+                const response = await fetch(`${import.meta.env.VITE_API_URL}/api/auth/google`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ token: tokenResponse.access_token }),
@@ -132,7 +133,7 @@ const Auth = () => {
 
         setLoading(true);
         try {
-            const response = await fetch('http://localhost:5000/api/auth/google/complete', {
+            const response = await fetch(`${import.meta.env.VITE_API_URL}/api/auth/google/complete`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
@@ -192,7 +193,7 @@ const Auth = () => {
         setLoading(true);
 
         try {
-            const response = await fetch('http://localhost:5000/api/auth/forgot-password', {
+            const response = await fetch(`${import.meta.env.VITE_API_URL}/api/auth/forgot-password`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ email: formData.email }),
@@ -218,7 +219,7 @@ const Auth = () => {
 
         setLoading(true);
         try {
-            const response = await fetch('http://localhost:5000/api/auth/reset-password', {
+            const response = await fetch(`${import.meta.env.VITE_API_URL}/api/auth/reset-password`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
@@ -258,7 +259,7 @@ const Auth = () => {
 
         setLoading(true);
         try {
-            const endpoint = isLogin ? 'http://localhost:5000/api/login' : 'http://localhost:5000/api/signup';
+            const endpoint = isLogin ? `${import.meta.env.VITE_API_URL}/api/login` : `${import.meta.env.VITE_API_URL}/api/signup`;
 
             const payload = isLogin
                 ? { email: formData.email, password: formData.password }

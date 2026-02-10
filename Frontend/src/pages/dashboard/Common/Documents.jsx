@@ -26,7 +26,7 @@ const Documents = () => {
 
     const fetchProjects = async () => {
         try {
-            const res = await fetch(`http://localhost:5000/api/projects/user/${currentUser.id}`);
+            const res = await fetch(`${import.meta.env.VITE_API_URL}/api/projects/user/${currentUser.id}`);
             const data = await res.json();
             setProjects(data);
             if (data.length > 0) {
@@ -39,7 +39,7 @@ const Documents = () => {
 
     const fetchDocuments = async (projectId) => {
         try {
-            const res = await fetch(`http://localhost:5000/api/documents/project/${projectId}`);
+            const res = await fetch(`${import.meta.env.VITE_API_URL}/api/documents/project/${projectId}`);
             const data = await res.json();
             setRealDocs(data);
         } catch (err) {
@@ -50,7 +50,7 @@ const Documents = () => {
     const handleDelete = async (docId) => {
         if (!window.confirm('Are you sure you want to delete this document?')) return;
         try {
-            const res = await fetch(`http://localhost:5000/api/documents/${docId}`, {
+            const res = await fetch(`${import.meta.env.VITE_API_URL}/api/documents/${docId}`, {
                 method: 'DELETE'
             });
             if (res.ok) {
@@ -81,7 +81,7 @@ const Documents = () => {
             // Simulated progress because fetch doesn't support it natively without XHR
             const interval = setInterval(() => setProgress(p => p < 90 ? p + 10 : p), 200);
 
-            const res = await fetch('http://localhost:5000/api/documents', {
+            const res = await fetch(`${import.meta.env.VITE_API_URL}/api/documents`, {
                 method: 'POST',
                 body: formData,
             });
@@ -189,7 +189,7 @@ const Documents = () => {
                                 <div className="pt-6 mt-6 border-t border-[#E3DACD]/50 flex flex-col gap-3">
                                     <div className="flex justify-between items-center gap-4">
                                         <a
-                                            href={`http://localhost:5000/${doc.file_path}`}
+                                            href={`${import.meta.env.VITE_API_URL}/${doc.file_path}`}
                                             target="_blank"
                                             rel="noopener noreferrer"
                                             className="flex-1 flex items-center justify-center gap-2 text-sm font-bold text-white bg-[#2A1F1D] hover:bg-[#C06842] py-2.5 rounded-xl transition-all shadow-md"
@@ -208,7 +208,7 @@ const Documents = () => {
                                             <button
                                                 onClick={async () => {
                                                     try {
-                                                        const res = await fetch(`http://localhost:5000/api/documents/${doc.doc_id}/status`, {
+                                                        const res = await fetch(`${import.meta.env.VITE_API_URL}/api/documents/${doc.doc_id}/status`, {
                                                             method: 'PUT',
                                                             headers: { 'Content-Type': 'application/json' },
                                                             body: JSON.stringify({ status: 'Approved' })
@@ -223,7 +223,7 @@ const Documents = () => {
                                             <button
                                                 onClick={async () => {
                                                     try {
-                                                        const res = await fetch(`http://localhost:5000/api/documents/${doc.doc_id}/status`, {
+                                                        const res = await fetch(`${import.meta.env.VITE_API_URL}/api/documents/${doc.doc_id}/status`, {
                                                             method: 'PUT',
                                                             headers: { 'Content-Type': 'application/json' },
                                                             body: JSON.stringify({ status: 'Rejected' })

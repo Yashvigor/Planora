@@ -44,7 +44,7 @@ const DashboardLayout = () => {
 
                 try {
                     console.log('[Dashboard] Updating live location:', latitude, longitude);
-                    await fetch(`http://localhost:5000/api/users/${uid}/profile`, {
+                    await fetch(`${import.meta.env.VITE_API_URL}/api/users/${uid}/profile`, {
                         method: 'PUT',
                         headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify({ latitude, longitude })

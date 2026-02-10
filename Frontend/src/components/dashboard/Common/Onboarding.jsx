@@ -36,7 +36,7 @@ const Onboarding = ({ isOpen, onClose, user, onComplete }) => {
         if (resume) finalData.append('resume', resume);
 
         try {
-            const response = await fetch(`http://localhost:5000/api/user/${user.user_id || user.id}/complete-profile`, {
+            const response = await fetch(`${import.meta.env.VITE_API_URL}/api/user/${user.user_id || user.id}/complete-profile`, {
                 method: 'PUT',
                 body: finalData
             });

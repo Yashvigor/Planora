@@ -92,7 +92,7 @@ const ExpertMap = ({ currentProjectId, category, subCategory, onAssign, onClose 
                 }
 
                 // Get User Profile
-                const res = await fetch(`http://localhost:5000/api/user/${userId}`);
+                const res = await fetch(`${import.meta.env.VITE_API_URL}/api/user/${userId}`);
                 const data = await res.json();
                 // (removed)
 
@@ -148,7 +148,7 @@ const ExpertMap = ({ currentProjectId, category, subCategory, onAssign, onClose 
         setLoading(true);
         try {
             // New endpoint with radius parameter (default 50km)
-            let url = 'http://localhost:5000/api/professionals/nearby';
+            let url = `${import.meta.env.VITE_API_URL}/api/professionals/nearby`;
             const params = new URLSearchParams();
             params.append('lat', userLocation.lat);
             params.append('lon', userLocation.lon);
@@ -156,7 +156,8 @@ const ExpertMap = ({ currentProjectId, category, subCategory, onAssign, onClose 
             if (activeCategory !== 'All') params.append('category', activeCategory);
             if (activeSubCategory !== 'All') params.append('sub_category', activeSubCategory);
 
-            url += `?${params.toString()}`;
+            url += `? ${params.toString()
+                }`;
 
             const res = await fetch(url);
             const data = await res.json();
@@ -187,7 +188,7 @@ const ExpertMap = ({ currentProjectId, category, subCategory, onAssign, onClose 
         }
 
         try {
-            const res = await fetch(`http://localhost:5000/api/projects/${currentProjectId}/assign`, {
+            const res = await fetch(`${import.meta.env.VITE_API_URL}/api/projects/${currentProjectId}/assign`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ userId: proId, role: proRole })
@@ -404,7 +405,7 @@ const ExpertMap = ({ currentProjectId, category, subCategory, onAssign, onClose 
                             <div className="space-y-3">
                                 <label className="text-[10px] font-black text-[#8C7B70] uppercase tracking-widest block">Credentials</label>
                                 {selectedPro.resume_path ? (
-                                    <a href={`http://localhost:5000/${selectedPro.resume_path}`} target="_blank" rel="noreferrer" className="flex items-center gap-3 p-3 border-2 border-[#E3DACD] rounded-xl hover:border-[#A65D3B] text-[#5D4037] transition-all">
+                                    <a href={`${import.meta.env.VITE_API_URL}/${selectedPro.resume_path}`} target="_blank" rel="noreferrer" className="flex items-center gap-3 p-3 border-2 border-[#E3DACD] rounded-xl hover:border-[#A65D3B] text-[#5D4037] transition-all">
                                         <FileText size={16} />
                                         <span className="text-xs font-bold">View Resume</span>
                                     </a>

@@ -58,7 +58,9 @@ const AppRoutes = () => {
             // Planning
             case 'architect': return <ArchitectDashboard />;
             case 'civil_engineer': return <CivilEngineerDashboard />;
+            case 'civil_engineer': return <CivilEngineerDashboard />;
             case 'structural_engineer': return <StructuralDashboard />;
+            case 'contractor': return <ArchitectDashboard />;
 
             // Design & Finish
             case 'interior_designer':

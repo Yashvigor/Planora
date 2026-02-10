@@ -34,6 +34,7 @@ const pool = new Pool({
     database: process.env.DB_NAME,
     password: process.env.DB_PASSWORD,
     port: process.env.DB_PORT,
+    ssl: process.env.DB_HOST !== 'localhost' ? { rejectUnauthorized: false } : false
 });
 
 pool.connect()
@@ -85,9 +86,9 @@ app.post('/api/signup', async (req, res) => {
         return res.status(400).json({ error: 'All fields are required' });
     }
 
-    const client = await pool.connect();
-
+    let client;
     try {
+        client = await pool.connect();
         await client.query('BEGIN');
 
         // Check availability
@@ -95,6 +96,15 @@ app.post('/api/signup', async (req, res) => {
         if (checkUser.rows.length > 0) {
             await client.query('ROLLBACK');
             return res.status(400).json({ error: 'User already exists' });
+        }
+
+        // Check if admin already exists
+        if (role === 'admin') {
+            const adminCheck = await client.query("SELECT * FROM Users WHERE category = 'Admin'");
+            if (adminCheck.rows.length > 0) {
+                await client.query('ROLLBACK');
+                return res.status(400).json({ error: 'An admin account already exists. Only one admin is allowed.' });
+            }
         }
 
         // Hash password
@@ -110,6 +120,7 @@ app.post('/api/signup', async (req, res) => {
             'interior_designer': { category: 'Design and Finish', sub_category: 'Interior Designer' },
             'false_ceiling': { category: 'Design and Finish', sub_category: 'False Ceiling Worker' },
             'fabrication': { category: 'Design and Finish', sub_category: 'Fabrication Worker' },
+            'contractor': { category: 'Planning', sub_category: 'Contractor' },
             'mason': { category: 'SiteWork', sub_category: 'Mason' },
             'electrician': { category: 'SiteWork', sub_category: 'Electrician' },
             'plumber': { category: 'SiteWork', sub_category: 'Plumber' },
@@ -143,11 +154,11 @@ app.post('/api/signup', async (req, res) => {
             user: { user_id: userId, name, email, role }
         });
     } catch (err) {
-        await client.query('ROLLBACK');
+        if (client) await client.query('ROLLBACK');
         console.error('Signup error:', err);
-        res.status(500).json({ error: 'Server error during signup' });
+        res.status(500).json({ error: 'Server error during signup. Check backend logs.' });
     } finally {
-        client.release();
+        if (client) client.release();
     }
 });
 
@@ -254,6 +265,7 @@ app.post('/api/login', async (req, res) => {
             'False Ceiling Worker': 'false_ceiling',
             'Fabrication Worker': 'fabrication',
             'Mason': 'mason',
+            'Contractor': 'contractor',
             'Electrician': 'electrician',
             'Plumber': 'plumber',
             'Carpenter': 'carpenter',
@@ -539,6 +551,7 @@ app.post('/api/auth/google/complete', async (req, res) => {
         'interior_designer': { category: 'Design and Finish', sub_category: 'Interior Designer' },
         'false_ceiling': { category: 'Design and Finish', sub_category: 'False Ceiling Worker' },
         'fabrication': { category: 'Design and Finish', sub_category: 'Fabrication Worker' },
+        'contractor': { category: 'Planning', sub_category: 'Contractor' },
         'mason': { category: 'SiteWork', sub_category: 'Mason' },
         'electrician': { category: 'SiteWork', sub_category: 'Electrician' },
         'plumber': { category: 'SiteWork', sub_category: 'Plumber' },

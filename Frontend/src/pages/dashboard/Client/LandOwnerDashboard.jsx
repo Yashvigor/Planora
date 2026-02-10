@@ -171,7 +171,7 @@ const LandOwnerDashboard = () => {
         }
         setLoading(true);
         try {
-            const projRes = await fetch(`http://localhost:5000/api/projects/user/${currentUser.id}`);
+            const projRes = await fetch(`${import.meta.env.VITE_API_URL}/api/projects/user/${currentUser.id}`);
             const projData = await projRes.json();
             setProjects(projData);
 
@@ -180,9 +180,9 @@ const LandOwnerDashboard = () => {
                 if (!activeProject) setActiveProject(projToFetch);
 
                 const [histRes, docRes, teamRes] = await Promise.all([
-                    fetch(`http://localhost:5000/api/activity/${projToFetch.project_id}`),
-                    fetch(`http://localhost:5000/api/documents/project/${projToFetch.project_id}`),
-                    fetch(`http://localhost:5000/api/projects/${projToFetch.project_id}/team`)
+                    fetch(`${import.meta.env.VITE_API_URL}/api/activity/${projToFetch.project_id}`),
+                    fetch(`${import.meta.env.VITE_API_URL}/api/documents/project/${projToFetch.project_id}`),
+                    fetch(`${import.meta.env.VITE_API_URL}/api/projects/${projToFetch.project_id}/team`)
                 ]);
 
                 if (histRes.ok) setHistory(await histRes.json());
@@ -210,7 +210,7 @@ const LandOwnerDashboard = () => {
         }
 
         try {
-            const res = await fetch('http://localhost:5000/api/projects', {
+            const res = await fetch(`${import.meta.env.VITE_API_URL}/api/projects`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
@@ -240,7 +240,7 @@ const LandOwnerDashboard = () => {
             }
         } catch (err) {
             console.error('Project creation networking error:', err);
-            alert(`Connection Error: Could not connect to the backend server at http://localhost:5000. Please ensure the backend is running. (Error: ${err.message})`);
+            alert(`Connection Error: Could not connect to the backend server at ${import.meta.env.VITE_API_URL}. Please ensure the backend is running. (Error: ${err.message})`);
         }
     };
 
@@ -372,7 +372,7 @@ const LandOwnerDashboard = () => {
                                 <SectionHeader title="Recent Documents" action={<Link to="/documents" className="text-[#C06842] text-xs font-bold">View All</Link>} />
                                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                                     {recentDocs.length > 0 ? recentDocs.map(doc => (
-                                        <DocumentItem key={doc.doc_id} name={doc.name} status={doc.status} onDownload={() => window.open(`http://localhost:5000/${doc.file_path}`, '_blank')} />
+                                        <DocumentItem key={doc.doc_id} name={doc.name} status={doc.status} onDownload={() => window.open(`${import.meta.env.VITE_API_URL}/${doc.file_path}`, '_blank')} />
                                     )) : <p className="text-sm italic text-[#8C7B70]">No recent documents.</p>}
                                 </div>
                             </Card>
