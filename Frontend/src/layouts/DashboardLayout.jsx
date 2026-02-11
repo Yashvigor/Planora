@@ -44,11 +44,15 @@ const DashboardLayout = () => {
 
                 try {
                     console.log('[Dashboard] Updating live location:', latitude, longitude);
-                    await fetch(`${import.meta.env.VITE_API_URL}/api/users/${uid}/profile`, {
+                    const response = await fetch(`${import.meta.env.VITE_API_URL}/api/users/${uid}/profile`, {
                         method: 'PUT',
                         headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify({ latitude, longitude })
                     });
+                    if (!response.ok) {
+                        const errorData = await response.json();
+                        console.error('[Dashboard] Location update failed:', errorData);
+                    }
                 } catch (err) {
                     console.error('[Dashboard] Failed to update live location:', err);
                 }

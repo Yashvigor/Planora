@@ -106,7 +106,11 @@ const Auth = () => {
                 });
 
                 const data = await response.json();
-                if (!response.ok) throw new Error(data.error || 'Google Login failed');
+                if (!response.ok) {
+                    const detailMsg = data.details ? (typeof data.details === 'string' ? data.details : (data.details.message || JSON.stringify(data.details))) : '';
+                    const errorMsg = detailMsg ? `${data.error}: ${detailMsg}` : (data.error || 'Google Login failed');
+                    throw new Error(errorMsg);
+                }
 
                 if (data.status === 'incomplete') {
                     setFormData(prev => ({ ...prev, userId: data.user.user_id, name: data.user.name, email: data.user.email }));

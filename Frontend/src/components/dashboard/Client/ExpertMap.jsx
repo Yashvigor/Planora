@@ -156,8 +156,7 @@ const ExpertMap = ({ currentProjectId, category, subCategory, onAssign, onClose 
             if (activeCategory !== 'All') params.append('category', activeCategory);
             if (activeSubCategory !== 'All') params.append('sub_category', activeSubCategory);
 
-            url += `? ${params.toString()
-                }`;
+            url += `?${params.toString()}`;
 
             const res = await fetch(url);
             const data = await res.json();

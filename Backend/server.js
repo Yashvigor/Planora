@@ -10,6 +10,7 @@ const multer = require('multer');
 const path = require('path');
 const fs = require('fs');
 const { OAuth2Client } = require('google-auth-library');
+const axios = require('axios');
 
 dotenv.config();
 
@@ -38,7 +39,10 @@ const pool = new Pool({
 });
 
 pool.connect()
-    .then(() => console.log('Connected to PostgreSQL'))
+    .then(client => {
+        console.log('Connected to PostgreSQL');
+        client.release();
+    })
     .catch(err => console.error('Connection error', err.stack));
 
 // Ensure uploads directory exists
@@ -154,11 +158,15 @@ app.post('/api/signup', async (req, res) => {
             user: { user_id: userId, name, email, role }
         });
     } catch (err) {
-        if (client) await client.query('ROLLBACK');
+        if (client) {
+            await client.query('ROLLBACK');
+        }
         console.error('Signup error:', err);
         res.status(500).json({ error: 'Server error during signup. Check backend logs.' });
     } finally {
-        if (client) client.release();
+        if (client) {
+            client.release();
+        }
     }
 });
 
@@ -417,34 +425,58 @@ app.delete('/api/admin/user/:id', async (req, res) => {
     }
 });
 
-// --- Google Authentication ---
-
 // Verify Google Token & Check Profile
 app.post('/api/auth/google', async (req, res) => {
     const { token } = req.body;
+
+    if (!token) {
+        return res.status(400).json({ error: 'Google token is required' });
+    }
+
     try {
-        // Since the frontend uses useGoogleLogin which provides an access_token,
-        // we fetch the user info directly from Google's userinfo endpoint.
-        const response = await fetch(`https://www.googleapis.com/oauth2/v3/userinfo`, {
-            headers: { Authorization: `Bearer ${token}` }
-        });
+        console.log(`[Google Auth] Received auth request for token: ${token.substring(0, 10)}...`);
 
-        const payload = await response.json();
+        let payload;
 
-        if (!response.ok) {
-            throw new Error(payload.error_description || 'Invalid Google token');
+        try {
+            const response = await axios.get('https://www.googleapis.com/oauth2/v3/userinfo', {
+                headers: { Authorization: `Bearer ${token}` }
+            });
+            payload = response.data;
+        } catch (axiosError) {
+            console.error('[Google Auth] Initial verification failed, trying alternative endpoint...');
+            // Fallback to alternative endpoint just in case
+            try {
+                const response = await axios.get('https://openidconnect.googleapis.com/v1/userinfo', {
+                    headers: { Authorization: `Bearer ${token}` }
+                });
+                payload = response.data;
+            } catch (fallbackError) {
+                console.error('[Google Auth] Google API Error:', fallbackError.response?.data || fallbackError.message);
+                const googleError = fallbackError.response?.data || {};
+                return res.status(401).json({
+                    error: googleError.error_description || googleError.error || 'Invalid Google token',
+                    details: googleError
+                });
+            }
         }
 
         const { email, name, sub: google_id } = payload;
+        console.log(`[Google Auth] Verified user: ${email} (${google_id})`);
+
+        if (!email) {
+            return res.status(401).json({ error: 'Failed to retrieve email from Google token' });
+        }
 
         // Check if user exists
         const userResult = await pool.query('SELECT * FROM Users WHERE email = $1', [email]);
 
         if (userResult.rows.length === 0) {
+            console.log(`[Google Auth] New user detected: ${email}`);
             // New User - Create partial record
             const insertResult = await pool.query(
                 'INSERT INTO Users (name, email, google_id) VALUES ($1, $2, $3) RETURNING user_id, name, email',
-                [name, email, googleId]
+                [name, email, google_id]
             );
             return res.json({
                 status: 'incomplete',
@@ -455,8 +487,15 @@ app.post('/api/auth/google', async (req, res) => {
 
         const user = userResult.rows[0];
 
+        // Link Google ID if missing
+        if (!user.google_id) {
+            console.log(`[Google Auth] Linking Google ID for existing user: ${email}`);
+            await pool.query('UPDATE Users SET google_id = $1 WHERE user_id = $2', [google_id, user.user_id]);
+        }
+
         // Check internal status (category/sub_category)
         if (!user.profile_completed) {
+            console.log(`[Google Auth] Profile incomplete for user: ${email}`);
             return res.json({
                 status: 'incomplete',
                 message: 'Please complete your profile',
@@ -464,20 +503,48 @@ app.post('/api/auth/google', async (req, res) => {
             });
         }
 
-        // Complete user
+        // Complete user - return with role format expected by frontend
+        let roleKey = 'user';
+        const roleMap = {
+            'Land Owner': 'land_owner',
+            'Architect': 'architect',
+            'Structural Engineer': 'structural_engineer',
+            'Civil Engineer': 'civil_engineer',
+            'Interior Designer': 'interior_designer',
+            'False Ceiling Worker': 'false_ceiling',
+            'Fabrication Worker': 'fabrication',
+            'Mason': 'mason',
+            'Contractor': 'contractor',
+            'Electrician': 'electrician',
+            'Plumber': 'plumber',
+            'Carpenter': 'carpenter',
+            'Tile Worker': 'tile_fixer',
+            'Painter': 'painter',
+            'Admin': 'admin'
+        };
+
+        if (user.sub_category && roleMap[user.sub_category]) {
+            roleKey = roleMap[user.sub_category];
+        }
+
+        console.log(`[Google Auth] Successful login: ${email} as ${roleKey}`);
         res.json({
             status: 'success',
             user: {
                 user_id: user.user_id,
                 name: user.name,
                 email: user.email,
-                role: user.sub_category.toLowerCase().replace(/ /g, '_') // Map back to frontend role format
+                role: roleKey
             }
         });
 
     } catch (err) {
-        console.error('Google Auth Error:', err);
-        res.status(401).json({ error: 'Invalid Google token' });
+        console.error('[Google Auth] Unexpected Error:', err);
+        res.status(500).json({
+            error: 'Internal server error during Google Auth',
+            details: err.message,
+            stack: err.stack
+        });
     }
 });
 
@@ -654,8 +721,12 @@ app.put('/api/users/:userId/profile', async (req, res) => {
         // (removed)
         res.json({ message: 'Profile updated successfully', user: result.rows[0] });
     } catch (err) {
-        console.error('Profile Update Error:', err);
-        res.status(500).json({ error: 'Failed to update profile', details: err.message });
+        console.error('[Profile Update] Error:', err);
+        res.status(500).json({
+            error: 'Failed to update profile',
+            message: err.message,
+            stack: err.stack
+        });
     }
 });
 
