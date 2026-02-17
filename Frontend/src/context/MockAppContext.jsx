@@ -58,6 +58,27 @@ export const MockAppProvider = ({ children }) => {
         }
     });
 
+    // --- EFFECT: Fetch Real Data ---
+    useEffect(() => {
+        if (currentUser) {
+            const uid = currentUser.user_id || currentUser.id;
+            fetch(`${import.meta.env.VITE_API_URL}/api/projects/user/${uid}`)
+                .then(res => res.json())
+                .then(data => setProjects(data))
+                .catch(err => console.error("Error fetching projects:", err));
+        }
+    }, [currentUser]);
+
+    const [siteProgress, setSiteProgress] = useState(() => {
+        try {
+            const savedProgress = localStorage.getItem('planora_site_progress');
+            return savedProgress ? JSON.parse(savedProgress) : [];
+        } catch (error) {
+            console.error("Failed to parse site progress from local storage", error);
+            return [];
+        }
+    });
+
     // --- EFFECT: Persist Data ---
     useEffect(() => {
         localStorage.setItem('planora_users', JSON.stringify(users));
@@ -66,6 +87,10 @@ export const MockAppProvider = ({ children }) => {
     useEffect(() => {
         localStorage.setItem('planora_messages', JSON.stringify(messages));
     }, [messages]);
+
+    useEffect(() => {
+        localStorage.setItem('planora_site_progress', JSON.stringify(siteProgress));
+    }, [siteProgress]);
 
     useEffect(() => {
         localStorage.setItem('planora_documents', JSON.stringify(documents));
@@ -115,28 +140,49 @@ export const MockAppProvider = ({ children }) => {
         // Ensure user is in the local list for consistency if needed, 
         // but primarily set the current user session.
         if (!users.find(u => u.email === user.email)) {
-            setUsers(prev => [...prev, { ...user, id: `user_${Date.now()}` }]);
+            setUsers(prev => [...prev, { ...user, id: user.user_id || user.id || `user_${Date.now()}` }]);
         }
     };
 
     const logout = () => {
         setCurrentUser(null);
+        setProjects([]);
     };
 
     const addLand = (landData) => {
-        const newLand = { ...landData, id: Date.now(), ownerId: currentUser.id };
+        const newLand = { ...landData, id: Date.now(), ownerId: currentUser.id || currentUser.user_id };
         setLands([...lands, newLand]);
     };
 
-    const addProject = (projectData) => {
-        const newProject = {
-            ...projectData,
-            id: Date.now(),
-            status: 'Draft',
-            ownerId: currentUser.id,
-            assignedTo: []
-        };
-        setProjects([...projects, newProject]);
+    const addProject = async (projectData) => {
+        const uid = currentUser.user_id || currentUser.id;
+        try {
+            const res = await fetch(`${import.meta.env.VITE_API_URL}/api/projects`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    owner_id: uid,
+                    ...projectData,
+                    status: 'Planning'
+                })
+            });
+            if (res.ok) {
+                const newProj = await res.json();
+                setProjects(prev => [newProj, ...prev]);
+                return newProj;
+            }
+        } catch (err) {
+            console.error("Error creating project:", err);
+            // Fallback for UI responsiveness if needed
+            const fallbackProj = {
+                ...projectData,
+                id: Date.now(),
+                status: 'Planning',
+                ownerId: uid,
+                assignedTo: []
+            };
+            setProjects([...projects, fallbackProj]);
+        }
     };
 
     const updateProfile = (updatedData) => {
@@ -166,11 +212,12 @@ export const MockAppProvider = ({ children }) => {
         setCurrentUser(updatedUser);
     };
 
-    const sendMessage = (senderEmail, receiverEmail, text) => {
+    const sendMessage = (senderEmail, receiverEmail, text, projectId = null) => {
         const newMessage = {
             id: Date.now(),
+            projectId,
             sender: senderEmail,
-            receiver: receiverEmail,
+            receiver: receiverEmail, // Optional if project-wide
             text,
             time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
             timestamp: Date.now(),
@@ -186,6 +233,17 @@ export const MockAppProvider = ({ children }) => {
                 ? { ...msg, read: true }
                 : msg
         ));
+    };
+
+    const addSiteProgress = (progressData) => {
+        const newProgress = {
+            id: `prog_${Date.now()}`,
+            ...progressData,
+            date: new Date().toLocaleDateString(),
+            timestamp: Date.now()
+        };
+        setSiteProgress(prev => [newProgress, ...prev]);
+        return newProgress;
     };
 
     const uploadDocument = (docData) => {
@@ -218,6 +276,7 @@ export const MockAppProvider = ({ children }) => {
         professionals,
         messages,
         documents,
+        siteProgress,
         login,
         signup,
         setAuthUser,
@@ -230,7 +289,8 @@ export const MockAppProvider = ({ children }) => {
         markAsRead,
         uploadDocument,
         verifyDocument,
-        deleteDocument
+        deleteDocument,
+        addSiteProgress
     };
 
     return (

@@ -5,7 +5,7 @@ import {
     FileText, Hammer, MessageSquare, Phone, PieChart,
     Plus, TrendingUp, User, Users, XCircle, CheckCircle,
     ArrowUpRight, Clock, ShieldCheck, HardHat, ExternalLink,
-    Banknote, Coins, MapPin
+    Banknote, Coins, MapPin, ArrowLeft
 } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import ExpertMap from '../../../components/dashboard/Client/ExpertMap';
@@ -152,7 +152,7 @@ const NotificationItem = ({ title, time, type }) => (
 );
 
 const LandOwnerDashboard = () => {
-    const { currentUser } = useMockApp();
+    const { currentUser, messages, siteProgress } = useMockApp();
     const [projects, setProjects] = useState([]);
     const [activeProject, setActiveProject] = useState(null);
     const [history, setHistory] = useState([]);
@@ -456,11 +456,17 @@ const LandOwnerDashboard = () => {
                     <div className="relative w-full max-w-6xl h-[80vh] bg-white rounded-[2rem] shadow-2xl overflow-hidden flex flex-col">
                         <div className="p-8 border-b border-[#E3DACD]/40 flex justify-between items-center bg-[#FDFCF8]">
                             <h2 className="text-2xl font-serif font-bold">Expert Discovery</h2>
-                            <div className="flex items-center gap-3">
-
+                            <div className="flex items-center gap-4">
                                 <button
                                     onClick={() => setIsDiscoveryOpen(false)}
-                                    className="p-2 text-red-500 hover:bg-red-50 rounded-full transition-all"
+                                    className="flex items-center gap-2 px-6 py-2.5 bg-[#2A1F1D] text-white rounded-xl font-bold text-xs uppercase tracking-wider hover:bg-[#C06842] transition-all shadow-md active:scale-95"
+                                >
+                                    <ArrowLeft size={16} /> Back to Dashboard
+                                </button>
+                                <button
+                                    onClick={() => setIsDiscoveryOpen(false)}
+                                    className="p-2 text-[#8C7B70] hover:text-red-500 hover:bg-red-50 rounded-full transition-all"
+                                    title="Close Map"
                                 >
                                     <XCircle size={28} />
                                 </button>

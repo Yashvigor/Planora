@@ -6,6 +6,7 @@ import {
     Hammer, Camera, PencilRuler, Briefcase
 } from 'lucide-react';
 import { useMockApp } from '../../hooks/useMockApp';
+import PlanoraLogo from '../common/PlanoraLogo';
 
 const Sidebar = ({ isOpen, onClose }) => {
     const { currentUser, logout, messages } = useMockApp();
@@ -103,17 +104,17 @@ const Sidebar = ({ isOpen, onClose }) => {
         <aside className={`${isOpen ? 'w-72' : 'w-24'} bg-[#FDFCF8] border-r border-[#E3DACD] shadow-2xl transition-all duration-300 flex flex-col z-20 font-sans h-screen`}>
             {/* Logo Area */}
             <div className={`h-28 flex items-center ${isOpen ? 'justify-start px-8' : 'justify-center'} border-b border-[#E3DACD]/50`}>
-                <div className="flex items-center space-x-4 text-[#2A1F1D]">
-                    <div className="bg-[#2A1F1D] p-2.5 rounded-xl shadow-lg shadow-[#2A1F1D]/20">
-                        <Briefcase className="w-6 h-6 text-[#FDFCF8]" strokeWidth={2} />
+                <PlanoraLogo
+                    className={isOpen ? "w-10 h-10" : "w-12 h-12"}
+                    iconOnly={!isOpen}
+                    showText={false}
+                />
+                {isOpen && (
+                    <div className="ml-3">
+                        <span className="font-serif font-bold text-2xl tracking-tight block leading-none text-[#2A1F1D]">Plan<span className="text-[#A65D4D]">ora</span></span>
+                        <span className="text-[10px] text-[#C06842] font-bold uppercase tracking-[0.25em] mt-1 block">Workspace</span>
                     </div>
-                    {isOpen && (
-                        <div>
-                            <span className="font-serif font-bold text-2xl tracking-tight block leading-none text-[#2A1F1D]">Planora</span>
-                            <span className="text-[10px] text-[#C06842] font-bold uppercase tracking-[0.25em] mt-1 block">Workspace</span>
-                        </div>
-                    )}
-                </div>
+                )}
             </div>
 
             {/* Navigation */}

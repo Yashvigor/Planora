@@ -26,6 +26,7 @@ import FinishingDashboard from '../pages/dashboard/Design/FinishingDashboard';
 import InteriorDashboard from '../pages/dashboard/Design/InteriorDashboard';
 
 // Site
+import ContractorDashboard from '../pages/dashboard/Contractor/ContractorDashboard';
 import WorkerDashboard from '../pages/dashboard/Site/WorkerDashboard';
 import TileWorkerDashboard from '../pages/dashboard/Site/TileWorkerDashboard';
 import PainterDashboard from '../pages/dashboard/Site/PainterDashboard';
@@ -60,7 +61,7 @@ const AppRoutes = () => {
             case 'civil_engineer': return <CivilEngineerDashboard />;
             case 'civil_engineer': return <CivilEngineerDashboard />;
             case 'structural_engineer': return <StructuralDashboard />;
-            case 'contractor': return <ArchitectDashboard />;
+            case 'contractor': return <ContractorDashboard />;
 
             // Design & Finish
             case 'interior_designer':

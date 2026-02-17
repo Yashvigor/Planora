@@ -18,13 +18,40 @@ const Card = ({ children, className = "" }) => (
 // --- Civil Engineer Dashboard ---
 const CivilEngineerDashboard = () => {
     const { currentUser } = useMockApp();
+    const [projects, setProjects] = useState([]);
+    const [activeProject, setActiveProject] = useState(null);
+    const [loading, setLoading] = useState(true);
     const [activeQCTab, setActiveQCTab] = useState('checklists');
 
-    // Mock Data
+    const fetchData = useCallback(async () => {
+        const uid = currentUser?.user_id || currentUser?.id;
+        if (!uid) return;
+        setLoading(true);
+        try {
+            const res = await fetch(`${import.meta.env.VITE_API_URL}/api/professionals/${uid}/projects`);
+            if (res.ok) {
+                const data = await res.json();
+                setProjects(data);
+                if (data.length > 0 && !activeProject) {
+                    setActiveProject(data[0]);
+                }
+            }
+        } catch (err) {
+            console.error('Error fetching civil engineer projects:', err);
+        } finally {
+            setLoading(false);
+        }
+    }, [currentUser, activeProject]);
+
+    useEffect(() => {
+        fetchData();
+    }, [fetchData]);
+
+    // Use activeProject or fallback to mock for display
     const projectInfo = {
-        name: 'Skyline Heights (Block A)',
-        type: 'Residential High-Rise',
-        phase: 'RCC Structure - 4th Floor',
+        name: activeProject?.name || 'Skyline Heights (Block A)',
+        type: activeProject?.type || 'Residential High-Rise',
+        phase: activeProject?.status || 'Active',
         progress: 65,
         nextMilestone: 'Feb 15',
         daysAhead: 2
@@ -55,6 +82,8 @@ const CivilEngineerDashboard = () => {
         { name: 'Block_A_BOQ_Rev3.xlsx', ver: 'v3.0', date: 'Jan 15', type: 'BOQ & Specs' },
         { name: 'Method_Statement_Slab.pdf', ver: 'v1.0', date: 'Jan 10', type: 'Method Statement' },
     ];
+
+    if (loading && projects.length === 0) return <div className="p-20 text-center font-serif text-2xl animate-pulse">Loading Civil Engineer Dashboard...</div>;
 
     return (
         <div className="p-6 md:p-10 max-w-7xl mx-auto space-y-8 animate-fade-in font-sans pb-20 text-[#2A1F1D]">

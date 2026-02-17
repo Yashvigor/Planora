@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Menu, X } from 'lucide-react';
+import PlanoraLogo from './common/PlanoraLogo';
 
 const Navbar = () => {
   const navigate = useNavigate();
@@ -26,11 +27,12 @@ const Navbar = () => {
       }`}>
       <div className="container mx-auto px-6 flex justify-between items-center">
         {/* Logo */}
-        <div className="flex items-center space-x-3 cursor-pointer group" onClick={() => navigate('/')}>
-          <div className={`w-10 h-10 p-2 rounded-xl flex items-center justify-center transition-all duration-300 ${scrolled ? 'bg-white shadow-md' : 'bg-white shadow-xl'}`}>
-            <img src="/assets/planora_icon_new.png" alt="Logo" className="w-full h-full object-contain" />
-          </div>
-          <span className="text-2xl font-serif font-bold tracking-tight text-[#3E2B26] group-hover:text-[#A65D3B] transition-colors">Planora</span>
+        <div className="cursor-pointer group" onClick={() => navigate('/')}>
+          <PlanoraLogo
+            className="w-10 h-10"
+            textColor={scrolled ? "text-[#3E2B26]" : "text-[#3E2B26]"}
+            accentColor="text-[#A65D3B]"
+          />
         </div>
 
         {/* Desktop Links */}

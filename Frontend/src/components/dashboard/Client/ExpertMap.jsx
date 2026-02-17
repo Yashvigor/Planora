@@ -83,7 +83,8 @@ const ExpertMap = ({ currentProjectId, category, subCategory, onAssign, onClose 
         const fetchProfileLocation = async () => {
             try {
                 const storedUser = localStorage.getItem('planora_current_user') || localStorage.getItem('user');
-                const userId = storedUser ? JSON.parse(storedUser).id : null;
+                const userData = storedUser ? JSON.parse(storedUser) : null;
+                const userId = userData ? (userData.user_id || userData.id) : null;
 
                 if (!userId) {
                     console.error('[ExpertMap] No user found in localStorage');
@@ -351,15 +352,6 @@ const ExpertMap = ({ currentProjectId, category, subCategory, onAssign, onClose 
                 <MapPin size={20} className="fill-[#C06842] text-[#C06842]" />
             </button>
 
-            {/* Back to Dashboard Button */}
-            {(onClose || onAssign) && (
-                <button
-                    onClick={onClose || onAssign}
-                    className="absolute bottom-6 right-6 z-[2000] px-6 py-3 bg-[#2A1F1D] text-white rounded-xl shadow-2xl hover:bg-[#C06842] hover:scale-105 transition-all border-2 border-white/20 flex items-center gap-2 font-bold text-xs uppercase tracking-wider"
-                >
-                    <ArrowLeft size={16} /> Back to Dashboard
-                </button>
-            )}
 
             {/* Profile Sidebar/Modal */}
             <AnimatePresence>

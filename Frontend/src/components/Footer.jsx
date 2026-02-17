@@ -1,5 +1,6 @@
 import React from 'react';
 import { Hammer, Linkedin, Twitter, Instagram } from 'lucide-react';
+import PlanoraLogo from './common/PlanoraLogo';
 
 const Footer = () => {
     return (
@@ -9,12 +10,11 @@ const Footer = () => {
 
                     {/* Brand Column */}
                     <div className="md:col-span-1">
-                        <div className="flex items-center space-x-3 mb-6">
-                            <div className="w-8 h-8 bg-white p-1.5 rounded flex items-center justify-center">
-                                <img src="/assets/planora_icon_new.png" alt="Logo" className="w-full h-full object-contain" />
-                            </div>
-                            <span className="text-2xl font-serif font-bold tracking-tight text-[#F9F7F2]">Planora</span>
-                        </div>
+                        <PlanoraLogo
+                            className="w-10 h-10 mb-6"
+                            textColor="#FDFCF8"
+                            accentColor="#A65D4D"
+                        />
                         <p className="text-[#8C7B70] text-sm leading-relaxed mb-6">
                             The intelligent operating system for modern construction management.
                         </p>

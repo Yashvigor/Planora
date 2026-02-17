@@ -263,6 +263,36 @@ CREATE TABLE public.plumber (
 
 
 --
+-- Name: messages; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.messages (
+    message_id uuid DEFAULT public.uuid_generate_v4() NOT NULL,
+    project_id uuid,
+    sender_id uuid,
+    receiver_id uuid,
+    text text NOT NULL,
+    is_read boolean DEFAULT false,
+    created_at timestamp with time zone DEFAULT CURRENT_TIMESTAMP
+);
+
+
+--
+-- Name: siteprogress; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.siteprogress (
+    progress_id uuid DEFAULT public.uuid_generate_v4() NOT NULL,
+    project_id uuid,
+    updated_by uuid,
+    note text,
+    image_path text,
+    alert_type character varying(50),
+    created_at timestamp with time zone DEFAULT CURRENT_TIMESTAMP
+);
+
+
+--
 -- Name: projectphases; Type: TABLE; Schema: public; Owner: -
 --
 

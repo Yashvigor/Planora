@@ -9,9 +9,36 @@ import {
 
 const StructuralDashboard = () => {
     const { currentUser } = useMockApp();
+    const [projects, setProjects] = useState([]);
+    const [activeProject, setActiveProject] = useState(null);
+    const [loading, setLoading] = useState(true);
     const [activeTab, setActiveTab] = useState('foundation');
 
-    // Mock Data
+    const fetchData = useCallback(async () => {
+        const uid = currentUser?.user_id || currentUser?.id;
+        if (!uid) return;
+        setLoading(true);
+        try {
+            const res = await fetch(`${import.meta.env.VITE_API_URL}/api/professionals/${uid}/projects`);
+            if (res.ok) {
+                const data = await res.json();
+                setProjects(data);
+                if (data.length > 0 && !activeProject) {
+                    setActiveProject(data[0]);
+                }
+            }
+        } catch (err) {
+            console.error('Error fetching structural engineer projects:', err);
+        } finally {
+            setLoading(false);
+        }
+    }, [currentUser, activeProject]);
+
+    useEffect(() => {
+        fetchData();
+    }, [fetchData]);
+
+    // Mock Data (Fallback for specific structural details not yet in DB)
     const designStatus = [
         { title: 'Foundation Design', status: 'Approved', progress: 100 },
         { title: 'Column–Beam–Slab', status: 'In Progress', progress: 65 },
@@ -81,7 +108,7 @@ const StructuralDashboard = () => {
                             </div>
                             <div className="px-4 py-2 bg-[#F9F7F2] rounded-xl border border-[#E3DACD] flex items-center space-x-2 text-[#5D4037] shadow-sm">
                                 <Building2 size={16} className="text-[#E68A2E]" />
-                                <span>Selected: <strong className="text-[#2A1F1D] ml-1">Skyline Heights</strong></span>
+                                <span>Selected: <strong className="text-[#2A1F1D] ml-1">{activeProject?.name || 'Skyline Heights'}</strong></span>
                             </div>
                             <div className="px-4 py-2 bg-[#F9F7F2] rounded-xl border border-[#E3DACD] flex items-center space-x-2 text-[#5D4037] shadow-sm">
                                 <Grid size={16} className="text-[#8C7B70]" />

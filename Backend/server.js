@@ -942,15 +942,124 @@ app.delete('/api/projects/:id', async (req, res) => {
     }
 });
 
-// Get User Projects
-app.get('/api/projects/user/:userId', async (req, res) => {
-    const { userId } = req.params;
+// Get Single Project
+app.get('/api/projects/:id', async (req, res) => {
+    const { id } = req.params;
     try {
-        const result = await pool.query('SELECT * FROM Projects WHERE owner_id = $1 ORDER BY created_at DESC', [userId]);
+        const result = await pool.query('SELECT * FROM Projects WHERE project_id = $1', [id]);
+        if (result.rows.length === 0) return res.status(404).json({ error: 'Project not found' });
+        res.json(result.rows[0]);
+    } catch (err) {
+        console.error('Error fetching project:', err);
+        res.status(500).json({ error: 'Failed to fetch project' });
+    }
+});
+
+// --- Messaging Routes ---
+
+app.get('/api/messages/:projectId', async (req, res) => {
+    const { projectId } = req.params;
+    try {
+        const result = await pool.query(`
+            SELECT m.*, s.name as sender_name, r.name as receiver_name 
+            FROM Messages m
+            LEFT JOIN Users s ON m.sender_id = s.user_id
+            LEFT JOIN Users r ON m.receiver_id = r.user_id
+            WHERE m.project_id = $1
+            ORDER BY m.created_at ASC
+        `, [projectId]);
         res.json(result.rows);
     } catch (err) {
-        console.error('Error fetching projects:', err);
-        res.status(500).json({ error: 'Failed to fetch projects' });
+        console.error('Error fetching messages:', err);
+        res.status(500).json({ error: 'Failed to fetch messages' });
+    }
+});
+
+app.post('/api/messages', async (req, res) => {
+    const { project_id, sender_id, receiver_id, text } = req.body;
+    try {
+        const result = await pool.query(
+            'INSERT INTO Messages (project_id, sender_id, receiver_id, text) VALUES ($1, $2, $3, $4) RETURNING *',
+            [project_id, sender_id, receiver_id, text]
+        );
+        res.status(201).json(result.rows[0]);
+    } catch (err) {
+        console.error('Error sending message:', err);
+        res.status(500).json({ error: 'Failed to send message' });
+    }
+});
+
+// --- Site Progress Routes ---
+
+app.get('/api/site-progress/:projectId', async (req, res) => {
+    const { projectId } = req.params;
+    try {
+        const result = await pool.query('SELECT * FROM SiteProgress WHERE project_id = $1 ORDER BY created_at DESC', [projectId]);
+        res.json(result.rows);
+    } catch (err) {
+        console.error('Error fetching site progress:', err);
+        res.status(500).json({ error: 'Failed to fetch progress updates' });
+    }
+});
+
+app.post('/api/site-progress', upload.single('image'), async (req, res) => {
+    const { project_id, updated_by, note, alert_type } = req.body;
+    let image_path = req.file ? req.file.path.replace(/\\/g, "/") : null;
+
+    try {
+        const result = await pool.query(
+            'INSERT INTO SiteProgress (project_id, updated_by, note, image_path, alert_type) VALUES ($1, $2, $3, $4, $5) RETURNING *',
+            [project_id, updated_by, note, image_path, alert_type]
+        );
+        logActivity(updated_by, project_id, 'Site Progress Updated', note);
+        res.status(201).json(result.rows[0]);
+    } catch (err) {
+        console.error('Error adding site progress:', err);
+        res.status(500).json({ error: 'Failed to add progress update' });
+    }
+});
+
+// --- Project Phase Routes ---
+
+app.get('/api/projects/:projectId/phases', async (req, res) => {
+    const { projectId } = req.params;
+    try {
+        const result = await pool.query('SELECT * FROM ProjectPhases WHERE project_id = $1 ORDER BY sequence_order ASC', [projectId]);
+        res.json(result.rows);
+    } catch (err) {
+        console.error('Error fetching project phases:', err);
+        res.status(500).json({ error: 'Failed to fetch project phases' });
+    }
+});
+
+app.post('/api/projects/:projectId/phases', async (req, res) => {
+    const { projectId } = req.params;
+    const { title, status, start_date, end_date, sequence_order } = req.body;
+    try {
+        const result = await pool.query(
+            'INSERT INTO ProjectPhases (project_id, title, status, start_date, end_date, sequence_order) VALUES ($1, $2, $3, $4, $5, $6) RETURNING *',
+            [projectId, title, status || 'Pending', start_date, end_date, sequence_order]
+        );
+        res.status(201).json(result.rows[0]);
+    } catch (err) {
+        console.error('Error creating project phase:', err);
+        res.status(500).json({ error: 'Failed to create project phase' });
+    }
+});
+
+app.patch('/api/phases/:phaseId', async (req, res) => {
+    const { phaseId } = req.params;
+    const { status, title, sequence_order } = req.body;
+    try {
+        const result = await pool.query(
+            'UPDATE ProjectPhases SET status = COALESCE($1, status), title = COALESCE($2, title), sequence_order = COALESCE($3, sequence_order) WHERE phase_id = $4 RETURNING *',
+            [status, title, sequence_order, phaseId]
+        );
+        if (result.rows.length === 0) return res.status(404).json({ error: 'Phase not found' });
+        res.json(result.rows[0]);
+    } catch (err) {
+        console.error('Error updating project phase:', err);
+        res.status(500).json({ error: 'Failed to update project phase' });
     }
 });
 

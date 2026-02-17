@@ -34,7 +34,7 @@ const SectionHeader = ({ title, action }) => (
 );
 
 const ArchitectDashboard = () => {
-    const { currentUser } = useMockApp();
+    const { currentUser, messages, siteProgress, sendMessage, addSiteProgress } = useMockApp();
     const [projects, setProjects] = useState([]);
     const [activeProject, setActiveProject] = useState(null);
     const [loading, setLoading] = useState(true);
@@ -64,7 +64,48 @@ const ArchitectDashboard = () => {
         ]
     };
 
-    const [data, setData] = useState(initialData);
+    const [data, setData] = useState({
+        designStatus: [],
+        drawings: [],
+        coordination: [],
+        siteQueries: [],
+        siteProgress: []
+    });
+
+    const fetchProjectDetails = useCallback(async (projectId) => {
+        try {
+            // Fetch Phases from Backend
+            const phasesRes = await fetch(`${import.meta.env.VITE_API_URL}/api/projects/${projectId}/phases`);
+            const phases = phasesRes.ok ? await phasesRes.json() : [];
+
+            // Filter Local Context Data
+            const projMessages = messages.filter(m => m.projectId === projectId).map(m => ({
+                id: m.id,
+                type: 'Update',
+                message: m.text,
+                from: m.sender || 'User',
+                date: m.time,
+                priority: 'Normal'
+            }));
+
+            const projProgress = siteProgress.filter(p => p.projectId === projectId).map(p => ({
+                id: p.id,
+                img: p.image, // Base64 or URL
+                note: p.note,
+                date: p.date,
+                alert: p.alertType
+            }));
+
+            setData(prev => ({
+                ...prev,
+                designStatus: phases.length > 0 ? phases : initialData.designStatus,
+                coordination: projMessages.length > 0 ? projMessages : [], // Use filtered local messages
+                siteProgress: projProgress.length > 0 ? projProgress : []   // Use filtered local progress
+            }));
+        } catch (err) {
+            console.error('Error fetching project details:', err);
+        }
+    }, [messages, siteProgress]);
 
     const fetchProfessionalProjects = useCallback(async () => {
         if (!currentUser?.user_id && !currentUser?.id) return;
@@ -89,6 +130,12 @@ const ArchitectDashboard = () => {
     useEffect(() => {
         fetchProfessionalProjects();
     }, [fetchProfessionalProjects]);
+
+    useEffect(() => {
+        if (activeProject?.project_id) {
+            fetchProjectDetails(activeProject.project_id);
+        }
+    }, [activeProject, fetchProjectDetails]);
 
     return (
         <div className="max-w-7xl mx-auto space-y-8 animate-fade-in font-sans pb-20 text-[#2A1F1D]">

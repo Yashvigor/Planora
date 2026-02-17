@@ -12,10 +12,11 @@ const Payments = () => {
     const [loading, setLoading] = useState(true);
 
     const fetchPayments = useCallback(async () => {
-        if (!currentUser?.id) return;
+        const uid = currentUser.user_id || currentUser.id;
+        if (!uid) return;
         setLoading(true);
         try {
-            const res = await fetch(`${import.meta.env.VITE_API_URL}/api/payments/user/${currentUser.id}`);
+            const res = await fetch(`${import.meta.env.VITE_API_URL}/api/payments/user/${uid}`);
             const data = await res.json();
             setPayments(data);
         } catch (err) {
@@ -26,9 +27,10 @@ const Payments = () => {
     }, [currentUser]);
 
     const fetchProjects = useCallback(async () => {
-        if (!currentUser?.id) return;
+        const uid = currentUser.user_id || currentUser.id;
+        if (!uid) return;
         try {
-            const res = await fetch(`${import.meta.env.VITE_API_URL}/api/projects/user/${currentUser.id}`);
+            const res = await fetch(`${import.meta.env.VITE_API_URL}/api/projects/user/${uid}`);
             const data = await res.json();
             setRealProjects(data);
         } catch (err) {

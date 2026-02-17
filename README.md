@@ -18,6 +18,4 @@
    ```
    *This starts both the Frontend (localhost:5173) and Backend (localhost:5000).*
 
----
-
 © 2026 Planora Technologies

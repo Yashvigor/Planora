@@ -1,7 +1,8 @@
 import React, { useState, useCallback } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useMockApp } from '../hooks/useMockApp';
-import { Eye, EyeOff, ArrowRight, User, Check } from 'lucide-react';
+import { Eye, EyeOff, Mail, Lock, User, MapPin, Briefcase, Camera, Upload, CheckCircle, ChevronRight, ArrowLeft, ArrowRight, Loader2, Check } from 'lucide-react';
+import PlanoraLogo from '../components/common/PlanoraLogo';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useGoogleLogin } from '@react-oauth/google';
 import Onboarding from '../components/dashboard/Common/Onboarding';
@@ -335,10 +336,13 @@ const Auth = () => {
 
                         <div className="relative z-10 space-y-12">
                             <div className="flex items-center gap-3">
-                                <div className="w-12 h-12 bg-white/40 backdrop-blur-md p-2.5 rounded-xl border border-white/50 shadow-lg">
-                                    <img src="/assets/planora_icon_new.png" alt="Logo" className="w-full h-full object-contain" />
-                                </div>
-                                <span className="font-serif font-bold text-3xl tracking-tight text-[#E3DACD]">Planora</span>
+                                <PlanoraLogo
+                                    className="w-14 h-14"
+                                    iconOnly={true}
+                                    textColor="#E3DACD"
+                                    accentColor="#A65D4D"
+                                />
+                                <span className="font-serif font-bold text-3xl tracking-tight text-[#E3DACD]">Plan<span className="text-[#A65D4D]">ora</span></span>
                             </div>
 
                             <div className="space-y-6">
