@@ -1,9 +1,10 @@
-import React, { useState } from 'react';
-import { useMockApp } from '../../../hooks/useMockApp';
+import React, { useState, useEffect } from 'react';
+// import { useMockApp } from '../../../hooks/useMockApp';
 import { MapPin, Upload, Plus } from 'lucide-react';
 
 const MyLands = () => {
-    const { lands, addLand } = useMockApp();
+    const [lands, setLands] = useState([]);
+    const [loading, setLoading] = useState(true);
     const [isAdding, setIsAdding] = useState(false);
     const [formData, setFormData] = useState({
         name: '',
@@ -12,11 +13,63 @@ const MyLands = () => {
         type: 'Residential',
     });
 
-    const handleSubmit = (e) => {
+    const storedUser = localStorage.getItem('planora_current_user') || localStorage.getItem('user');
+    const userData = storedUser ? JSON.parse(storedUser) : null;
+    const userId = userData ? (userData.user_id || userData.id) : null;
+
+    useEffect(() => {
+        const fetchLands = async () => {
+            if (!userId) return;
+            try {
+                const res = await fetch(`${import.meta.env.VITE_API_URL}/api/lands/user/${userId}`);
+                if (res.ok) {
+                    const data = await res.json();
+                    setLands(data);
+                }
+            } catch (err) {
+                console.error("Error fetching lands:", err);
+            } finally {
+                setLoading(false);
+            }
+        };
+        fetchLands();
+    }, [userId]);
+
+    const handleSubmit = async (e) => {
         e.preventDefault();
-        addLand(formData);
-        setIsAdding(false);
-        setFormData({ name: '', location: '', area: '', type: 'Residential' });
+        if (!userId) {
+            alert("User not found. Please log in.");
+            return;
+        }
+
+        try {
+            const res = await fetch(`${import.meta.env.VITE_API_URL}/api/lands`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    owner_id: userId,
+                    name: formData.name,
+                    location: formData.location,
+                    area: formData.area,
+                    type: formData.type,
+                    // Optional: Geocode logic could go here or in backend
+                    latitude: null,
+                    longitude: null
+                }),
+            });
+
+            if (res.ok) {
+                const newLand = await res.json();
+                setLands([newLand, ...lands]);
+                setIsAdding(false);
+                setFormData({ name: '', location: '', area: '', type: 'Residential' });
+            } else {
+                alert("Failed to add land.");
+            }
+        } catch (err) {
+            console.error("Error adding land:", err);
+            alert("Error adding land.");
+        }
     };
 
     return (
@@ -110,7 +163,7 @@ const MyLands = () => {
             {/* Lands Grid */}
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                 {lands.map(land => (
-                    <div key={land.id} className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden hover:shadow-md transition-shadow group">
+                    <div key={land.land_id || land.id} className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden hover:shadow-md transition-shadow group">
                         <div className="h-40 bg-gray-200 relative">
                             {/* Mock Map Placeholder */}
                             <img
@@ -126,7 +179,7 @@ const MyLands = () => {
                             <h3 className="font-bold text-lg text-gray-900">{land.name}</h3>
                             <div className="flex items-center text-gray-500 mt-2 space-x-4 text-sm">
                                 <span className="flex items-center"><MapPin size={14} className="mr-1" /> {land.location}</span>
-                                <span>{land.area}</span>
+                                <span>{land.area} sq.ft</span>
                             </div>
 
                             <div className="mt-4 pt-4 border-t border-gray-100 flex justify-between items-center">
@@ -137,6 +190,14 @@ const MyLands = () => {
                     </div>
                 ))}
             </div>
+
+            {!loading && lands.length === 0 && (
+                <div className="text-center py-16 bg-white rounded-xl border border-dashed border-gray-300 col-span-full">
+                    <MapPin className="w-12 h-12 text-gray-300 mx-auto mb-4" />
+                    <h3 className="text-lg font-medium text-gray-900">No lands registered</h3>
+                    <p className="text-gray-500 mb-6">Register your land to start a project.</p>
+                </div>
+            )}
         </div>
     );
 };

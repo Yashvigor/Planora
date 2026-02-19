@@ -955,6 +955,62 @@ app.get('/api/projects/:id', async (req, res) => {
     }
 });
 
+// Get User Projects (Owner)
+app.get('/api/projects/user/:userId', async (req, res) => {
+    const { userId } = req.params;
+    try {
+        const result = await pool.query('SELECT * FROM Projects WHERE owner_id = $1 ORDER BY created_at DESC', [userId]);
+        res.json(result.rows);
+    } catch (err) {
+        console.error('Error fetching user projects:', err);
+        res.status(500).json({ error: 'Failed to fetch projects' });
+    }
+});
+
+// --- Land Routes ---
+
+// Add New Land
+app.post('/api/lands', async (req, res) => {
+    const { owner_id, name, location, area, type, latitude, longitude } = req.body;
+    try {
+        const result = await pool.query(
+            'INSERT INTO Lands (owner_id, name, location, area, type, latitude, longitude) VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING *',
+            [owner_id, name, location, area, type, latitude, longitude]
+        );
+        const land = result.rows[0];
+        logActivity(owner_id, null, 'Land Registered', `Registered land: ${name}`);
+        res.status(201).json(land);
+    } catch (err) {
+        console.error('Error registering land:', err);
+        res.status(500).json({ error: 'Failed to register land' });
+    }
+});
+
+// Get User Lands
+app.get('/api/lands/user/:userId', async (req, res) => {
+    const { userId } = req.params;
+    try {
+        const result = await pool.query('SELECT * FROM Lands WHERE owner_id = $1 ORDER BY created_at DESC', [userId]);
+        res.json(result.rows);
+    } catch (err) {
+        console.error('Error fetching user lands:', err);
+        res.status(500).json({ error: 'Failed to fetch lands' });
+    }
+});
+
+// Delete Land
+app.delete('/api/lands/:id', async (req, res) => {
+    const { id } = req.params;
+    try {
+        const result = await pool.query('DELETE FROM Lands WHERE land_id = $1 RETURNING *', [id]);
+        if (result.rows.length === 0) return res.status(404).json({ error: 'Land not found' });
+        res.json({ message: 'Land deleted successfully' });
+    } catch (err) {
+        console.error('Error deleting land:', err);
+        res.status(500).json({ error: 'Failed to delete land' });
+    }
+});
+
 // --- Messaging Routes ---
 
 app.get('/api/messages/:projectId', async (req, res) => {

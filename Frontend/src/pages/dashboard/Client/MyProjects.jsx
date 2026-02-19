@@ -1,10 +1,14 @@
-import React, { useState } from 'react';
-import { useMockApp } from '../../../hooks/useMockApp';
-import { Calendar, Briefcase, ChevronRight } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+// import { useMockApp } from '../../../hooks/useMockApp';
+import { Calendar, Briefcase, ChevronRight, Check } from 'lucide-react';
 import { Link } from 'react-router-dom';
 
 const MyProjects = () => {
-    const { projects, lands, addProject } = useMockApp();
+    // const { projects, lands, addProject } = useMockApp(); // Removed
+    const [projects, setProjects] = useState([]);
+    const [lands, setLands] = useState([]);
+    const [loading, setLoading] = useState(true);
+
     const [view, setView] = useState('list'); // 'list' or 'create'
     const [step, setStep] = useState(1);
     const [formData, setFormData] = useState({
@@ -15,11 +19,75 @@ const MyProjects = () => {
         description: ''
     });
 
-    const handleCreateSubmit = () => {
-        addProject(formData);
-        setView('list');
-        setStep(1);
-        setFormData({ name: '', landId: '', type: 'House', budget: '', description: '' });
+    const storedUser = localStorage.getItem('planora_current_user') || localStorage.getItem('user');
+    const userData = storedUser ? JSON.parse(storedUser) : null;
+    const userId = userData ? (userData.user_id || userData.id) : null;
+
+    // Fetch Data
+    useEffect(() => {
+        const fetchData = async () => {
+            if (!userId) return;
+            try {
+                const [projectsRes, landsRes] = await Promise.all([
+                    fetch(`${import.meta.env.VITE_API_URL}/api/projects/user/${userId}`),
+                    fetch(`${import.meta.env.VITE_API_URL}/api/lands/user/${userId}`)
+                ]);
+
+                if (projectsRes.ok) {
+                    const pData = await projectsRes.json();
+                    setProjects(pData);
+                }
+                if (landsRes.ok) {
+                    const lData = await landsRes.json();
+                    setLands(lData);
+                }
+            } catch (err) {
+                console.error("Error fetching data:", err);
+            } finally {
+                setLoading(false);
+            }
+        };
+        fetchData();
+    }, [userId]);
+
+    const handleCreateSubmit = async () => {
+        if (!userId) {
+            alert("Please log in.");
+            return;
+        }
+
+        // Find selected land to get location
+        const selectedLand = lands.find(l => l.land_id === formData.landId || l.id === formData.landId);
+        const locationStr = selectedLand ? `${selectedLand.name}, ${selectedLand.location}` : "Unknown Location";
+
+        try {
+            const res = await fetch(`${import.meta.env.VITE_API_URL}/api/projects`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    owner_id: userId,
+                    name: formData.name,
+                    type: formData.type,
+                    description: formData.description,
+                    budget: formData.budget,
+                    location: locationStr
+                }),
+            });
+
+            if (res.ok) {
+                const newProject = await res.json();
+                setProjects([newProject, ...projects]);
+                setView('list');
+                setStep(1);
+                setFormData({ name: '', landId: '', type: 'House', budget: '', description: '' });
+                alert("Project created successfully!");
+            } else {
+                alert("Failed to create project.");
+            }
+        } catch (err) {
+            console.error("Error creating project:", err);
+            alert("Error creating project.");
+        }
     };
 
     if (view === 'create') {
@@ -56,7 +124,11 @@ const MyProjects = () => {
                                         onChange={e => setFormData({ ...formData, landId: e.target.value })}
                                     >
                                         <option value="">-- Choose a land --</option>
-                                        {lands.map(l => <option key={l.id} value={l.id}>{l.name} ({l.location})</option>)}
+                                        {lands.map(l => (
+                                            <option key={l.land_id || l.id} value={l.land_id || l.id}>
+                                                {l.name} ({l.location})
+                                            </option>
+                                        ))}
                                     </select>
                                 </div>
                                 <div className="flex justify-end">
@@ -124,6 +196,93 @@ const MyProjects = () => {
         );
     }
 
+    // Fetch Team for a project
+    const fetchTeam = async (projectId) => {
+        try {
+            const res = await fetch(`${import.meta.env.VITE_API_URL}/api/projects/${projectId}/team`);
+            if (res.ok) {
+                const team = await res.json();
+                return team;
+            }
+        } catch (err) {
+            console.error("Error fetching team:", err);
+        }
+        return [];
+    };
+
+    // Component to display project team
+    const ProjectCard = ({ project }) => {
+        const [team, setTeam] = useState([]);
+        const [showTeam, setShowTeam] = useState(false);
+
+        useEffect(() => {
+            if (showTeam && team.length === 0) {
+                fetchTeam(project.project_id || project.id).then(setTeam);
+            }
+        }, [showTeam, project]);
+
+        return (
+            <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6 hover:shadow-md transition-all">
+                <div className="flex flex-col md:flex-row md:items-center justify-between">
+                    <div className="mb-4 md:mb-0">
+                        <h3 className="text-xl font-bold text-gray-900">{project.name}</h3>
+                        <div className="flex items-center text-gray-500 mt-2 space-x-6 text-sm">
+                            <span className="flex items-center">
+                                <Calendar size={14} className="mr-1" />
+                                {project.created_at ? new Date(project.created_at).toLocaleDateString() : 'Date N/A'}
+                            </span>
+                            <span className="px-2 py-0.5 bg-gray-100 rounded text-xs uppercase font-semibold tracking-wide">{project.type}</span>
+                        </div>
+                        <p className="text-gray-600 mt-2 line-clamp-1">{project.description}</p>
+                    </div>
+
+                    <div className="flex items-center space-x-3">
+                        <div className="text-right mr-4 hidden md:block">
+                            <span className="block text-xs text-gray-400 uppercase">Status</span>
+                            <span className="font-semibold text-blue-600">{project.status}</span>
+                        </div>
+                        <button
+                            onClick={() => setShowTeam(!showTeam)}
+                            className="px-4 py-2 border border-gray-200 text-gray-600 rounded-lg hover:bg-gray-50"
+                        >
+                            {showTeam ? 'Hide Team' : 'View Team'}
+                        </button>
+                    </div>
+                </div>
+
+                {/* Team Section */}
+                {showTeam && (
+                    <div className="mt-6 pt-4 border-t border-gray-100 animate-in fade-in slide-in-from-top-2">
+                        <h4 className="text-sm font-bold text-gray-700 mb-3 uppercase tracking-wider">Assigned Professionals</h4>
+
+                        {team.length > 0 ? (
+                            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
+                                {team.map(member => (
+                                    <div key={member.user_id} className="flex items-center p-3 bg-gray-50 rounded-lg border border-gray-100">
+                                        <div className="w-8 h-8 rounded-full bg-blue-100 text-blue-600 flex items-center justify-center font-bold text-xs mr-3">
+                                            {member.name?.[0]}
+                                        </div>
+                                        <div>
+                                            <p className="text-sm font-semibold text-gray-900">{member.name}</p>
+                                            <p className="text-xs text-gray-500">{member.assigned_role}</p>
+                                        </div>
+                                    </div>
+                                ))}
+                            </div>
+                        ) : (
+                            <div className="text-center py-4 bg-gray-50 rounded-lg border border-dashed border-gray-200">
+                                <p className="text-sm text-gray-500">No professionals assigned yet.</p>
+                                <Link to="/dashboard/find-pros" className="text-blue-600 text-xs font-semibold hover:underline mt-1 block">
+                                    Find Professionals
+                                </Link>
+                            </div>
+                        )}
+                    </div>
+                )}
+            </div>
+        );
+    };
+
     return (
         <div className="space-y-6">
             <div className="flex items-center justify-between">
@@ -138,27 +297,10 @@ const MyProjects = () => {
 
             <div className="grid gap-6">
                 {projects.map(project => (
-                    <div key={project.id} className="bg-white rounded-xl shadow-sm border border-gray-100 p-6 flex flex-col md:flex-row md:items-center justify-between hover:shadow-md transition-all">
-                        <div className="mb-4 md:mb-0">
-                            <h3 className="text-xl font-bold text-gray-900">{project.name}</h3>
-                            <div className="flex items-center text-gray-500 mt-2 space-x-6 text-sm">
-                                <span className="flex items-center"><Calendar size={14} className="mr-1" /> {new Date(project.id).toLocaleDateString()}</span>
-                                <span className="px-2 py-0.5 bg-gray-100 rounded text-xs uppercase font-semibold tracking-wide">{project.type}</span>
-                            </div>
-                            <p className="text-gray-600 mt-2 line-clamp-1">{project.description}</p>
-                        </div>
-
-                        <div className="flex items-center space-x-3">
-                            <div className="text-right mr-4 hidden md:block">
-                                <span className="block text-xs text-gray-400 uppercase">Status</span>
-                                <span className="font-semibold text-blue-600">{project.status}</span>
-                            </div>
-                            <button className="px-4 py-2 border border-gray-200 text-gray-600 rounded-lg hover:bg-gray-50">Manage</button>
-                        </div>
-                    </div>
+                    <ProjectCard key={project.project_id || project.id} project={project} />
                 ))}
 
-                {projects.length === 0 && (
+                {!loading && projects.length === 0 && (
                     <div className="text-center py-16 bg-white rounded-xl border border-dashed border-gray-300">
                         <Briefcase className="w-12 h-12 text-gray-300 mx-auto mb-4" />
                         <h3 className="text-lg font-medium text-gray-900">No projects yet</h3>

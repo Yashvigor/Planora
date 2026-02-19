@@ -108,7 +108,7 @@ const AppRoutes = () => {
                 <Route path="project/:id" element={<ProjectWorkspace />} />
 
                 {/* Role Specific Routes */}
-                {currentUser?.role === 'land_owner' && (
+                {(currentUser?.role === 'land_owner' || currentUser?.role === 'contractor') && (
                     <>
                         <Route path="lands" element={<MyLands />} />
                         <Route path="projects" element={<MyProjects />} />

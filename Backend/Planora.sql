@@ -187,6 +187,25 @@ CREATE TABLE public.interiordesigner (
 
 
 --
+-- Name: lands; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.lands (
+    land_id uuid DEFAULT public.uuid_generate_v4() NOT NULL,
+    owner_id uuid,
+    name character varying(200) NOT NULL,
+    location text NOT NULL,
+    area numeric(10,2),
+    type character varying(50),
+    latitude numeric(10,8),
+    longitude numeric(11,8),
+    documents_path text,
+    status character varying(50) DEFAULT 'Available'::character varying,
+    created_at timestamp with time zone DEFAULT CURRENT_TIMESTAMP
+);
+
+
+--
 -- Name: landowner; Type: TABLE; Schema: public; Owner: -
 --
 

@@ -35,8 +35,8 @@ const Sidebar = ({ isOpen, onClose }) => {
         let roleSpecificSections = [];
         const role = currentUser?.role;
 
-        // "Verifications" is only for Admin and Land Owner
-        if (['admin', 'land_owner'].includes(role)) {
+        // "Verifications" is only for Admin
+        if (['admin'].includes(role)) {
             commonSections.splice(1, 0, { icon: Shield, label: 'Verifications', path: '/dashboard/verifications' });
         }
 
@@ -76,6 +76,7 @@ const Sidebar = ({ isOpen, onClose }) => {
                 ];
                 break;
 
+            case 'contractor':
             case 'mason':
             case 'electrician':
             case 'plumber':
@@ -87,6 +88,9 @@ const Sidebar = ({ isOpen, onClose }) => {
                     { icon: CheckSquare, label: 'Tasks', path: '/dashboard/tasks' },
                     { icon: Camera, label: 'Photo Reports', path: '/dashboard/reports' },
                 ];
+                if (role === 'contractor') {
+                    roleSpecificSections.push({ icon: Users, label: 'Find Professionals', path: '/dashboard/find-pros' });
+                }
                 break;
 
             default:
