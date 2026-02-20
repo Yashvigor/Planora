@@ -749,24 +749,27 @@ app.get('/api/professionals/nearby', async (req, res) => {
         // 6371 is Earth radius in km
         const query = `
             SELECT 
-                user_id, name, email, category, sub_category, address, city, state, experience_years, specialization, bio, resume_path, portfolio_url, latitude, longitude,
+                u.user_id, u.name, u.email, u.category, u.sub_category, u.address, u.city, u.state, u.experience_years, u.specialization, u.bio, u.resume_path, u.portfolio_url, u.latitude, u.longitude,
+                COALESCE(ROUND(AVG(r.rating), 1), 0) as rating,
                 (
                     6371 * acos(
-                        cos(radians($1)) * cos(radians(latitude)) * cos(radians(longitude) - radians($2)) + 
-                        sin(radians($1)) * sin(radians(latitude))
+                        cos(radians($1)) * cos(radians(u.latitude)) * cos(radians(u.longitude) - radians($2)) + 
+                        sin(radians($1)) * sin(radians(u.latitude))
                     )
                 ) AS distance
-            FROM Users
+            FROM Users u
+            LEFT JOIN ratings r ON u.user_id = r.rated_user_id
             WHERE 
-                latitude IS NOT NULL AND longitude IS NOT NULL
-                AND ($3::text = 'All' OR category = $3)
-                AND ($4::text = 'All' OR sub_category = $4)
+                u.latitude IS NOT NULL AND u.longitude IS NOT NULL
+                AND ($3::text = 'All' OR u.category = $3)
+                AND ($4::text = 'All' OR u.sub_category = $4)
                 AND (
                     6371 * acos(
-                        cos(radians($1)) * cos(radians(latitude)) * cos(radians(longitude) - radians($2)) + 
-                        sin(radians($1)) * sin(radians(latitude))
+                        cos(radians($1)) * cos(radians(u.latitude)) * cos(radians(u.longitude) - radians($2)) + 
+                        sin(radians($1)) * sin(radians(u.latitude))
                     )
                 ) < $5
+            GROUP BY u.user_id
             ORDER BY distance ASC
             LIMIT 50;
         `;
@@ -787,8 +790,15 @@ app.get('/api/professionals/nearby', async (req, res) => {
 app.get('/api/professionals/:id/public', async (req, res) => {
     const { id } = req.params;
     try {
+        // Left join with ratings to calculate average rating
         const result = await pool.query(
-            'SELECT user_id, name, email, category, sub_category, bio, resume_path, portfolio_url, experience_years, specialization, latitude, longitude, address FROM Users WHERE user_id = $1',
+            `SELECT u.user_id, u.name, u.email, u.category, u.sub_category, u.bio, u.resume_path, 
+                    u.portfolio_url, u.experience_years, u.specialization, u.latitude, u.longitude, u.address,
+                    COALESCE(ROUND(AVG(r.rating), 1), 0) as rating
+             FROM Users u
+             LEFT JOIN ratings r ON u.user_id = r.rated_user_id
+             WHERE u.user_id = $1
+             GROUP BY u.user_id`,
             [id]
         );
         if (result.rows.length === 0) return res.status(404).json({ error: 'Professional not found' });
@@ -1326,6 +1336,83 @@ app.get('/api/professionals/:userId/projects', async (req, res) => {
     }
 });
 
+// Update Project Status (e.g., mark as Completed)
+app.put('/api/projects/:id/status', async (req, res) => {
+    const { id } = req.params;
+    const { status } = req.body;
+
+    if (!['Planning', 'Construction', 'Finishing', 'Completed', 'On Hold'].includes(status)) {
+        return res.status(400).json({ error: 'Invalid project status' });
+    }
+
+    try {
+        const result = await pool.query(
+            'UPDATE Projects SET status = $1 WHERE project_id = $2 RETURNING *',
+            [status, id]
+        );
+
+        if (result.rows.length === 0) {
+            return res.status(404).json({ error: 'Project not found' });
+        }
+
+        const project = result.rows[0];
+        // Log the activity. We'll use the owner's ID for logging if available, or just null
+        await logActivity(project.owner_id, id, 'Project Status Update', `Project "${project.name}" status changed to ${status}`);
+
+        res.json({ message: `Project status updated to ${status}`, project });
+    } catch (err) {
+        console.error('Error updating project status:', err);
+        res.status(500).json({ error: 'Failed to update project status' });
+    }
+});
+
+// Submit Ratings for Team Members
+app.post('/api/projects/:id/rate', async (req, res) => {
+    const { id } = req.params;
+    const { rater_id, ratings } = req.body; // ratings should be an array of { rated_user_id, rating }
+
+    if (!rater_id || !Array.isArray(ratings) || ratings.length === 0) {
+        return res.status(400).json({ error: 'Rater ID and an array of ratings are required' });
+    }
+
+    let client;
+    try {
+        client = await pool.connect();
+        await client.query('BEGIN');
+
+        for (const r of ratings) {
+            const { rated_user_id, rating } = r;
+            if (!rated_user_id || !rating || rating < 1 || rating > 5) {
+                // Skip invalid ratings or throw error. We'll throw an error to ensure data integrity
+                throw new Error('Invalid rating data provided for a user');
+            }
+
+            // Insert or update rating (Assuming one rating per rater per rated user per project)
+            await client.query(
+                `INSERT INTO ratings (project_id, rater_id, rated_user_id, rating) 
+                 VALUES ($1, $2, $3, $4)`,
+                [id, rater_id, rated_user_id, rating]
+            );
+        }
+
+        await client.query('COMMIT');
+
+        await logActivity(rater_id, id, 'Team Rated', `Submitted ratings for project team`);
+
+        res.status(201).json({ message: 'Ratings submitted successfully' });
+    } catch (err) {
+        if (client) {
+            await client.query('ROLLBACK');
+        }
+        console.error('Error submitting ratings:', err);
+        res.status(500).json({ error: err.message || 'Failed to submit ratings' });
+    } finally {
+        if (client) {
+            client.release();
+        }
+    }
+});
+
 app.listen(port, () => {
-    console.log(`Server running on port ${port} `);
+    console.log(`Server running on port ${port}`);
 });

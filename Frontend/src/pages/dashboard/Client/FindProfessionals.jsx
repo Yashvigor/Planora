@@ -10,6 +10,7 @@ const FindProfessionals = () => {
     const [userLocation, setUserLocation] = useState(null);
     const [selectedPro, setSelectedPro] = useState(null);
     const [isProfileOpen, setIsProfileOpen] = useState(false);
+    const [currentUserCategory, setCurrentUserCategory] = useState('');
 
     // New state for projects and assignments
     const [projects, setProjects] = useState([]);
@@ -36,6 +37,11 @@ const FindProfessionals = () => {
                 const storedUser = localStorage.getItem('planora_current_user') || localStorage.getItem('user');
                 const userData = storedUser ? JSON.parse(storedUser) : null;
                 const userId = userData ? (userData.user_id || userData.id) : null;
+
+                if (userData) {
+                    const category = (userData.category || userData.user_type || '').toUpperCase();
+                    setCurrentUserCategory(category);
+                }
 
                 // Fetch Location
                 if (navigator.geolocation) {
@@ -177,6 +183,17 @@ const FindProfessionals = () => {
         // Exclude if already assigned to selected project
         if (assignedUserIds.has(pro.user_id)) return false;
 
+        const proCat = (pro.category || '').toUpperCase();
+        const proSubCat = (pro.sub_category || '').toUpperCase();
+
+        // Hide Land Owners from discovery
+        if (proCat === 'LAND OWNER' || proCat === 'LANDOWNER') return false;
+
+        // Hide Contractors if current user is Contractor
+        if (currentUserCategory === 'CONTRACTOR' && (proCat === 'CONTRACTOR' || proSubCat === 'CONTRACTOR')) {
+            return false;
+        }
+
         if (!searchQuery) return true;
         const query = searchQuery.toLowerCase();
         return (
@@ -315,10 +332,16 @@ const FindProfessionals = () => {
                                         </div>
 
                                         <div className="flex items-center justify-between text-sm">
-                                            <div className="flex items-center gap-1.5 bg-yellow-50 text-yellow-700 px-2.5 py-1 rounded-md font-medium">
-                                                <Star size={14} className="fill-yellow-500 text-yellow-500" />
-                                                <span>{pro.rating || 'New'}</span>
-                                            </div>
+                                            {pro.rating ? (
+                                                <div className="flex items-center gap-1.5 bg-yellow-50 text-yellow-700 px-2.5 py-1 rounded-md font-medium">
+                                                    <Star size={14} className="fill-yellow-500 text-yellow-500" />
+                                                    <span>{pro.rating}</span>
+                                                </div>
+                                            ) : (
+                                                <div className="flex items-center gap-1.5 bg-gray-50 text-gray-400 px-2.5 py-1 rounded-md font-medium text-xs">
+                                                    <span>Unrated</span>
+                                                </div>
+                                            )}
                                             <div className="text-gray-500 font-medium">
                                                 {pro.experience_years ? `${pro.experience_years} Years Exp.` : 'Experience N/A'}
                                             </div>
@@ -381,9 +404,11 @@ const FindProfessionals = () => {
                                 <div className="text-center">
                                     <div className="w-24 h-24 mx-auto rounded-3xl bg-[#F9F7F2] border-2 border-[#E3DACD] flex items-center justify-center text-[#A65D3B] shadow-inner mb-4 relative">
                                         <User size={48} />
-                                        <div className="absolute -bottom-2 bg-white px-3 py-1 rounded-full shadow-md border border-gray-100 text-xs font-bold text-gray-600 flex items-center gap-1">
-                                            <Star size={12} className="fill-yellow-400 text-yellow-400" /> {selectedPro.rating || 'New'}
-                                        </div>
+                                        {selectedPro.rating && (
+                                            <div className="absolute -bottom-2 bg-white px-3 py-1 rounded-full shadow-md border border-gray-100 text-xs font-bold text-gray-600 flex items-center gap-1">
+                                                <Star size={12} className="fill-yellow-400 text-yellow-400" /> {selectedPro.rating}
+                                            </div>
+                                        )}
                                     </div>
                                     <h4 className="text-2xl font-serif font-bold text-[#3E2B26] mb-1">{selectedPro.name}</h4>
                                     <span className="text-xs font-black uppercase tracking-widest text-[#A65D3B] bg-[#A65D3B]/10 px-3 py-1 rounded-full">

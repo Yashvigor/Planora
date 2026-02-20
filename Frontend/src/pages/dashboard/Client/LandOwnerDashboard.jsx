@@ -5,7 +5,7 @@ import {
     FileText, Hammer, MessageSquare, Phone, PieChart,
     Plus, TrendingUp, User, Users, XCircle, CheckCircle,
     ArrowUpRight, Clock, ShieldCheck, HardHat, ExternalLink,
-    Banknote, Coins, MapPin, ArrowLeft
+    Banknote, Coins, MapPin, ArrowLeft, Star
 } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import ExpertMap from '../../../components/dashboard/Client/ExpertMap';
@@ -164,6 +164,11 @@ const LandOwnerDashboard = () => {
     const [projectTeam, setProjectTeam] = useState([]);
     const [newProject, setNewProject] = useState({ name: '', type: 'Residential', location: '', budget: '' });
 
+    // Rating State
+    const [isRatingModalOpen, setIsRatingModalOpen] = useState(false);
+    const [teamRatings, setTeamRatings] = useState({});
+    const [isSubmittingRating, setIsSubmittingRating] = useState(false);
+
     const fetchData = useCallback(async () => {
         if (!currentUser?.id) {
             setLoading(false);
@@ -241,6 +246,86 @@ const LandOwnerDashboard = () => {
         } catch (err) {
             console.error('Project creation networking error:', err);
             alert(`Connection Error: Could not connect to the backend server at ${import.meta.env.VITE_API_URL}. Please ensure the backend is running. (Error: ${err.message})`);
+        }
+    };
+
+    const handleCompleteProject = async () => {
+        if (!activeProject || activeProject.status === 'Completed') return;
+
+        if (!window.confirm("Are you sure you want to mark this project as completed? This action cannot be undone immediately via the UI.")) {
+            return;
+        }
+
+        try {
+            const res = await fetch(`${import.meta.env.VITE_API_URL}/api/projects/${activeProject.project_id}/status`, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ status: 'Completed' })
+            });
+
+            if (res.ok) {
+                // Update local state temporarily, better to just refetch
+                setActiveProject(prev => ({ ...prev, status: 'Completed' }));
+                fetchData();
+                setIsRatingModalOpen(true); // Open rating modal immediately 
+            } else {
+                const err = await res.json();
+                alert(`Failed to complete project: ${err.error}`);
+            }
+        } catch (error) {
+            console.error("Error completing project:", error);
+            alert("Connection error when completing project.");
+        }
+    };
+
+    const handleRatingChange = (userId, ratingValue) => {
+        setTeamRatings(prev => ({
+            ...prev,
+            [userId]: ratingValue
+        }));
+    };
+
+    const handleSubmitRatings = async () => {
+        setIsSubmittingRating(true);
+        try {
+            const raterId = currentUser.user_id || currentUser.id;
+
+            // Format ratings into an array, filtering out zeroes or undefined
+            const ratingsArray = Object.entries(teamRatings)
+                .filter(([_, rating]) => rating > 0)
+                .map(([userId, rating]) => ({
+                    rated_user_id: userId,
+                    rating: rating
+                }));
+
+            if (ratingsArray.length === 0) {
+                alert("Please provide at least one rating before submitting, or just skip.");
+                setIsSubmittingRating(false);
+                return;
+            }
+
+            const res = await fetch(`${import.meta.env.VITE_API_URL}/api/projects/${activeProject.project_id}/rate`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    rater_id: raterId,
+                    ratings: ratingsArray
+                })
+            });
+
+            if (res.ok) {
+                alert("Ratings submitted successfully! Thank you for your feedback.");
+                setIsRatingModalOpen(false);
+                setTeamRatings({}); // reset
+            } else {
+                const errData = await res.json();
+                alert(`Failed to submit ratings: ${errData.error || 'Unknown error'}`);
+            }
+        } catch (error) {
+            console.error("Error submitting ratings:", error);
+            alert("Connection error when submitting ratings.");
+        } finally {
+            setIsSubmittingRating(false);
         }
     };
 
@@ -338,6 +423,27 @@ const LandOwnerDashboard = () => {
                                         <div className="h-full bg-gradient-to-r from-[#C06842] to-[#E68A2E] rounded-full shadow-[0_0_10px_rgba(192,104,66,0.3)]" style={{ width: `${recentDocs.length > 0 ? Math.min(recentDocs.filter(d => d.status === 'Approved').length * 20, 100) : 0}%` }}></div>
                                     </div>
                                 </div>
+
+                                {activeProject.status !== 'Completed' && (
+                                    <div className="mt-4 flex justify-end">
+                                        <button
+                                            onClick={handleCompleteProject}
+                                            className="px-4 py-2 bg-[#2A1F1D] text-white text-xs font-bold uppercase tracking-wider rounded-xl hover:bg-[#4A342E] transition-colors flex items-center gap-2"
+                                        >
+                                            <CheckCircle size={14} /> Mark as Completed
+                                        </button>
+                                    </div>
+                                )}
+                                {activeProject.status === 'Completed' && (
+                                    <div className="mt-4 flex justify-end">
+                                        <button
+                                            onClick={() => setIsRatingModalOpen(true)}
+                                            className="px-4 py-2 bg-yellow-50 text-yellow-700 border border-yellow-200 text-xs font-bold uppercase tracking-wider rounded-xl hover:bg-yellow-100 transition-colors flex items-center gap-2"
+                                        >
+                                            <Star size={14} className="fill-yellow-500 text-yellow-500" /> Rate Team
+                                        </button>
+                                    </div>
+                                )}
                             </div>
                         </div>
                     </div>
@@ -474,6 +580,78 @@ const LandOwnerDashboard = () => {
                         </div>
                         <div className="flex-1">
                             <ExpertMap currentProjectId={activeProject?.project_id} subCategory={selectedRole} siteLocation={activeProject?.location || "India"} onAssign={() => { fetchData(); setIsDiscoveryOpen(false); }} onClose={() => setIsDiscoveryOpen(false)} />
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {isRatingModalOpen && (
+                <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-[#2A1F1D]/60 backdrop-blur-md overflow-y-auto">
+                    <div className="bg-white rounded-[2rem] w-full max-w-2xl p-10 shadow-2xl my-8">
+                        <div className="flex justify-between items-center mb-6">
+                            <div>
+                                <h2 className="text-3xl font-serif font-bold text-[#2A1F1D]">Project Completed! 🎉</h2>
+                                <p className="text-[#8C7B70] mt-1">Please rate the professionals who worked on this project.</p>
+                            </div>
+                            <button onClick={() => setIsRatingModalOpen(false)} className="text-[#8C7B70] hover:text-[#C06842] transition-colors">
+                                <XCircle size={28} />
+                            </button>
+                        </div>
+
+                        {projectTeam.length === 0 ? (
+                            <div className="text-center py-10 bg-[#F9F7F2] rounded-2xl border border-dashed border-[#E3DACD]">
+                                <p className="text-[#8C7B70] font-medium">No team members were assigned to this project.</p>
+                            </div>
+                        ) : (
+                            <div className="space-y-4 max-h-[60vh] overflow-y-auto pr-2 custom-scrollbar">
+                                {projectTeam.map(member => (
+                                    <div key={member.user_id} className="flex flex-col sm:flex-row items-center justify-between p-4 bg-[#F9F7F2] rounded-xl border border-[#E3DACD]">
+                                        <div className="flex items-center gap-4 w-full sm:w-auto mb-4 sm:mb-0">
+                                            <div className="w-12 h-12 rounded-full bg-gradient-to-br from-[#E3DACD] to-[#C06842] text-white flex items-center justify-center font-bold text-lg shadow-inner">
+                                                {member.name.charAt(0)}
+                                            </div>
+                                            <div>
+                                                <h4 className="font-bold text-[#2A1F1D] text-lg">{member.name}</h4>
+                                                <p className="text-xs font-bold text-[#8C7B70] uppercase tracking-wider">{member.assigned_role || member.sub_category}</p>
+                                            </div>
+                                        </div>
+                                        <div className="flex gap-1 w-full sm:w-auto justify-center">
+                                            {[1, 2, 3, 4, 5].map((star) => (
+                                                <button
+                                                    key={star}
+                                                    type="button"
+                                                    onClick={() => handleRatingChange(member.user_id, star)}
+                                                    className="focus:outline-none p-1 transition-transform hover:scale-110"
+                                                >
+                                                    <Star
+                                                        size={28}
+                                                        className={`transition-colors duration-200 ${(teamRatings[member.user_id] || 0) >= star
+                                                                ? 'fill-yellow-500 text-yellow-500'
+                                                                : 'text-gray-300 hover:text-yellow-200'
+                                                            }`}
+                                                    />
+                                                </button>
+                                            ))}
+                                        </div>
+                                    </div>
+                                ))}
+                            </div>
+                        )}
+
+                        <div className="mt-8 flex justify-end gap-4 border-t border-[#E3DACD]/50 pt-6">
+                            <button
+                                onClick={() => setIsRatingModalOpen(false)}
+                                className="px-6 py-3 font-bold text-[#8C7B70] hover:text-[#2A1F1D] transition-colors"
+                            >
+                                Skip
+                            </button>
+                            <button
+                                onClick={handleSubmitRatings}
+                                disabled={projectTeam.length === 0 || isSubmittingRating}
+                                className="px-8 py-3 bg-[#C06842] text-white font-bold rounded-xl shadow-lg hover:bg-[#A65D3B] hover:-translate-y-0.5 transition-all disabled:opacity-50 disabled:hover:translate-y-0 disabled:cursor-not-allowed flex items-center gap-2"
+                            >
+                                {isSubmittingRating ? 'Submitting...' : 'Submit Ratings'}
+                            </button>
                         </div>
                     </div>
                 </div>
