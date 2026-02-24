@@ -8,6 +8,17 @@ import {
 import { useMockApp } from '../../hooks/useMockApp';
 import PlanoraLogo from '../common/PlanoraLogo';
 
+/**
+ * 🧭 Sidebar Navigation Component
+ * 
+ * Purpose: Provides dynamic, role-based navigation.
+ * 
+ * Logic:
+ * 1. Checks `currentUser.role` from the global MockAppContext.
+ * 2. Renders a set of common links (Dashboard, Messages) for everyone.
+ * 3. Appends role-specific links (e.g., 'My Lands' for Land Owners, 
+ *    'Work Board' for Contractors) to customize the app experience.
+ */
 const Sidebar = ({ isOpen, onClose }) => {
     const { currentUser, logout, messages } = useMockApp();
 

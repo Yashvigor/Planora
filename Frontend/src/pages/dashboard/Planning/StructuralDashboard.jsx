@@ -7,6 +7,15 @@ import {
     Building2, Eye, Layout
 } from 'lucide-react';
 
+/**
+ * 🏗️ Structural Engineer Dashboard
+ * 
+ * Target Persona: Structural Engineers registered on Planora.
+ * 
+ * Purpose: Provides a dashboard specifically tailored for structural analysis workflows.
+ * Includes tracking of Bar Bending Schedules (BBS), STAAD calculations, 
+ * safe load limits, and design change impact approvals.
+ */
 const StructuralDashboard = () => {
     const { currentUser } = useMockApp();
     const [projects, setProjects] = useState([]);

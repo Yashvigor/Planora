@@ -130,7 +130,7 @@ const Auth = () => {
     });
 
     const handleCompleteProfile = async (e) => {
-        e.preventDefault();
+        if (e && e.preventDefault) e.preventDefault();
         if (!selectedCategory || !formData.role) {
             setError('Please select your role and category');
             return;
@@ -150,8 +150,8 @@ const Auth = () => {
             const data = await response.json();
             if (!response.ok) throw new Error(data.error || 'Profile completion failed');
 
-            setAuthUser(data.user);
-            navigate('/dashboard');
+            // Do NOT navigate to dashboard. Let the Onboarding modal appear now that they have a role.
+            setFormData(prev => ({ ...prev, role: formData.role }));
         } catch (err) {
             setError(err.message);
         } finally {
@@ -385,60 +385,68 @@ const Auth = () => {
                                             </div>
                                         </div>
 
-                                        <form onSubmit={handleCompleteProfile} className="space-y-6">
-                                            {/* Unified Category Selection */}
-                                            <div className="space-y-6 p-6 bg-[#F9F7F2]/50 rounded-[2rem] border border-[#E5E0D8] backdrop-blur-sm shadow-sm">
-                                                <div className="space-y-4">
-                                                    <div className="flex items-center gap-2 mb-1">
-                                                        <div className="w-1.5 h-1.5 rounded-full bg-[#A65D3B]"></div>
-                                                        <label className="text-[10px] font-black text-[#3E2B26] uppercase tracking-[0.15em]">Step 1: Your Category</label>
-                                                    </div>
-                                                    <div className="grid grid-cols-2 gap-3">
-                                                        {Object.values(categories).map(cat => (
-                                                            <button
-                                                                key={cat.id}
-                                                                type="button"
-                                                                onClick={() => handleCategorySelect(cat.id)}
-                                                                className={`py-3 px-2 rounded-2xl border-2 text-[11px] font-bold transition-all flex flex-col items-center justify-center gap-1 group ${selectedCategory === cat.id ? 'bg-[#3E2B26] text-white border-[#3E2B26] shadow-md' : 'bg-white border-[#E5E0D8] text-[#5D4037] hover:border-[#A65D3B] hover:shadow-sm'}`}
-                                                            >
-                                                                <span className="text-xl transition-transform group-hover:scale-110">{cat.icon}</span>
-                                                                <span>{cat.label}</span>
-                                                            </button>
-                                                        ))}
-                                                    </div>
-                                                </div>
-
-                                                {selectedCategory && categories[selectedCategory].domains && (
-                                                    <motion.div initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }} className="space-y-4 pt-2 border-t border-[#E5E0D8]">
+                                        {!formData.role ? (
+                                            <div className="space-y-6">
+                                                {/* Unified Category Selection */}
+                                                <div className="space-y-6 p-6 bg-[#F9F7F2]/50 rounded-[2rem] border border-[#E5E0D8] backdrop-blur-sm shadow-sm">
+                                                    <div className="space-y-4">
                                                         <div className="flex items-center gap-2 mb-1">
                                                             <div className="w-1.5 h-1.5 rounded-full bg-[#A65D3B]"></div>
-                                                            <label className="text-[10px] font-black text-[#3E2B26] uppercase tracking-[0.15em]">Step 2: Specific Role</label>
+                                                            <label className="text-[10px] font-black text-[#3E2B26] uppercase tracking-[0.15em]">Step 1: Your Category</label>
                                                         </div>
-                                                        <div className="grid grid-cols-2 gap-2">
-                                                            {categories[selectedCategory].domains.map(dom => (
+                                                        <div className="grid grid-cols-2 gap-3">
+                                                            {Object.values(categories).map(cat => (
                                                                 <button
-                                                                    key={dom.id}
+                                                                    key={cat.id}
                                                                     type="button"
-                                                                    onClick={() => setFormData({ ...formData, role: dom.id })}
-                                                                    className={`p-2.5 rounded-xl border-2 text-[10px] font-black transition-all ${formData.role === dom.id ? 'bg-[#A65D3B] text-white border-[#A65D3B] shadow-sm' : 'bg-white border-[#E5E0D8] text-[#5D4037] hover:border-[#A65D3B]'}`}
+                                                                    onClick={() => handleCategorySelect(cat.id)}
+                                                                    className={`py-3 px-2 rounded-2xl border-2 text-[11px] font-bold transition-all flex flex-col items-center justify-center gap-1 group ${selectedCategory === cat.id ? 'bg-[#3E2B26] text-white border-[#3E2B26] shadow-md' : 'bg-white border-[#E5E0D8] text-[#5D4037] hover:border-[#A65D3B] hover:shadow-sm'}`}
                                                                 >
-                                                                    {dom.label}
+                                                                    <span className="text-xl transition-transform group-hover:scale-110">{cat.icon}</span>
+                                                                    <span>{cat.label}</span>
                                                                 </button>
                                                             ))}
                                                         </div>
-                                                    </motion.div>
-                                                )}
-                                            </div>
+                                                    </div>
 
-                                            <button
-                                                type="submit"
-                                                disabled={loading || !formData.role}
-                                                className="w-full py-5 bg-[#3E2B26] hover:bg-[#2A1F1D] text-white rounded-2xl font-black text-sm uppercase tracking-widest transition-all shadow-xl disabled:opacity-50 flex items-center justify-center gap-3 active:scale-95"
-                                            >
-                                                {loading ? 'Processing...' : 'Access Dashboard'}
-                                                <ArrowRight size={20} />
-                                            </button>
-                                        </form>
+                                                    {selectedCategory && categories[selectedCategory].domains && (
+                                                        <motion.div initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }} className="space-y-4 pt-2 border-t border-[#E5E0D8]">
+                                                            <div className="flex items-center gap-2 mb-1">
+                                                                <div className="w-1.5 h-1.5 rounded-full bg-[#A65D3B]"></div>
+                                                                <label className="text-[10px] font-black text-[#3E2B26] uppercase tracking-[0.15em]">Step 2: Specific Role</label>
+                                                            </div>
+                                                            <div className="grid grid-cols-2 gap-2">
+                                                                {categories[selectedCategory].domains.map(dom => (
+                                                                    <button
+                                                                        key={dom.id}
+                                                                        type="button"
+                                                                        onClick={() => setFormData({ ...formData, role: dom.id })}
+                                                                        className={`p-2.5 rounded-xl border-2 text-[10px] font-black transition-all ${formData.role === dom.id ? 'bg-[#A65D3B] text-white border-[#A65D3B] shadow-sm' : 'bg-white border-[#E5E0D8] text-[#5D4037] hover:border-[#A65D3B]'}`}
+                                                                    >
+                                                                        {dom.label}
+                                                                    </button>
+                                                                ))}
+                                                            </div>
+                                                        </motion.div>
+                                                    )}
+                                                </div>
+
+                                                <button
+                                                    type="button"
+                                                    onClick={handleCompleteProfile}
+                                                    disabled={loading || !formData.role}
+                                                    className="w-full py-5 bg-[#3E2B26] hover:bg-[#2A1F1D] text-white rounded-2xl font-black text-sm uppercase tracking-widest transition-all shadow-xl disabled:opacity-50 flex items-center justify-center gap-3 active:scale-95"
+                                                >
+                                                    {loading ? 'Processing...' : 'Save Role & Continue'}
+                                                    <ArrowRight size={20} />
+                                                </button>
+                                            </div>
+                                        ) : (
+                                            <div className="flex flex-col items-center justify-center py-12">
+                                                <Loader2 className="animate-spin text-[#A65D3B] mb-4" size={48} />
+                                                <p className="text-[#8C7B70] font-medium text-sm">Preparing your personalized onboarding process...</p>
+                                            </div>
+                                        )}
                                     </motion.div>
                                 ) : (
                                     <motion.div
@@ -604,7 +612,7 @@ const Auth = () => {
                             </AnimatePresence>
 
                             <Onboarding
-                                isOpen={authState === 'onboarding'}
+                                isOpen={authState === 'onboarding' && !!formData.role}
                                 onClose={() => {
                                     setAuthState('auth');
                                     navigate('/dashboard');

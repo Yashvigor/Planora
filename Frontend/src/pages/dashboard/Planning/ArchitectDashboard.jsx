@@ -33,10 +33,23 @@ const SectionHeader = ({ title, action }) => (
     </div>
 );
 
+/**
+ * 📐 Architect Dashboard
+ * 
+ * Target Persona: Architects registered on Planora.
+ * 
+ * Purpose: Provides a centralized workspace for an architect to manage their
+ * assigned projects, review site progress, manage architectural drawings, and 
+ * coordinate with structural and civil engineers.
+ */
 const ArchitectDashboard = () => {
+    // 🌐 Global State context (hybrid real + local storage data)
     const { currentUser, messages, siteProgress, sendMessage, addSiteProgress } = useMockApp();
-    const [projects, setProjects] = useState([]);
-    const [activeProject, setActiveProject] = useState(null);
+
+    // 🗃️ Local Component State
+    const [projects, setProjects] = useState([]); // List of ALL active/accepted projects
+    const [invitations, setInvitations] = useState([]); // List of pending project invitations
+    const [activeProject, setActiveProject] = useState(null); // The currently selected project tab
     const [loading, setLoading] = useState(true);
 
     // --- State & Persistence ---
@@ -72,13 +85,22 @@ const ArchitectDashboard = () => {
         siteProgress: []
     });
 
+    /**
+     * Fetch Project Details
+     * 
+     * Retrieves granular data for the specifically `activeProject`. 
+     * It combines live PostgreSQL data (Project Phases) with local storage 
+     * simulated data (Messages for coordination, Site Progress images).
+     * 
+     * @param {string} projectId - The UUID of the project to load.
+     */
     const fetchProjectDetails = useCallback(async (projectId) => {
         try {
-            // Fetch Phases from Backend
+            // 🔄 Network Call: Fetch Phases from Backend
             const phasesRes = await fetch(`${import.meta.env.VITE_API_URL}/api/projects/${projectId}/phases`);
             const phases = phasesRes.ok ? await phasesRes.json() : [];
 
-            // Filter Local Context Data
+            // 💾 Local Context Filter: Get coordination messages for this specific project
             const projMessages = messages.filter(m => m.projectId === projectId).map(m => ({
                 id: m.id,
                 type: 'Update',
@@ -107,17 +129,37 @@ const ArchitectDashboard = () => {
         }
     }, [messages, siteProgress]);
 
+    /**
+     * Fetch Professional Projects
+     * 
+     * Initial data load when the Architect Dashboard mounts. 
+     * Queries the backend for any `ProjectAssignments` linked to this user's UUID.
+     * Automatically sets the first project as active if they have any.
+     */
     const fetchProfessionalProjects = useCallback(async () => {
         if (!currentUser?.user_id && !currentUser?.id) return;
         const uid = currentUser.user_id || currentUser.id;
         setLoading(true);
         try {
+            // 🔄 Network Call: Fetch assigned projects
             const res = await fetch(`${import.meta.env.VITE_API_URL}/api/professionals/${uid}/projects`);
             if (res.ok) {
                 const projectsData = await res.json();
-                setProjects(projectsData);
-                if (projectsData.length > 0 && !activeProject) {
-                    setActiveProject(projectsData[0]);
+
+                // Separate into pending invitations and active projects
+                const pendingInvs = projectsData.filter(p => p.assignment_status === 'Pending');
+                const activeProjs = projectsData.filter(p => !p.assignment_status || p.assignment_status === 'Accepted');
+
+                setInvitations(pendingInvs);
+                setProjects(activeProjs);
+
+                // Keep active project selected if it still exists in the list, otherwise select first or null
+                if (activeProjs.length > 0) {
+                    if (!activeProject || !activeProjs.find(p => p.project_id === activeProject.project_id)) {
+                        setActiveProject(activeProjs[0]);
+                    }
+                } else {
+                    setActiveProject(null);
                 }
             }
         } catch (err) {
@@ -137,8 +179,64 @@ const ArchitectDashboard = () => {
         }
     }, [activeProject, fetchProjectDetails]);
 
+    /**
+     * Respond to an Invitation
+     */
+    const respondToInvite = async (projectId, status) => {
+        if (!currentUser?.user_id && !currentUser?.id) return;
+        const uid = currentUser.user_id || currentUser.id;
+        try {
+            const res = await fetch(`${import.meta.env.VITE_API_URL}/api/projects/${projectId}/assign/${uid}/status`, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ status }) // 'Accepted' or 'Rejected'
+            });
+
+            if (res.ok) {
+                fetchProfessionalProjects(); // Refresh lists
+            } else {
+                alert(`Failed to ${status.toLowerCase()} invitation.`);
+            }
+        } catch (err) {
+            console.error("Error responding to invite:", err);
+            alert("An error occurred while responding to the invitation.");
+        }
+    };
+
     return (
         <div className="max-w-7xl mx-auto space-y-8 animate-fade-in font-sans pb-20 text-[#2A1F1D]">
+
+            {/* INVITATIONS BANNER */}
+            {invitations.length > 0 && (
+                <div className="space-y-4">
+                    {invitations.map(inv => (
+                        <div key={inv.project_id} className="bg-amber-50 border-l-4 border-amber-500 rounded-lg p-5 shadow-sm flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+                            <div>
+                                <h3 className="font-bold text-amber-900 flex items-center gap-2">
+                                    <AlertOctagon size={18} /> New Project Invitation
+                                </h3>
+                                <p className="text-amber-800 text-sm mt-1">
+                                    You have been invited to work on <strong>{inv.name}</strong> as <span className="uppercase text-xs font-bold bg-amber-200 px-2 py-0.5 rounded">{inv.assigned_role}</span>.
+                                </p>
+                            </div>
+                            <div className="flex gap-3 shrink-0">
+                                <button
+                                    onClick={() => respondToInvite(inv.project_id, 'Rejected')}
+                                    className="px-4 py-2 border border-amber-300 text-amber-800 rounded-lg text-sm font-bold hover:bg-amber-100 transition-colors"
+                                >
+                                    Decline
+                                </button>
+                                <button
+                                    onClick={() => respondToInvite(inv.project_id, 'Accepted')}
+                                    className="px-4 py-2 bg-amber-600 text-white rounded-lg text-sm font-bold hover:bg-amber-700 transition-colors shadow-md"
+                                >
+                                    Accept Invitation
+                                </button>
+                            </div>
+                        </div>
+                    ))}
+                </div>
+            )}
 
             {/* 1. HEADER SECTION (Project Snapshot) */}
             <div className="glass-panel rounded-[2.5rem] p-10 shadow-xl relative overflow-hidden group hover:shadow-2xl transition-all duration-500">

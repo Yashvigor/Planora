@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 // import { useMockApp } from '../../../hooks/useMockApp';
-import { Calendar, Briefcase, ChevronRight, Check } from 'lucide-react';
+import { Calendar, Briefcase, ChevronRight, Check, X } from 'lucide-react';
 import { Link } from 'react-router-dom';
 
 const MyProjects = () => {
@@ -221,6 +221,25 @@ const MyProjects = () => {
             }
         }, [showTeam, project]);
 
+        const handleRemoveMember = async (memberId, memberName) => {
+            if (!window.confirm(`Are you sure you want to remove ${memberName} from this project?`)) return;
+            try {
+                const projectId = project.project_id || project.id;
+                const res = await fetch(`${import.meta.env.VITE_API_URL}/api/projects/${projectId}/team/${memberId}`, {
+                    method: 'DELETE'
+                });
+                if (res.ok) {
+                    fetchTeam(projectId).then(setTeam);
+                } else {
+                    const err = await res.json();
+                    alert(`Failed to remove team member: ${err.error}`);
+                }
+            } catch (err) {
+                console.error("Error removing member:", err);
+                alert("Connection error when removing team member.");
+            }
+        };
+
         return (
             <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6 hover:shadow-md transition-all">
                 <div className="flex flex-col md:flex-row md:items-center justify-between">
@@ -258,14 +277,23 @@ const MyProjects = () => {
                         {team.length > 0 ? (
                             <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
                                 {team.map(member => (
-                                    <div key={member.user_id} className="flex items-center p-3 bg-gray-50 rounded-lg border border-gray-100">
-                                        <div className="w-8 h-8 rounded-full bg-blue-100 text-blue-600 flex items-center justify-center font-bold text-xs mr-3">
-                                            {member.name?.[0]}
+                                    <div key={member.user_id} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg border border-gray-100 group">
+                                        <div className="flex items-center">
+                                            <div className="w-8 h-8 rounded-full bg-blue-100 text-blue-600 flex items-center justify-center font-bold text-xs mr-3">
+                                                {member.name?.[0]}
+                                            </div>
+                                            <div>
+                                                <p className="text-sm font-semibold text-gray-900">{member.name}</p>
+                                                <p className="text-xs text-gray-500">{member.assigned_role || member.sub_category}</p>
+                                            </div>
                                         </div>
-                                        <div>
-                                            <p className="text-sm font-semibold text-gray-900">{member.name}</p>
-                                            <p className="text-xs text-gray-500">{member.assigned_role}</p>
-                                        </div>
+                                        <button
+                                            onClick={() => handleRemoveMember(member.user_id, member.name)}
+                                            className="p-2 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-all opacity-0 group-hover:opacity-100"
+                                            title="Remove member"
+                                        >
+                                            <X size={16} />
+                                        </button>
                                     </div>
                                 ))}
                             </div>

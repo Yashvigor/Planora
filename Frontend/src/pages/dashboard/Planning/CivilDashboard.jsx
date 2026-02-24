@@ -5,6 +5,15 @@ import {
     BarChart2, FileText, CheckSquare, Activity
 } from 'lucide-react';
 
+/**
+ * 👷 Civil Engineer Dashboard
+ * 
+ * Target Persona: Civil Engineers executing site work on Planora projects.
+ * 
+ * Purpose: Provides a role-specific view focusing on ground-level execution,
+ * structural integrity tracking, material inventory alerts, and quality control (QC)
+ * testing results (e.g., Slump tests, Cube tests).
+ */
 const CivilDashboard = () => {
     const { currentUser } = useMockApp();
 

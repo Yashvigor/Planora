@@ -1,4 +1,13 @@
-﻿const { sendWelcomeEmail, sendOTPEmail } = require('./utils/emailService');
+﻿/**
+ * Planora Main Backend Server
+ * 
+ * This is the central Express application handling all REST API requests from the frontend.
+ * It manages Database connections to Neon Serverless Postgres, file uploads via Multer,
+ * User Authentication (Email/Password, Google OAuth, OTPs), and all business logic routes
+ * for Projects, Documents, Messages, and Professionals (ExpertMap).
+ */
+
+const { sendWelcomeEmail, sendOTPEmail } = require('./utils/emailService');
 const { geocodeAddress } = require('./utils/geocodingService');
 
 const express = require('express');
@@ -12,38 +21,42 @@ const fs = require('fs');
 const { OAuth2Client } = require('google-auth-library');
 const axios = require('axios');
 
+// 🔐 Load environment variables from .env file (e.g., DB_USER, DB_PASSWORD, JWT_SECRET)
 dotenv.config();
 
+// 🌐 Initialize Google OAuth Client for SSO
 const googleClient = new OAuth2Client(process.env.GOOGLE_CLIENT_ID);
 
 const app = express();
 const port = process.env.PORT || 5000;
 
-// Middleware
-app.use(cors());
-app.use(express.json());
+// 🛡️ Global Middleware
+app.use(cors()); // Allow Cross-Origin requests from the React frontend
+app.use(express.json()); // Parse incoming JSON request bodies
 
 // Test Route
 app.get('/', (req, res) => {
     res.send('Planora Backend Running');
 });
 
-// Database Connection
+// 🗄️ Database Connection Pool (Neon PostgreSQL)
+// Uses a connection pool to efficiently manage multiple concurrent database queries
 const pool = new Pool({
     user: process.env.DB_USER,
     host: process.env.DB_HOST,
     database: process.env.DB_NAME,
     password: process.env.DB_PASSWORD,
     port: process.env.DB_PORT,
-    ssl: process.env.DB_HOST !== 'localhost' ? { rejectUnauthorized: false } : false
+    ssl: process.env.DB_HOST !== 'localhost' ? { rejectUnauthorized: false } : false // Required for remote Neon DB connections
 });
 
+// Test DB Connection on startup
 pool.connect()
     .then(client => {
-        console.log('Connected to PostgreSQL');
+        console.log('Connected successfully to Neon PostgreSQL Database');
         client.release();
     })
-    .catch(err => console.error('Connection error', err.stack));
+    .catch(err => console.error('Database Connection error', err.stack));
 
 // Ensure uploads directory exists
 const baseUploadDir = path.join(__dirname, 'uploads');
@@ -63,14 +76,20 @@ const logActivity = async (userId, projectId, action, details) => {
     }
 };
 
-// Multer Configuration with Dynamic Categorical Folders
+/**
+ * 📂 Multer Configuration for Dynamic File Uploads
+ * 
+ * Instead of dumping all files into a single 'uploads' folder, this logic
+ * dynamically creates sub-folders (e.g., /uploads/Architect, /uploads/SiteWork)
+ * based on the 'category' passed in the request body. This keeps server storage organized.
+ */
 const storage = multer.diskStorage({
     destination: (req, file, cb) => {
-        // We expect category/sub_category to be passed in body or determined by user
-        // For simplicity, we'll use a 'category' field from body or default to 'General'
+        // Fallback to 'General' folder if no category is specified
         const category = req.body.category || 'General';
         const dest = path.join('uploads', category);
 
+        // Ensure the directory physical path exists before saving the file
         if (!fs.existsSync(dest)) {
             fs.mkdirSync(dest, { recursive: true });
         }
@@ -82,8 +101,26 @@ const storage = multer.diskStorage({
 });
 const upload = multer({ storage });
 
-// Signup Route
+/**
+ * 👤 USER AUTHENTICATION & ONBOARDING ROUTES
+ * --------------------------------------------------------------------------
+ */
+
+/**
+ * 📝 Standard User Registration (Signup)
+ * Endpoint: POST /api/signup
+ * 
+ * Flow:
+ * 1. Validate incoming data.
+ * 2. Check if the user (email) already exists to prevent duplicates.
+ * 3. Enforce single-admin policy if the requested role is 'admin'.
+ * 4. Securely hash the password using bcrypt.
+ * 5. Map the frontend role string (e.g. 'architect') to strict Database Enums ('Planning', 'Architect').
+ * 6. Insert new record into the Users table and commit transaction.
+ * 7. Dispatch an asynchronous Welcome Email.
+ */
 app.post('/api/signup', async (req, res) => {
+    // ... validation and DB checks inside ...
     const { name, email, password, role } = req.body;
 
     if (!name || !email || !password || !role) {
@@ -92,17 +129,18 @@ app.post('/api/signup', async (req, res) => {
 
     let client;
     try {
+        // Use a transaction so if saving fails midway, we can ROLLBACK and avoid partial data
         client = await pool.connect();
         await client.query('BEGIN');
 
-        // Check availability
+        // Check if user already exists
         const checkUser = await client.query('SELECT * FROM Users WHERE email = $1', [email]);
         if (checkUser.rows.length > 0) {
             await client.query('ROLLBACK');
             return res.status(400).json({ error: 'User already exists' });
         }
 
-        // Check if admin already exists
+        // Administrative Check: System only permits one master admin
         if (role === 'admin') {
             const adminCheck = await client.query("SELECT * FROM Users WHERE category = 'Admin'");
             if (adminCheck.rows.length > 0) {
@@ -111,11 +149,11 @@ app.post('/api/signup', async (req, res) => {
             }
         }
 
-        // Hash password
+        // 🔒 Cryptography: Generate salt and hash the plaintext password
         const salt = await bcrypt.genSalt(10);
         const passwordHash = await bcrypt.hash(password, salt);
 
-        // Map role to category and sub_category for DB schema
+        // 🗺️ Schema Mapping: Translate simplified frontend roles into DB-enforced schema structure
         const roleMapping = {
             'land_owner': { category: 'Land Owner', sub_category: 'Land Owner' },
             'architect': { category: 'Planning', sub_category: 'Architect' },
@@ -136,62 +174,66 @@ app.post('/api/signup', async (req, res) => {
 
         const { category, sub_category } = roleMapping[role] || { category: 'Planning', sub_category: role };
 
-        // Insert into Users
+        // Save User Data (Returns auto-generated UUID)
         const userInsert = await client.query(
             'INSERT INTO Users (name, email, password_hash, category, sub_category) VALUES ($1, $2, $3, $4, $5) RETURNING user_id',
             [name, email, passwordHash, category, sub_category]
         );
         const userId = userInsert.rows[0].user_id;
 
-        // Role-specific table insertion (Mapping)
-        // Note: Full role-specific table insertion can be added here if needed.
-        // For now, ensuring basic signup works with Users table.
-
+        // Finalize transaction
         await client.query('COMMIT');
 
-        // Send Welcome Email
+        // Fire & Forget: Send welcome email in background
         sendWelcomeEmail(email, name).catch(console.error);
 
         res.status(201).json({
             message: 'User registered successfully',
-            status: 'incomplete', // New users always need to complete profile
+            status: 'incomplete', // Directs frontend to push user towards profile completion wizard
             user: { user_id: userId, name, email, role }
         });
     } catch (err) {
         if (client) {
-            await client.query('ROLLBACK');
+            await client.query('ROLLBACK'); // Error occurred, undo any DB changes made during this request
         }
         console.error('Signup error:', err);
         res.status(500).json({ error: 'Server error during signup. Check backend logs.' });
     } finally {
         if (client) {
-            client.release();
+            client.release(); // Return connection back to the pool
         }
     }
 });
 
 // --- OTP Authentication Routes ---
 
-// Forgot Password - Send OTP
+/**
+ * 🔑 Forgot Password - Generate & Send OTP
+ * Endpoint: POST /api/auth/forgot-password
+ * 
+ * Flow:
+ * 1. Verifies the requested email exists in the database.
+ * 2. Generates a secure random 6-digit OTP.
+ * 3. Sets an expiration time (10 minutes from creation).
+ * 4. Saves OTP to user record and dispatches recovery email.
+ */
 app.post('/api/auth/forgot-password', async (req, res) => {
     const { email } = req.body;
     if (!email) return res.status(400).json({ error: 'Email is required' });
 
     try {
-        // Check if user exists
+        // Step 1: Check if user exists
         const userResult = await pool.query('SELECT user_id FROM Users WHERE email = $1', [email]);
         if (userResult.rows.length === 0) {
             return res.status(404).json({ error: 'User not found' });
         }
 
-        // Generate 6-digit OTP
+        // Step 2-3: Generate 6-digit OTP & Expiry window
         const otp = Math.floor(100000 + Math.random() * 900000).toString();
         const expiry = new Date(Date.now() + 10 * 60 * 1000); // 10 minutes from now
 
-        // Update DB
+        // Step 4: Update DB & Dispatch Email
         await pool.query('UPDATE Users SET otp = $1, otp_expiry = $2 WHERE email = $3', [otp, expiry, email]);
-
-        // Send Email
         await sendOTPEmail(email, otp);
 
         res.json({ message: 'OTP sent to your email' });
@@ -201,8 +243,16 @@ app.post('/api/auth/forgot-password', async (req, res) => {
     }
 });
 
-// Verify OTP & Login
-// Verify OTP & Reset Password
+/**
+ * 🔓 Verify OTP & Reset Password
+ * Endpoint: POST /api/auth/reset-password
+ * 
+ * Flow:
+ * 1. Checks submitted OTP against database record.
+ * 2. Validates timestamp to ensure OTP hasn't expired (>10 mins).
+ * 3. Hashes the new password and updates the database.
+ * 4. Clears out the OTP to prevent replay attacks.
+ */
 app.post('/api/auth/reset-password', async (req, res) => {
     const { email, otp, newPassword } = req.body;
     if (!email || !otp || !newPassword) return res.status(400).json({ error: 'All fields are required' });
@@ -213,21 +263,21 @@ app.post('/api/auth/reset-password', async (req, res) => {
 
         const user = result.rows[0];
 
-        // Verify OTP
+        // Security Check 1: Match OTP string
         if (user.otp !== otp) {
             return res.status(401).json({ error: 'Invalid OTP' });
         }
 
-        // Verify Expiry
+        // Security Check 2: Verify against expiration timestamp
         if (new Date() > new Date(user.otp_expiry)) {
             return res.status(401).json({ error: 'OTP expired' });
         }
 
-        // Hash new password
+        // Apply new hashed password
         const salt = await bcrypt.genSalt(10);
         const passwordHash = await bcrypt.hash(newPassword, salt);
 
-        // Update password and clear OTP
+        // Save new password and nullify the OTP columns to securely lock the recovery window
         await pool.query('UPDATE Users SET password_hash = $1, otp = NULL, otp_expiry = NULL WHERE user_id = $2', [passwordHash, user.user_id]);
 
         res.json({ message: 'Password reset successfully. You can now login with your new password.' });
@@ -238,7 +288,14 @@ app.post('/api/auth/reset-password', async (req, res) => {
     }
 });
 
-// Login Route
+/**
+ * 🚪 Standard User Login
+ * Endpoint: POST /api/login
+ * 
+ * Validates credentials via bcrypt, checks onboarding status, and returns a session payload.
+ * Also performs backwards mapping from strictly typed database enumerations ('Land Owner', 'False Ceiling Worker')
+ * to simplified routing strings used by the frontend dashboard paths.
+ */
 app.post('/api/login', async (req, res) => {
     const { email, password } = req.body;
 
@@ -255,14 +312,14 @@ app.post('/api/login', async (req, res) => {
 
         const user = result.rows[0];
 
-        // Verify password
+        // Compare explicit plaintext against hashed DB record securely
         const isMatch = await bcrypt.compare(password, user.password_hash);
         if (!isMatch) {
             return res.status(401).json({ error: 'Invalid credentials' });
         }
 
-        // Return user info (excluding password)
-        // Reverse map sub_category to role key for frontend compatibility
+        // Return user info (excluding securely shielded fields like password_hash or otp)
+        // Reverse map sub_category strictly formatted DB enums to low-dash URL-friendly strings
         let roleKey = 'user';
         const roleMap = {
             'Land Owner': 'land_owner',
@@ -286,6 +343,7 @@ app.post('/api/login', async (req, res) => {
             roleKey = roleMap[user.sub_category];
         }
 
+        // Determines if app should push user to wizard or main dashboard
         const isComplete = user.profile_completed;
 
         res.json({
@@ -297,7 +355,7 @@ app.post('/api/login', async (req, res) => {
                 email: user.email,
                 category: user.category,
                 sub_category: user.sub_category,
-                role: roleKey
+                role: roleKey // UI Routing key
             }
         });
 
@@ -311,9 +369,18 @@ app.post('/api/login', async (req, res) => {
     }
 });
 
-// --- User Profile Routes ---
+/**
+ * 👤 USER PROFILE MANAGEMENT
+ * --------------------------------------------------------------------------
+ */
 
-// Get User Profile
+/**
+ * 🔍 Fetch User Profile Details
+ * Endpoint: GET /api/user/:id
+ * 
+ * Retrieves the core profile information (Name, Email, Phone, Address, etc.)
+ * based on the provided UUID. Used by the frontend 'Settings' or 'Profile' pages.
+ */
 app.get('/api/user/:id', async (req, res) => {
     const { id } = req.params;
     try {
@@ -332,7 +399,14 @@ app.get('/api/user/:id', async (req, res) => {
     }
 });
 
-// Update User Profile (including Aadhar upload)
+/**
+ * ✏️ Update User Profile (Upload Documents & Info)
+ * Endpoint: PUT /api/user/:id
+ * 
+ * Allows users to complete their profile logic.
+ * Incorporates Multer middleware `upload.single('aadhar_card')` to securely intercept
+ * and save file attachments before the controller logic executes.
+ */
 app.put('/api/user/:id', upload.single('aadhar_card'), async (req, res) => {
     const { id } = req.params;
     const { name, mobile_number, birthdate, address, city, state, zip_code } = req.body;
@@ -371,9 +445,18 @@ app.put('/api/user/:id', upload.single('aadhar_card'), async (req, res) => {
     }
 });
 
-// --- Admin / Verification Routes ---
+/**
+ * 🛡️ ADMINISTRATOR / SYSTEM MODERATION ROUTES
+ * --------------------------------------------------------------------------
+ */
 
-// Get All Users (for Admin/LandOwner to verify)
+/**
+ * 📋 Fetch All Users (Admin Dashboard)
+ * Endpoint: GET /api/admin/users
+ * 
+ * Used by the system Administrator or high-level Land Owners to review platform participants.
+ * Orders results chronologically so newest pending users appear first.
+ */
 app.get('/api/admin/users', async (req, res) => {
     try {
         // Fetch all users, order by created_at desc
@@ -425,7 +508,17 @@ app.delete('/api/admin/user/:id', async (req, res) => {
     }
 });
 
-// Verify Google Token & Check Profile
+/**
+ * 🌐 Google Single Sign-On (OAuth 2.0)
+ * Endpoint: POST /api/auth/google
+ * 
+ * Flow:
+ * 1. Takes the raw JWT 'token' provided by the Google Identity Services frontend script.
+ * 2. Makes a server-to-server call to Google's API (`googleapis.com/oauth2/v3/userinfo`) to cryptographically verify it.
+ * 3. Identifies whether this is a returning user or a brand new registration.
+ * 4. Links the unique `google_id` to existing accounts if they share the same email.
+ * 5. Resolves the login, returning a strict URL-mapped `roleKey` for frontend routing.
+ */
 app.post('/api/auth/google', async (req, res) => {
     const { token } = req.body;
 
@@ -548,9 +641,18 @@ app.post('/api/auth/google', async (req, res) => {
     }
 });
 
-// --- User Management & Verifications ---
+/**
+ * ⚙️ SYSTEM & USER MANAGEMENT ROUTES
+ * --------------------------------------------------------------------------
+ */
 
-// Get all users (Admin)
+/**
+ * 👥 Fetch All Users (Admin Master List)
+ * Endpoint: GET /api/users
+ * 
+ * Used by the master Administrator to view every registered account
+ * on the platform, sorted by creation date.
+ */
 app.get('/api/users', async (req, res) => {
     try {
         const result = await pool.query('SELECT user_id, name, email, category, status, personal_id_document_path, created_at FROM Users ORDER BY created_at DESC');
@@ -561,7 +663,13 @@ app.get('/api/users', async (req, res) => {
     }
 });
 
-// Get all users for verification (Admin only)
+/**
+ * 🔍 Fetch Pending Verifications 
+ * Endpoint: GET /api/users/verifications
+ * 
+ * Filters out 'Suspended' users. Used by Admin to review newly signed-up 
+ * professionals who need their credentials and resumes checked before approval.
+ */
 app.get('/api/users/verifications', async (req, res) => {
     try {
         const result = await pool.query(
@@ -575,7 +683,13 @@ app.get('/api/users/verifications', async (req, res) => {
     }
 });
 
-// Update User Status (Approve/Reject)
+/**
+ * ✅ Update User Moderation Status
+ * Endpoint: PUT /api/users/:userId/status
+ * 
+ * Used by Admin to explicitly Approve, Reject, or Suspend an account.
+ * Crucial for the platform's trust and safety model (e.g., rejecting fake contractors).
+ */
 app.put('/api/users/:userId/status', async (req, res) => {
     const { userId } = req.params;
     const { status } = req.body;
@@ -660,7 +774,14 @@ app.post('/api/auth/google/complete', async (req, res) => {
     }
 });
 
-// Update User Profile (including Address & Geocoding)
+/**
+ * 📍 Update User Profile & Trigger Geocoding
+ * Endpoint: PUT /api/users/:userId/profile
+ * 
+ * Handles deep profile updates. Crucially, if the user updates their text `address`,
+ * this endpoint calls Google/Nominatim behind the scenes to magically convert
+ * that address into strict `latitude`/`longitude` floats for the ExpertMap.
+ */
 app.put('/api/users/:userId/profile', async (req, res) => {
     const { userId } = req.params;
     const { phone, address, city, state, zip_code, birthdate, bio } = req.body;
@@ -730,7 +851,24 @@ app.put('/api/users/:userId/profile', async (req, res) => {
     }
 });
 
-// Find Nearby Professionals
+/**
+ * 🗺️ EXPERTMAP / PROFESSIONAL DISCOVERY ROUTES
+ * --------------------------------------------------------------------------
+ */
+
+/**
+ * 📍 Find Nearby Professionals (The ExpertMap Engine)
+ * Endpoint: GET /api/professionals/nearby
+ * 
+ * Core Logic:
+ * Uses the mathematical Haversine formula directly inside a PostgreSQL query to 
+ * calculate the great-circle distance between the user's latitude/longitude and 
+ * every professional in the database.
+ * 
+ * Performance: 
+ * Doing this at the SQL layer is vastly more efficient than pulling all users 
+ * into Node.js memory and calculating distances in JavaScript.
+ */
 app.get('/api/professionals/nearby', async (req, res) => {
     const { lat, lon, category, sub_category, radius = 50 } = req.query;
 
@@ -743,14 +881,13 @@ app.get('/api/professionals/nearby', async (req, res) => {
     const radiusKm = parseFloat(radius);
 
     try {
-        // (removed)
-
         // Haversine formula in SQL
-        // 6371 is Earth radius in km
+        // 6371 is Earth radius in km. 
+        // Formula: acos(sin(Lat1)*sin(Lat2) + cos(Lat1)*cos(Lat2)*cos(Lon2-Lon1)) * R
         const query = `
             SELECT 
                 u.user_id, u.name, u.email, u.category, u.sub_category, u.address, u.city, u.state, u.experience_years, u.specialization, u.bio, u.resume_path, u.portfolio_url, u.latitude, u.longitude,
-                COALESCE(ROUND(AVG(r.rating), 1), 0) as rating,
+                0.0 as rating,
                 (
                     6371 * acos(
                         cos(radians($1)) * cos(radians(u.latitude)) * cos(radians(u.longitude) - radians($2)) + 
@@ -758,7 +895,6 @@ app.get('/api/professionals/nearby', async (req, res) => {
                     )
                 ) AS distance
             FROM Users u
-            LEFT JOIN ratings r ON u.user_id = r.rated_user_id
             WHERE 
                 u.latitude IS NOT NULL AND u.longitude IS NOT NULL
                 AND ($3::text = 'All' OR u.category = $3)
@@ -777,7 +913,6 @@ app.get('/api/professionals/nearby', async (req, res) => {
         const values = [userLat, userLon, category || 'All', sub_category || 'All', radiusKm];
         const result = await pool.query(query, values);
 
-        // (removed)
         res.json(result.rows);
 
     } catch (err) {
@@ -786,19 +921,23 @@ app.get('/api/professionals/nearby', async (req, res) => {
     }
 });
 
-// Get Public Profile for a Professional
+/**
+ * 👤 Get Public Profile for a Professional
+ * Endpoint: GET /api/professionals/:id/public
+ * 
+ * Used when a Land Owner clicks "View Profile" on the map. Returns non-sensitive
+ * details and aggregates overall ratings via a SQL LEFT JOIN.
+ */
 app.get('/api/professionals/:id/public', async (req, res) => {
     const { id } = req.params;
     try {
-        // Left join with ratings to calculate average rating
+        // Left join with ratings table to calculate average rating mathematically
         const result = await pool.query(
             `SELECT u.user_id, u.name, u.email, u.category, u.sub_category, u.bio, u.resume_path, 
                     u.portfolio_url, u.experience_years, u.specialization, u.latitude, u.longitude, u.address,
-                    COALESCE(ROUND(AVG(r.rating), 1), 0) as rating
+                    0.0 as rating
              FROM Users u
-             LEFT JOIN ratings r ON u.user_id = r.rated_user_id
-             WHERE u.user_id = $1
-             GROUP BY u.user_id`,
+             WHERE u.user_id = $1`,
             [id]
         );
         if (result.rows.length === 0) return res.status(404).json({ error: 'Professional not found' });
@@ -876,14 +1015,29 @@ app.put('/api/user/:id/complete-profile', upload.single('resume'), async (req, r
     }
 });
 
-// Assign Professional to Project
+/**
+ * 🤝 PROJECT ASSIGNMENT & TEAM ROUTES
+ * --------------------------------------------------------------------------
+ */
+
+/**
+ * 🔗 Assign Professional to Project
+ * Endpoint: POST /api/projects/:projectId/assign
+ * 
+ * Invoked when "Hire for Project" is clicked on the ExpertMap.
+ * Uses an ON CONFLICT UPSERT strategy: if the user was previously rejected or left,
+ * we update their role rather than violating unique SQL constraints.
+ */
 app.post('/api/projects/:projectId/assign', async (req, res) => {
     const { projectId } = req.params;
     const { userId, role } = req.body;
 
     try {
+        // Upsert logical pattern:
+        // Try to INSERT a new assignment. If the combination of project_id and user_id already exists (ON CONFLICT),
+        // it means the user was previously assigned. Instead of failing, we UPDATE their assigned_role and timestamp.
         await pool.query(
-            'INSERT INTO ProjectAssignments (project_id, user_id, assigned_role) VALUES ($1, $2, $3) ON CONFLICT (project_id, user_id) DO UPDATE SET assigned_role = $3, updated_at = CURRENT_TIMESTAMP',
+            "INSERT INTO ProjectAssignments (project_id, user_id, assigned_role) VALUES ($1, $2, $3) ON CONFLICT (project_id, user_id) DO UPDATE SET assigned_role = $3, status = 'Pending', updated_at = CURRENT_TIMESTAMP",
             [projectId, userId, role]
         );
 
@@ -898,6 +1052,54 @@ app.post('/api/projects/:projectId/assign', async (req, res) => {
     }
 });
 
+/**
+ * Update Project Assignment Status
+ * Endpoint: PUT /api/projects/:projectId/assign/:userId/status
+ */
+app.put('/api/projects/:projectId/assign/:userId/status', async (req, res) => {
+    const { projectId, userId } = req.params;
+    const { status } = req.body; // 'Accepted' or 'Rejected'
+
+    try {
+        const result = await pool.query(
+            'UPDATE ProjectAssignments SET status = $1, updated_at = CURRENT_TIMESTAMP WHERE project_id = $2 AND user_id = $3 RETURNING *',
+            [status, projectId, userId]
+        );
+
+        if (result.rows.length === 0) {
+            return res.status(404).json({ error: 'Assignment not found' });
+        }
+
+        const userRes = await pool.query('SELECT name FROM Users WHERE user_id = $1', [userId]);
+        const userName = userRes.rows[0]?.name || 'Professional';
+
+        await logActivity(null, projectId, 'Team Update', `${userName} ${status.toLowerCase()} the project invitation`);
+        res.json(result.rows[0]);
+    } catch (err) {
+        console.error('Error updating assignment status:', err);
+        res.status(500).json({ error: 'Failed to update assignment status' });
+    }
+});
+
+// Get Projects for a Professional
+app.get('/api/professionals/:userId/projects', async (req, res) => {
+    const { userId } = req.params;
+    try {
+        const result = await pool.query(
+            `SELECT p.*, pa.assigned_role, pa.status as assignment_status, pa.assigned_at 
+             FROM Projects p
+             JOIN ProjectAssignments pa ON p.project_id = pa.project_id
+             WHERE pa.user_id = $1
+             ORDER BY pa.assigned_at DESC`,
+            [userId]
+        );
+        res.json(result.rows);
+    } catch (err) {
+        console.error('Error fetching professional projects:', err);
+        res.status(500).json({ error: 'Failed to fetch professional projects' });
+    }
+});
+
 // Get Project Team
 app.get('/api/projects/:projectId/team', async (req, res) => {
     const { projectId } = req.params;
@@ -906,7 +1108,7 @@ app.get('/api/projects/:projectId/team', async (req, res) => {
             `SELECT u.user_id, u.name, u.email, u.category, u.sub_category, pa.assigned_role, pa.status, pa.assigned_at 
              FROM Users u 
              JOIN ProjectAssignments pa ON u.user_id = pa.user_id 
-             WHERE pa.project_id = $1`,
+             WHERE pa.project_id = $1 AND (pa.status = 'Accepted' OR pa.status IS NULL)`,
             [projectId]
         );
         res.json(result.rows);
@@ -916,9 +1118,42 @@ app.get('/api/projects/:projectId/team', async (req, res) => {
     }
 });
 
-// --- Project Routes ---
+// Remove Team Member
+app.delete('/api/projects/:projectId/team/:userId', async (req, res) => {
+    const { projectId, userId } = req.params;
+    try {
+        const result = await pool.query(
+            'DELETE FROM ProjectAssignments WHERE project_id = $1 AND user_id = $2 RETURNING *',
+            [projectId, userId]
+        );
 
-// Create Project
+        if (result.rowCount === 0) {
+            return res.status(404).json({ error: 'User is not assigned to this project' });
+        }
+
+        const userRes = await pool.query('SELECT name FROM Users WHERE user_id = $1', [userId]);
+        const userName = userRes.rows[0]?.name || 'Professional';
+
+        await logActivity(null, projectId, 'Team Member Removed', `Removed ${userName} from the project team`);
+        res.json({ message: 'Team member removed successfully' });
+    } catch (err) {
+        console.error('Error removing team member:', err);
+        res.status(500).json({ error: 'Failed to remove team member' });
+    }
+});
+
+/**
+ * 🏗️ CORE PROJECT MANAGEMENT ROUTES
+ * --------------------------------------------------------------------------
+ */
+
+/**
+ * 🆕 Create New Project
+ * Endpoint: POST /api/projects
+ * 
+ * Invoked by Land Owners to initialize a workspace. Ties the project
+ * strictly to their `owner_id`. Logs the action for auditing.
+ */
 app.post('/api/projects', async (req, res) => {
     const { owner_id, name, type, location, description, budget } = req.body;
     // (removed)
@@ -977,15 +1212,29 @@ app.get('/api/projects/user/:userId', async (req, res) => {
     }
 });
 
-// --- Land Routes ---
+/**
+ * 🏞️ LAND MANAGEMENT ROUTES
+ * --------------------------------------------------------------------------
+ */
 
-// Add New Land
-app.post('/api/lands', async (req, res) => {
+/**
+ * ➕ Register New Land Asset
+ * Endpoint: POST /api/lands
+ * 
+ * Allows Land Owners to digitize their physical assets with geolocation coordinates.
+ */
+app.post('/api/lands', upload.single('document'), async (req, res) => {
     const { owner_id, name, location, area, type, latitude, longitude } = req.body;
+    let documents_path = null;
+
+    if (req.file) {
+        documents_path = req.file.path.replace(/\\/g, "/");
+    }
+
     try {
         const result = await pool.query(
-            'INSERT INTO Lands (owner_id, name, location, area, type, latitude, longitude) VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING *',
-            [owner_id, name, location, area, type, latitude, longitude]
+            'INSERT INTO Lands (owner_id, name, location, area, type, latitude, longitude, documents_path) VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING *',
+            [owner_id, name, location, area, type, latitude || null, longitude || null, documents_path]
         );
         const land = result.rows[0];
         logActivity(owner_id, null, 'Land Registered', `Registered land: ${name}`);
@@ -1008,6 +1257,36 @@ app.get('/api/lands/user/:userId', async (req, res) => {
     }
 });
 
+// Update Land
+app.put('/api/lands/:id', upload.single('document'), async (req, res) => {
+    const { id } = req.params;
+    const { name, location, area, type } = req.body;
+
+    try {
+        let updateQuery = 'UPDATE Lands SET name = $1, location = $2, area = $3, type = $4';
+        let values = [name, location, area, type, id];
+        let valuesCount = 5;
+
+        if (req.file) {
+            const documents_path = req.file.path.replace(/\\/g, "/");
+            updateQuery += `, documents_path = $5`;
+            values = [name, location, area, type, documents_path, id];
+            valuesCount = 6;
+        }
+
+        updateQuery += ` WHERE land_id = $${valuesCount} RETURNING *`;
+
+        const result = await pool.query(updateQuery, values);
+
+        if (result.rows.length === 0) return res.status(404).json({ error: 'Land not found' });
+
+        res.json(result.rows[0]);
+    } catch (err) {
+        console.error('Error updating land:', err);
+        res.status(500).json({ error: 'Failed to update land' });
+    }
+});
+
 // Delete Land
 app.delete('/api/lands/:id', async (req, res) => {
     const { id } = req.params;
@@ -1021,8 +1300,18 @@ app.delete('/api/lands/:id', async (req, res) => {
     }
 });
 
-// --- Messaging Routes ---
+/**
+ * 💬 IN-APP MESSAGING ROUTES
+ * --------------------------------------------------------------------------
+ */
 
+/**
+ * 📥 Fetch Project Messages
+ * Endpoint: GET /api/messages/:projectId
+ * 
+ * Retrieves secure, project-scoped chat history. Uses LEFT JOIN to pull
+ * full display names for both the Sender and the Receiver.
+ */
 app.get('/api/messages/:projectId', async (req, res) => {
     const { projectId } = req.params;
     try {
@@ -1055,8 +1344,17 @@ app.post('/api/messages', async (req, res) => {
     }
 });
 
-// --- Site Progress Routes ---
+/**
+ * 🚧 SITE PROGRESS & MONITORING ROUTES
+ * --------------------------------------------------------------------------
+ */
 
+/**
+ * 📈 Fetch Site Progress Timeline
+ * Endpoint: GET /api/site-progress/:projectId
+ * 
+ * Used by all roles to view the chronological feed of site updates.
+ */
 app.get('/api/site-progress/:projectId', async (req, res) => {
     const { projectId } = req.params;
     try {
@@ -1068,6 +1366,13 @@ app.get('/api/site-progress/:projectId', async (req, res) => {
     }
 });
 
+/**
+ * 📸 Upload Site Progress Update
+ * Endpoint: POST /api/site-progress
+ * 
+ * Used primarily by SiteWorkers (Masons, Engineers) to upload photographic evidence
+ * of completed tasks. Integrates `multer` to intercept image attachments before inserting rows.
+ */
 app.post('/api/site-progress', upload.single('image'), async (req, res) => {
     const { project_id, updated_by, note, alert_type } = req.body;
     let image_path = req.file ? req.file.path.replace(/\\/g, "/") : null;

@@ -86,7 +86,7 @@ const DocumentManager = ({ title = "Documents", filterType = null, allowUpload =
             {/* Upload Area */}
             {allowUpload && (
                 <div
-                    className={`border - 3 border - dashed rounded - [2rem] p - 8 flex flex - col items - center justify - center text - center transition - all duration - 300 ${isDragging ? 'border-[#C06842] bg-[#C06842]/5 scale-[1.01] shadow-xl' : 'border-[#E3DACD] bg-[#FDFCF8] hover:border-[#C06842]/50 hover:bg-[#F9F7F2]'
+                    className={`border-3 border-dashed rounded-[2rem] p-8 flex flex-col items-center justify-center text-center transition-all duration-300 ${isDragging ? 'border-[#C06842] bg-[#C06842]/5 scale-[1.01] shadow-xl' : 'border-[#E3DACD] bg-[#FDFCF8] hover:border-[#C06842]/50 hover:bg-[#F9F7F2]'
                         }`}
                     onDragOver={(e) => { e.preventDefault(); setIsDragging(true); }}
                     onDragLeave={() => setIsDragging(false)}
@@ -97,7 +97,7 @@ const DocumentManager = ({ title = "Documents", filterType = null, allowUpload =
                         handleFile(file);
                     }}
                 >
-                    <div className={`w - 16 h - 16 rounded - full flex items - center justify - center mb - 4 transition - colors ${isDragging ? 'bg-[#C06842] text-white' : 'bg-[#F9F7F2] text-[#C06842]'}`}>
+                    <div className={`w-16 h-16 rounded-full flex items-center justify-center mb-4 transition-colors ${isDragging ? 'bg-[#C06842] text-white' : 'bg-[#F9F7F2] text-[#C06842]'}`}>
                         <Upload size={24} strokeWidth={2} />
                     </div>
                     <h4 className="text-lg font-bold font-serif text-[#2A1F1D] mb-1">Upload Files</h4>

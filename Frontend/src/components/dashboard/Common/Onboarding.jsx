@@ -95,7 +95,7 @@ const Onboarding = ({ isOpen, onClose, user, onComplete }) => {
 
                     {/* Right Form Area */}
                     <div className="flex-1 p-8 md:p-12 overflow-y-auto max-h-[80vh]">
-                        <form onSubmit={handleSubmit} className="space-y-6">
+                        <form onSubmit={handleSubmit} onKeyDown={(e) => { if (e.key === 'Enter' && e.target.tagName !== 'BUTTON' && e.target.tagName !== 'TEXTAREA') e.preventDefault(); }} className="space-y-6">
                             {step === 1 && (
                                 <motion.div initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} className="space-y-6">
                                     <h3 className="text-xl font-serif font-bold text-[#3E2B26]">Contact & Location</h3>

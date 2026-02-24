@@ -46,6 +46,17 @@ const Settings = () => {
                         aadharUrl: data.personal_id_document_path ? `${import.meta.env.VITE_API_URL}/${data.personal_id_document_path}` : null,
                         bio: data.bio || prev.bio // Preserve bio if not in DB
                     }));
+
+                    if (data.personal_id_document_path) {
+                        setDocuments([{
+                            id: 'aadhar_doc',
+                            name: 'Aadhar Card',
+                            type: 'Identity Proof',
+                            date: data.updated_at ? data.updated_at.split('T')[0] : new Date().toISOString().split('T')[0],
+                            status: 'Verified',
+                            fileUrl: `${import.meta.env.VITE_API_URL}/${data.personal_id_document_path}`
+                        }]);
+                    }
                 }
             } catch (error) {
                 console.error("Failed to fetch profile", error);
@@ -64,10 +75,9 @@ const Settings = () => {
     const [passwordMessage, setPasswordMessage] = useState(null);
 
     // Mock Documents State (Keep as is for now or link to backend later)
-    const [documents] = useState([
-        { id: 1, name: 'Verified ID Card', type: 'Identity Proof', date: '2023-10-15', status: 'Verified' },
-        { id: 2, name: 'Construction License', type: 'Professional License', date: '2023-11-20', status: 'Pending' },
-    ]);
+    const [documents, setDocuments] = useState([]);
+    const [isUploadingDoc, setIsUploadingDoc] = useState(false);
+    const [newDoc, setNewDoc] = useState({ name: '', type: 'Identity Proof', file: null });
 
     const handleProfileSave = async (e) => {
         e.preventDefault();
@@ -445,9 +455,12 @@ const Settings = () => {
                                     <FileText className="w-6 h-6 mr-3 text-[#C06842]" />
                                     My Documents
                                 </h2>
-                                <button className="flex items-center space-x-2 text-xs font-bold uppercase tracking-wider text-[#C06842] bg-[#C06842]/10 hover:bg-[#C06842]/20 px-4 py-2 rounded-lg transition-colors border border-[#C06842]/20">
+                                <button
+                                    onClick={() => setIsUploadingDoc(!isUploadingDoc)}
+                                    className="flex items-center space-x-2 text-xs font-bold uppercase tracking-wider text-[#C06842] bg-[#C06842]/10 hover:bg-[#C06842]/20 px-4 py-2 rounded-lg transition-colors border border-[#C06842]/20"
+                                >
                                     <Upload className="w-4 h-4" />
-                                    <span>Upload New</span>
+                                    <span>{isUploadingDoc ? 'Cancel Upload' : 'Upload New'}</span>
                                 </button>
                             </div>
 
@@ -457,13 +470,75 @@ const Settings = () => {
                                         <tr>
                                             <th className="px-6 py-4 text-[10px] font-bold text-[#8C7B70] uppercase tracking-wider">Document Name</th>
                                             <th className="px-6 py-4 text-[10px] font-bold text-[#8C7B70] uppercase tracking-wider">Type</th>
-                                            <th className="px-6 py-4 text-[10px] font-bold text-[#8C7B70] uppercase tracking-wider">Date Added</th>
-                                            <th className="px-6 py-4 text-[10px] font-bold text-[#8C7B70] uppercase tracking-wider">Status</th>
-                                            <th className="px-6 py-4 text-[10px] font-bold text-[#8C7B70] uppercase tracking-wider text-right">Actions</th>
+                                            {!isUploadingDoc && (
+                                                <>
+                                                    <th className="px-6 py-4 text-[10px] font-bold text-[#8C7B70] uppercase tracking-wider">Date Added</th>
+                                                    <th className="px-6 py-4 text-[10px] font-bold text-[#8C7B70] uppercase tracking-wider text-right">Actions</th>
+                                                </>
+                                            )}
                                         </tr>
                                     </thead>
                                     <tbody className="divide-y divide-[#E3DACD]/40 bg-white/60">
-                                        {documents.map((doc) => (
+                                        {isUploadingDoc && (
+                                            <tr className="bg-white">
+                                                <td className="px-6 py-5">
+                                                    <input
+                                                        type="text"
+                                                        placeholder="Document Name (e.g. License)"
+                                                        value={newDoc.name}
+                                                        onChange={(e) => setNewDoc({ ...newDoc, name: e.target.value })}
+                                                        className="w-full px-3 py-2 border border-[#E3DACD] rounded-lg text-sm outline-none focus:border-[#C06842] font-medium"
+                                                    />
+                                                </td>
+                                                <td className="px-6 py-5">
+                                                    <div className="flex items-center gap-3">
+                                                        <select
+                                                            value={newDoc.type}
+                                                            onChange={(e) => setNewDoc({ ...newDoc, type: e.target.value })}
+                                                            className="w-full px-3 py-2 border border-[#E3DACD] rounded-lg text-sm outline-none focus:border-[#C06842] font-medium bg-white"
+                                                        >
+                                                            <option value="Identity Proof">Identity Proof</option>
+                                                            <option value="Professional License">Professional License</option>
+                                                            <option value="Certification">Certification</option>
+                                                            <option value="Other">Other</option>
+                                                        </select>
+                                                        <input
+                                                            type="file"
+                                                            onChange={(e) => setNewDoc({ ...newDoc, file: e.target.files[0] })}
+                                                            className="text-sm w-full max-w-[200px]"
+                                                        />
+                                                        <button
+                                                            onClick={() => {
+                                                                if (newDoc.name && newDoc.file) {
+                                                                    setDocuments([...documents, {
+                                                                        id: Date.now(),
+                                                                        name: newDoc.name,
+                                                                        type: newDoc.type,
+                                                                        date: new Date().toISOString().split('T')[0],
+                                                                        status: 'Pending',
+                                                                        fileUrl: URL.createObjectURL(newDoc.file)
+                                                                    }]);
+                                                                    logAction('Document Upload', `Uploaded new ${newDoc.type.toLowerCase()}: ${newDoc.file.name}`);
+                                                                    setIsUploadingDoc(false);
+                                                                    setNewDoc({ name: '', type: 'Identity Proof', file: null });
+                                                                }
+                                                            }}
+                                                            disabled={!newDoc.name || !newDoc.file}
+                                                            className="bg-[#2A1F1D] text-white px-4 py-2.5 rounded-lg text-xs font-bold uppercase tracking-wider disabled:opacity-50 min-w-[100px]"
+                                                        >
+                                                            Save
+                                                        </button>
+                                                    </div>
+                                                </td>
+                                            </tr>
+                                        )}
+                                        {documents.length === 0 && !isUploadingDoc ? (
+                                            <tr>
+                                                <td colSpan="4" className="px-6 py-8 text-center text-[#8C7B70] text-sm">
+                                                    No documents uploaded yet.
+                                                </td>
+                                            </tr>
+                                        ) : documents.map((doc) => (
                                             <tr key={doc.id} className="hover:bg-[#F9F7F2] transition-colors group">
                                                 <td className="px-6 py-5">
                                                     <div className="flex items-center">
@@ -478,18 +553,18 @@ const Settings = () => {
                                                         {doc.type}
                                                     </span>
                                                 </td>
-                                                <td className="px-6 py-5 text-sm text-[#5D4037] font-medium">{doc.date}</td>
-                                                <td className="px-6 py-5">
-                                                    <span className={`inline-flex items-center px-2.5 py-1 rounded-lg text-[10px] font-bold uppercase tracking-wider border ${doc.status === 'Verified' ? 'bg-green-50 text-green-700 border-green-100' :
-                                                        doc.status === 'Pending' ? 'bg-amber-50 text-amber-700 border-amber-100' :
-                                                            'bg-red-50 text-red-700 border-red-100'
-                                                        }`}>
-                                                        {doc.status}
-                                                    </span>
-                                                </td>
-                                                <td className="px-6 py-5 text-right">
-                                                    <button className="text-[#8C7B70] hover:text-[#C06842] transition-colors font-bold text-xs uppercase tracking-wider hover:underline">View</button>
-                                                </td>
+                                                {!isUploadingDoc && (
+                                                    <>
+                                                        <td className="px-6 py-5 text-sm text-[#5D4037] font-medium">{doc.date}</td>
+                                                        <td className="px-6 py-5 text-right">
+                                                            {doc.fileUrl ? (
+                                                                <a href={doc.fileUrl} target="_blank" rel="noopener noreferrer" className="text-[#8C7B70] hover:text-[#C06842] transition-colors font-bold text-xs uppercase tracking-wider hover:underline">View</a>
+                                                            ) : (
+                                                                <span className="text-gray-300 text-xs uppercase font-bold tracking-wider">No File</span>
+                                                            )}
+                                                        </td>
+                                                    </>
+                                                )}
                                             </tr>
                                         ))}
                                     </tbody>

@@ -1,10 +1,10 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { useMockApp } from '../../../hooks/useMockApp';
 import {
     CheckSquare, Camera, Clock, AlertTriangle,
     MapPin, User, Phone, Star, Briefcase, Calendar,
     MessageCircle, Activity, Shield, Construction,
-    Home, Bell, ArrowRight, Wrench
+    Home, Bell, ArrowRight, Wrench, AlertOctagon
 } from 'lucide-react';
 
 // --- Utility Components ---
@@ -118,6 +118,47 @@ const WorkerHome = ({ currentUser }) => {
         { id: 3, title: 'Guest Bath Grouting', status: 'Done', time: '2h 15m', priority: 'Low' },
     ]);
 
+    const [invitations, setInvitations] = useState([]);
+
+    const fetchInvitations = useCallback(async () => {
+        if (!currentUser?.user_id && !currentUser?.id) return;
+        const uid = currentUser.user_id || currentUser.id;
+        try {
+            const res = await fetch(`${import.meta.env.VITE_API_URL}/api/professionals/${uid}/projects`);
+            if (res.ok) {
+                const data = await res.json();
+                setInvitations(data.filter(p => p.assignment_status === 'Pending'));
+            }
+        } catch (err) {
+            console.error('Error fetching invitations:', err);
+        }
+    }, [currentUser]);
+
+    useEffect(() => {
+        fetchInvitations();
+    }, [fetchInvitations]);
+
+    const respondToInvite = async (projectId, status) => {
+        if (!currentUser?.user_id && !currentUser?.id) return;
+        const uid = currentUser.user_id || currentUser.id;
+        try {
+            const res = await fetch(`${import.meta.env.VITE_API_URL}/api/projects/${projectId}/assign/${uid}/status`, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ status })
+            });
+
+            if (res.ok) {
+                fetchInvitations();
+            } else {
+                alert(`Failed to ${status.toLowerCase()} invitation.`);
+            }
+        } catch (err) {
+            console.error("Error responding to invite:", err);
+            alert("Connection error.");
+        }
+    };
+
     const handleTaskToggle = (id) => {
         setTasks(tasks.map(t =>
             t.id === id ? { ...t, status: t.status === 'Done' ? 'Pending' : 'Done' } : t
@@ -126,6 +167,38 @@ const WorkerHome = ({ currentUser }) => {
 
     return (
         <div className="space-y-6">
+            {/* INVITATIONS BANNER */}
+            {invitations.length > 0 && (
+                <div className="space-y-4">
+                    {invitations.map(inv => (
+                        <div key={inv.project_id} className="bg-amber-50 border-l-4 border-amber-500 rounded-lg p-5 shadow-sm flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+                            <div>
+                                <h3 className="font-bold text-amber-900 flex items-center gap-2">
+                                    <AlertOctagon size={18} /> New Project Invitation
+                                </h3>
+                                <p className="text-amber-800 text-sm mt-1">
+                                    You have been invited to work on <strong>{inv.name}</strong> as <span className="uppercase text-xs font-bold bg-amber-200 px-2 py-0.5 rounded">{inv.assigned_role}</span>.
+                                </p>
+                            </div>
+                            <div className="flex gap-3 shrink-0">
+                                <button
+                                    onClick={() => respondToInvite(inv.project_id, 'Rejected')}
+                                    className="px-4 py-2 border border-amber-300 text-amber-800 rounded-lg text-sm font-bold hover:bg-amber-100 transition-colors"
+                                >
+                                    Decline
+                                </button>
+                                <button
+                                    onClick={() => respondToInvite(inv.project_id, 'Accepted')}
+                                    className="px-4 py-2 bg-amber-600 text-white rounded-lg text-sm font-bold hover:bg-amber-700 transition-colors shadow-md"
+                                >
+                                    Accept Invitation
+                                </button>
+                            </div>
+                        </div>
+                    ))}
+                </div>
+            )}
+
             {/* Header */}
             <div className="glass-panel p-6 rounded-[2rem] shadow-xl relative overflow-hidden text-white group">
                 {/* Background Gradient & Pattern */}

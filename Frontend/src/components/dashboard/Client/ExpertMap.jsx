@@ -5,7 +5,23 @@ import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 import { User, Briefcase, MapPin, Star, Phone, MessageSquare, Plus, X, FileText, ArrowLeft } from 'lucide-react';
 
-// Fix Leaflet marker icons in React
+/**
+ * 🛠️ ExpertMap Component
+ * 
+ * This component renders an interactive map using React-Leaflet to help Land Owners
+ * visualize and select nearby construction professionals for their projects.
+ * It uses browser Geolocation API or fallback Nominatim OpenStreetMap geocoding
+ * to determine the user's location, then fetches nearby professionals from the backend.
+ * 
+ * Props:
+ * @param {string} currentProjectId - The ID of the currently active project context
+ * @param {string} category - Initial category filter (e.g., 'Planning', 'SiteWork')
+ * @param {string} subCategory - Initial sub-category filter (e.g., 'Architect', 'Mason')
+ * @param {function} onAssign - Callback triggered when a professional is assigned
+ * @param {function} onClose - Callback to close the map view
+ */
+
+// 🗺️ Fix default Leaflet marker icons not rendering correctly in React/Webpack environments
 import icon from 'leaflet/dist/images/marker-icon.png';
 import iconShadow from 'leaflet/dist/images/marker-shadow.png';
 
@@ -17,7 +33,10 @@ let DefaultIcon = L.icon({
 });
 L.Marker.prototype.options.icon = DefaultIcon;
 
-// Custom function to animate map movements
+/**
+ * Custom React-Leaflet component to smoothly animate map movements.
+ * It watches for changes in the `coords` prop and uses `map.setView()` to fly to the new center.
+ */
 const SetViewOnClick = ({ coords }) => {
     const map = useMap();
     useEffect(() => {
@@ -27,14 +46,16 @@ const SetViewOnClick = ({ coords }) => {
 };
 
 const ExpertMap = ({ currentProjectId, category, subCategory, onAssign, onClose }) => {
-    const [professionals, setProfessionals] = useState([]);
-    const [loading, setLoading] = useState(true);
-    const [mapCenter, setMapCenter] = useState([20.5937, 78.9629]);
-    const [selectedPro, setSelectedPro] = useState(null);
-    const [activeCategory, setActiveCategory] = useState(category || 'All');
-    const [activeSubCategory, setActiveSubCategory] = useState(subCategory || 'All');
-    const [isProfileOpen, setIsProfileOpen] = useState(false);
+    // 🗄️ State Management
+    const [professionals, setProfessionals] = useState([]); // List of fetched nearby professionals
+    const [loading, setLoading] = useState(true); // Loading overlay state
+    const [mapCenter, setMapCenter] = useState([20.5937, 78.9629]); // Default map center (India coords)
+    const [selectedPro, setSelectedPro] = useState(null); // Active professional for sidebar details
+    const [activeCategory, setActiveCategory] = useState(category || 'All'); // Current filter
+    const [activeSubCategory, setActiveSubCategory] = useState(subCategory || 'All'); // Current sub-filter
+    const [isProfileOpen, setIsProfileOpen] = useState(false); // Sidebar toggle
 
+    // 📋 Categorization mappings matching the database schema requirements
     const categories = ['All', 'Planning', 'Design and Finish', 'SiteWork'];
     const subCategories = {
         'All': ['All'],
@@ -43,30 +64,29 @@ const ExpertMap = ({ currentProjectId, category, subCategory, onAssign, onClose 
         'SiteWork': ['All', 'Mason', 'Electrician', 'Plumber', 'Carpenter', 'Tile Worker', 'Painter']
     };
 
-    const [userLocation, setUserLocation] = useState(null);
+    const [userLocation, setUserLocation] = useState(null); // The current user's actual precise location
 
-    // Fetch current user's location
+    // 📍 Hook 1: Fetch Current User's Location (Runs on mount)
     useEffect(() => {
         let watchId = null;
 
         const fetchUserLocation = async () => {
             setLoading(true);
 
-            // 1. Try Browser Geolocation with watchPosition for Realtime Updates
+            // Strategy 1: Attempt to get precise, real-time location via Browser API
             if (navigator.geolocation) {
                 watchId = navigator.geolocation.watchPosition(
                     (position) => {
                         const { latitude, longitude } = position.coords;
-                        // (removed)
                         setUserLocation({ lat: latitude, lon: longitude });
 
-                        // Only center map initially if default
+                        // Recenter map only if it's currently on the default India center coordinates
                         setMapCenter(prev => (prev[0] === 20.5937 && prev[1] === 78.9629) ? [latitude, longitude] : prev);
                         setLoading(false);
                     },
                     (error) => {
                         console.warn('[ExpertMap] Realtime location denied/error:', error.message);
-                        // If watch fails, fall back to profile data
+                        // Trigger fallback if browser API fails or user denies permission
                         fetchProfileLocation();
                     },
                     {
@@ -76,12 +96,14 @@ const ExpertMap = ({ currentProjectId, category, subCategory, onAssign, onClose 
                     }
                 );
             } else {
-                fetchProfileLocation();
+                fetchProfileLocation(); // Browser API unsupported
             }
         };
 
+        // Strategy 2 (Fallback): Fetch saved location or geocode city from the user's database profile
         const fetchProfileLocation = async () => {
             try {
+                // Safely grab the current user context from local storage
                 const storedUser = localStorage.getItem('planora_current_user') || localStorage.getItem('user');
                 const userData = storedUser ? JSON.parse(storedUser) : null;
                 const userId = userData ? (userData.user_id || userData.id) : null;
@@ -92,29 +114,28 @@ const ExpertMap = ({ currentProjectId, category, subCategory, onAssign, onClose 
                     return;
                 }
 
-                // Get User Profile
+                // Fetch full profile to get saved coordinates or city
                 const res = await fetch(`${import.meta.env.VITE_API_URL}/api/user/${userId}`);
                 const data = await res.json();
-                // (removed)
 
                 let lat = data.latitude;
                 let lon = data.longitude;
 
-                // Geocode city if lat/lon missing
+                // If explicit coordinates are missing, attempt to convert their saved 'city' into lat/lon
                 if ((!lat || !lon) && data.city) {
-                    console.log(`[ExpertMap] Coordinates missing. Geocoding city: ${data.city}`);
+                    console.log(`[ExpertMap] Coordinates missing. Geocoding city: ${data.city} via Nominatim OSMap`);
                     try {
                         const geoRes = await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(data.city)}&limit=1`, {
-                            headers: { 'User-Agent': 'PlanoraApp/1.0' }
+                            headers: { 'User-Agent': 'PlanoraApp/1.0' } // Required by Nominatim policy
                         });
                         const geoData = await geoRes.json();
                         if (geoData && geoData.length > 0) {
                             lat = parseFloat(geoData[0].lat);
                             lon = parseFloat(geoData[0].lon);
-                            console.log(`[ExpertMap] Geocoded ${data.city} to:`, lat, lon);
+                            console.log(`[ExpertMap] Geocoded ${data.city} successfully.`);
                         }
                     } catch (geoErr) {
-                        console.error('[ExpertMap] Geocoding failed:', geoErr);
+                        console.error('[ExpertMap] Final geocoding fallback failed:', geoErr);
                     }
                 }
 
@@ -122,8 +143,7 @@ const ExpertMap = ({ currentProjectId, category, subCategory, onAssign, onClose 
                     setUserLocation({ lat, lon });
                     setMapCenter([lat, lon]);
                 } else {
-                    console.warn('[ExpertMap] Could not determine location.');
-                    // alert("We couldn't get your location from your browser or profile. Please enable location services or update your profile city.");
+                    console.warn('[ExpertMap] Could not determine a secure location.');
                 }
 
             } catch (err) {
@@ -135,25 +155,32 @@ const ExpertMap = ({ currentProjectId, category, subCategory, onAssign, onClose 
 
         fetchUserLocation();
 
+        // Cleanup function for useEffect: Stop tracking if component unmounts
         return () => {
             if (watchId !== null) navigator.geolocation.clearWatch(watchId);
         };
     }, []);
 
+    // 👥 Hook 2: Fetch Professionals based on Location & Filters
     const fetchProfessionals = async () => {
+        // Prevent API call if we haven't locked in a center coordinate yet
         if (!userLocation) {
-            console.log('[ExpertMap] Waiting for user location...');
+            console.log('[ExpertMap] Waiting for user location before scanning for experts...');
             return;
         }
 
         setLoading(true);
         try {
-            // New endpoint with radius parameter (default 50km)
+            // Backend endpoint utilizes Haversine distance formula in SQL
             let url = `${import.meta.env.VITE_API_URL}/api/professionals/nearby`;
             const params = new URLSearchParams();
+
+            // Send current coordinates and desired search radius (50km fixed)
             params.append('lat', userLocation.lat);
             params.append('lon', userLocation.lon);
-            params.append('radius', 50); // 50km radius
+            params.append('radius', 50);
+
+            // Append optional category filters matching schema enum definitions
             if (activeCategory !== 'All') params.append('category', activeCategory);
             if (activeSubCategory !== 'All') params.append('sub_category', activeSubCategory);
 
@@ -163,44 +190,47 @@ const ExpertMap = ({ currentProjectId, category, subCategory, onAssign, onClose 
             const data = await res.json();
 
             if (res.ok) {
-                setProfessionals(data);
-                // (removed)
+                setProfessionals(data); // State updates to trigger map re-renders
             } else {
-                console.error('[ExpertMap] API Error:', data.error);
+                console.error('[ExpertMap] Server returned error:', data.error);
                 setProfessionals([]);
             }
         } catch (err) {
-            console.error('Error fetching professionals:', err);
+            console.error('Network block or CORS error while fetching experts:', err);
             setProfessionals([]);
         } finally {
             setLoading(false);
         }
     };
 
+    // Re-run the fetching logic dynamically if filter dropdowns change or if User Location moves significantly
     useEffect(() => {
         fetchProfessionals();
     }, [activeCategory, activeSubCategory, userLocation]);
 
+    // ⚡ Action Handler: Assign the selected professional to the active project context
     const handleAssign = async (proId, proName, proRole) => {
+        // Enforce project context
         if (!currentProjectId) {
-            alert("Please select or create a project first.");
+            alert("Please select or create a project first before assigning team members.");
             return;
         }
 
         try {
+            // Post Assignment mapping linking land owner's active project to the hired professional
             const res = await fetch(`${import.meta.env.VITE_API_URL}/api/projects/${currentProjectId}/assign`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ userId: proId, role: proRole })
+                body: JSON.stringify({ userId: proId, role: proRole }) // Role informs the backend of the access permissions to grant
             });
 
             if (res.ok) {
-                alert(`${proName} assigned to your project successfully!`);
-                if (onAssign) onAssign();
-                setIsProfileOpen(false);
+                alert(`${proName} assigned to your project successfully. Notifications have been dispatched.`);
+                if (onAssign) onAssign(); // Bubble up explicit re-render request to parent component
+                setIsProfileOpen(false); // Clean up side-bar UX
             }
         } catch (err) {
-            alert("Failed to assign professional.");
+            alert("Failed to assign professional. Check network or server status.");
         }
     };
 

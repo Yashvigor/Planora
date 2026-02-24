@@ -37,9 +37,9 @@ const FindProfessionals = () => {
                 const storedUser = localStorage.getItem('planora_current_user') || localStorage.getItem('user');
                 const userData = storedUser ? JSON.parse(storedUser) : null;
                 const userId = userData ? (userData.user_id || userData.id) : null;
-
+                let category = '';
                 if (userData) {
-                    const category = (userData.category || userData.user_type || '').toUpperCase();
+                    category = (userData.category || userData.user_type || '').toUpperCase();
                     setCurrentUserCategory(category);
                 }
 
@@ -65,14 +65,23 @@ const FindProfessionals = () => {
                     );
                 }
 
-                // Fetch Projects
+                // Fetch Projects based on Role
                 if (userId) {
-                    const res = await fetch(`${import.meta.env.VITE_API_URL}/api/projects/user/${userId}`);
+                    const endpoint = category === 'LAND_OWNER'
+                        ? `/api/projects/user/${userId}`
+                        : `/api/professionals/${userId}/projects`;
+
+                    const res = await fetch(`${import.meta.env.VITE_API_URL}${endpoint}`);
                     if (res.ok) {
                         const data = await res.json();
-                        setProjects(data);
-                        if (data.length > 0) {
-                            setSelectedProjectId(data[0].project_id);
+                        // For professionals, only allow sending invites for projects they have Accepted
+                        const activeProjects = category === 'LAND_OWNER'
+                            ? data
+                            : data.filter(p => !p.assignment_status || p.assignment_status === 'Accepted');
+
+                        setProjects(activeProjects);
+                        if (activeProjects.length > 0) {
+                            setSelectedProjectId(activeProjects[0].project_id);
                         }
                     }
                 }

@@ -3,7 +3,7 @@ import { useMockApp } from '../../../hooks/useMockApp';
 import {
     HardHat, Clock, CheckCircle, FileText,
     MapPin, Plus, ArrowLeft, XCircle, Briefcase,
-    TrendingUp, ArrowUpRight, Star
+    TrendingUp, ArrowUpRight, Star, AlertOctagon
 } from 'lucide-react';
 import ExpertMap from '../../../components/dashboard/Client/ExpertMap';
 
@@ -23,6 +23,7 @@ const SectionHeader = ({ title, action }) => (
 const ContractorOverview = () => {
     const { currentUser } = useMockApp();
     const [projects, setProjects] = useState([]);
+    const [invitations, setInvitations] = useState([]);
     const [activeProject, setActiveProject] = useState(null);
     const [loading, setLoading] = useState(true);
     const [isDiscoveryOpen, setIsDiscoveryOpen] = useState(false);
@@ -45,16 +46,26 @@ const ContractorOverview = () => {
             const projRes = await fetch(`${import.meta.env.VITE_API_URL}/api/professionals/${uid}/projects`);
             if (projRes.ok) {
                 const projData = await projRes.json();
-                setProjects(projData);
 
-                const projToFetch = activeProject || projData[0];
+                const pendingInvs = projData.filter(p => p.assignment_status === 'Pending');
+                const activeProjs = projData.filter(p => !p.assignment_status || p.assignment_status === 'Accepted');
+
+                setInvitations(pendingInvs);
+                setProjects(activeProjs);
+
+                const projToFetch = activeProject || activeProjs[0];
                 if (projToFetch) {
-                    if (!activeProject) setActiveProject(projToFetch);
+                    if (!activeProject || !activeProjs.find(p => p.project_id === activeProject.project_id)) {
+                        setActiveProject(projToFetch);
+                    }
 
                     const teamRes = await fetch(`${import.meta.env.VITE_API_URL}/api/projects/${projToFetch.project_id}/team`);
                     if (teamRes.ok) {
                         setProjectTeam(await teamRes.json());
                     }
+                } else {
+                    setActiveProject(null);
+                    setProjectTeam([]);
                 }
             }
         } catch (err) {
@@ -67,6 +78,27 @@ const ContractorOverview = () => {
     useEffect(() => {
         fetchData();
     }, [fetchData]);
+
+    const respondToInvite = async (projectId, status) => {
+        if (!currentUser?.user_id && !currentUser?.id) return;
+        const uid = currentUser.user_id || currentUser.id;
+        try {
+            const res = await fetch(`${import.meta.env.VITE_API_URL}/api/projects/${projectId}/assign/${uid}/status`, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ status }) // 'Accepted' or 'Rejected'
+            });
+
+            if (res.ok) {
+                fetchData(); // Refresh lists
+            } else {
+                alert(`Failed to ${status.toLowerCase()} invitation.`);
+            }
+        } catch (err) {
+            console.error("Error responding to invite:", err);
+            alert("An error occurred while responding to the invitation.");
+        }
+    };
 
     const handleCompleteProject = async () => {
         if (!activeProject || activeProject.status === 'Completed') return;
@@ -93,6 +125,26 @@ const ContractorOverview = () => {
         } catch (error) {
             console.error("Error completing project:", error);
             alert("Connection error when completing project.");
+        }
+    };
+
+    const handleRemoveMember = async (memberId, memberName) => {
+        if (!window.confirm(`Are you sure you want to remove ${memberName} from this project team?`)) return;
+
+        try {
+            const res = await fetch(`${import.meta.env.VITE_API_URL}/api/projects/${activeProject.project_id}/team/${memberId}`, {
+                method: 'DELETE'
+            });
+
+            if (res.ok) {
+                fetchData(); // Refresh the team list
+            } else {
+                const errData = await res.json();
+                alert(`Failed to remove team member: ${errData.error}`);
+            }
+        } catch (err) {
+            console.error("Error removing team member:", err);
+            alert("Connection error when removing team member.");
         }
     };
 
@@ -150,6 +202,39 @@ const ContractorOverview = () => {
 
     return (
         <div className="max-w-7xl mx-auto space-y-8 pb-20 font-sans text-[#2A1F1D]">
+
+            {/* INVITATIONS BANNER */}
+            {invitations.length > 0 && (
+                <div className="space-y-4">
+                    {invitations.map(inv => (
+                        <div key={inv.project_id} className="bg-amber-50 border-l-4 border-amber-500 rounded-lg p-5 shadow-sm flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+                            <div>
+                                <h3 className="font-bold text-amber-900 flex items-center gap-2">
+                                    <AlertOctagon size={18} /> New Project Invitation
+                                </h3>
+                                <p className="text-amber-800 text-sm mt-1">
+                                    You have been invited to work on <strong>{inv.name}</strong> as <span className="uppercase text-xs font-bold bg-amber-200 px-2 py-0.5 rounded">{inv.assigned_role}</span>.
+                                </p>
+                            </div>
+                            <div className="flex gap-3 shrink-0">
+                                <button
+                                    onClick={() => respondToInvite(inv.project_id, 'Rejected')}
+                                    className="px-4 py-2 border border-amber-300 text-amber-800 rounded-lg text-sm font-bold hover:bg-amber-100 transition-colors"
+                                >
+                                    Decline
+                                </button>
+                                <button
+                                    onClick={() => respondToInvite(inv.project_id, 'Accepted')}
+                                    className="px-4 py-2 bg-amber-600 text-white rounded-lg text-sm font-bold hover:bg-amber-700 transition-colors shadow-md"
+                                >
+                                    Accept Invitation
+                                </button>
+                            </div>
+                        </div>
+                    ))}
+                </div>
+            )}
+
             {/* Header */}
             <div className="glass-panel rounded-[2.5rem] p-10 shadow-xl relative overflow-hidden group hover:shadow-2xl transition-all duration-500 border border-[#E3DACD]">
                 <div className="absolute right-0 top-0 w-80 h-80 bg-[#C06842]/10 rounded-full blur-3xl -mr-16 -mt-16 pointer-events-none"></div>
@@ -275,7 +360,13 @@ const ContractorOverview = () => {
                                         <p className="font-bold text-sm text-[#2A1F1D]">{member.name}</p>
                                         <p className="text-[10px] uppercase text-[#8C7B70] font-bold tracking-tight">{member.assigned_role || member.sub_category}</p>
                                     </div>
-                                    <CheckCircle size={14} className="text-green-500 opacity-40 group-hover:opacity-100 transition-opacity" />
+                                    <button
+                                        onClick={() => handleRemoveMember(member.user_id, member.name)}
+                                        className="p-2 text-[#8C7B70] hover:text-red-500 hover:bg-red-50 rounded-xl transition-all opacity-0 group-hover:opacity-100"
+                                        title={`Remove ${member.name} from project`}
+                                    >
+                                        <XCircle size={18} />
+                                    </button>
                                 </div>
                             )) : (
                                 <div className="text-center py-8 opacity-50">
@@ -385,8 +476,8 @@ const ContractorOverview = () => {
                                                     <Star
                                                         size={28}
                                                         className={`transition-colors duration-200 ${(teamRatings[member.user_id] || 0) >= star
-                                                                ? 'fill-yellow-500 text-yellow-500'
-                                                                : 'text-gray-300 hover:text-yellow-200'
+                                                            ? 'fill-yellow-500 text-yellow-500'
+                                                            : 'text-gray-300 hover:text-yellow-200'
                                                             }`}
                                                     />
                                                 </button>

@@ -1,10 +1,24 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
 
+/**
+ * 📦 Mock App Context
+ * 
+ * Provides global state management across the Planora frontend.
+ * 
+ * Architecture Note:
+ * This context currently uses a *hybrid* approach for demonstration purposes:
+ * 1. Auth & Projects: Fetched from the real PostgreSQL backend.
+ * 2. Messages, Documents, Site Progress: Simulated using browser LocalStorage to avoid 
+ *    requiring a fully deployed database for non-core features during prototyping.
+ */
+
 const MockAppContext = createContext();
 
 export { MockAppContext };
 
 export const MockAppProvider = ({ children }) => {
+    // 👤 CURRENT USER STATE
+    // Hydrated from LocalStorage on initial load to maintain session across refreshes.
     const [currentUser, setCurrentUser] = useState(() => {
         try {
             const savedUser = localStorage.getItem('planora_current_user');
@@ -15,6 +29,7 @@ export const MockAppProvider = ({ children }) => {
         }
     });
 
+    // 👥 MOCK USERS DATABASE (LocalStorage fallback)
     const [users, setUsers] = useState(() => {
         try {
             const savedUsers = localStorage.getItem('planora_users');
@@ -25,12 +40,15 @@ export const MockAppProvider = ({ children }) => {
         }
     });
 
+    // 🏞️ MOCK LAND ASSETS
     const [lands, setLands] = useState([
         { id: 1, ownerId: 'user_1', name: 'Green Valley Plot', location: 'Austin, TX', area: '5000 sqft', type: 'Residential', documents: [] },
     ]);
 
+    // 🏗️ REAL PROJECTS DATA (Fetched via API)
     const [projects, setProjects] = useState([]);
 
+    // 👷 MOCK PROFESSIONALS (ExpertMap fallback if API fails)
     const [professionals, setProfessionals] = useState([
         { id: 'p1', name: 'John Builder', role: 'contractor', rating: 4.8, distance: '2.5 km', avatar: '👷', email: 'john@builder.com' },
         { id: 'p2', name: 'Sarah Architect', role: 'architect', rating: 4.9, distance: '5.0 km', avatar: '👩‍🎨', email: 'sarah@design.com' },
@@ -38,6 +56,7 @@ export const MockAppProvider = ({ children }) => {
         { id: 'p4', name: 'Elite Designs', role: 'designer', rating: 4.9, distance: '1.2 km', avatar: '🎨', email: 'elite@design.com' },
     ]);
 
+    // 📄 MOCK DOCUMENTS (LocalStorage)
     const [documents, setDocuments] = useState(() => {
         try {
             const savedDocs = localStorage.getItem('planora_documents');
@@ -48,6 +67,7 @@ export const MockAppProvider = ({ children }) => {
         }
     });
 
+    // 💬 MOCK MESSAGES (LocalStorage)
     const [messages, setMessages] = useState(() => {
         try {
             const savedMessages = localStorage.getItem('planora_messages');
@@ -58,7 +78,8 @@ export const MockAppProvider = ({ children }) => {
         }
     });
 
-    // --- EFFECT: Fetch Real Data ---
+    // --- EFFECTS: REAL DATA FETCHING ---
+    // Fetch live projects from PostgreSQL when a user logs in
     useEffect(() => {
         if (currentUser) {
             const uid = currentUser.user_id || currentUser.id;
@@ -69,6 +90,7 @@ export const MockAppProvider = ({ children }) => {
         }
     }, [currentUser]);
 
+    // 🚧 MOCK SITE PROGRESS (LocalStorage)
     const [siteProgress, setSiteProgress] = useState(() => {
         try {
             const savedProgress = localStorage.getItem('planora_site_progress');
@@ -79,7 +101,8 @@ export const MockAppProvider = ({ children }) => {
         }
     });
 
-    // --- EFFECT: Persist Data ---
+    // --- EFFECTS: LOCAL STORAGE PERSISTENCE ---
+    // Sync simulated state arrays back to the browser's LocalStorage automatically whenever they change.
     useEffect(() => {
         localStorage.setItem('planora_users', JSON.stringify(users));
     }, [users]);
@@ -100,12 +123,12 @@ export const MockAppProvider = ({ children }) => {
         if (currentUser) {
             localStorage.setItem('planora_current_user', JSON.stringify(currentUser));
         } else {
-            localStorage.removeItem('planora_current_user');
+            localStorage.removeItem('planora_current_user'); // Clear session on logout
         }
     }, [currentUser]);
 
 
-    // --- ACTIONS ---
+    // --- STATE MUTATION ACTIONS ---
 
     const signup = (userData) => {
         const cleanEmail = userData.email.trim();
@@ -135,10 +158,13 @@ export const MockAppProvider = ({ children }) => {
         return user;
     };
 
+    /**
+     * Auth Login Sync
+     * Called by Auth.jsx AFTER a successful backend login to update the global session.
+     */
     const setAuthUser = (user) => {
         setCurrentUser(user);
-        // Ensure user is in the local list for consistency if needed, 
-        // but primarily set the current user session.
+        // Ensure user is in the local simulated list for consistency
         if (!users.find(u => u.email === user.email)) {
             setUsers(prev => [...prev, { ...user, id: user.user_id || user.id || `user_${Date.now()}` }]);
         }
@@ -154,6 +180,11 @@ export const MockAppProvider = ({ children }) => {
         setLands([...lands, newLand]);
     };
 
+    /**
+     * Create Real Project
+     * Saves to the PostgreSQL backend first. If it succeeds, syncs the React state.
+     * If networking fails, falls back to a temporary LocalStorage mock object to prevent UI freezing.
+     */
     const addProject = async (projectData) => {
         const uid = currentUser.user_id || currentUser.id;
         try {
@@ -173,7 +204,7 @@ export const MockAppProvider = ({ children }) => {
             }
         } catch (err) {
             console.error("Error creating project:", err);
-            // Fallback for UI responsiveness if needed
+            // Fallback for UI responsiveness if backend is unreachable during dev
             const fallbackProj = {
                 ...projectData,
                 id: Date.now(),

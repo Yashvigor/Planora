@@ -278,6 +278,26 @@ const LandOwnerDashboard = () => {
         }
     };
 
+    const handleRemoveMember = async (memberId, memberName) => {
+        if (!window.confirm(`Are you sure you want to remove ${memberName} from this project team?`)) return;
+
+        try {
+            const res = await fetch(`${import.meta.env.VITE_API_URL}/api/projects/${activeProject.project_id}/team/${memberId}`, {
+                method: 'DELETE'
+            });
+
+            if (res.ok) {
+                fetchData(); // Refresh the team list
+            } else {
+                const errData = await res.json();
+                alert(`Failed to remove team member: ${errData.error}`);
+            }
+        } catch (err) {
+            console.error("Error removing team member:", err);
+            alert("Connection error when removing team member.");
+        }
+    };
+
     const handleRatingChange = (userId, ratingValue) => {
         setTeamRatings(prev => ({
             ...prev,
@@ -489,12 +509,19 @@ const LandOwnerDashboard = () => {
                                 <SectionHeader title="Site Team" action={<button onClick={() => setIsDiscoveryOpen(true)} className="w-8 h-8 flex items-center justify-center bg-[#2A1F1D] text-white rounded-full hover:bg-[#C06842]"><Plus size={16} /></button>} />
                                 <div className="space-y-4">
                                     {projectTeam.map(member => (
-                                        <div key={member.user_id} className="flex items-center space-x-4 p-2 hover:bg-[#F9F7F2] rounded-xl transition-all">
+                                        <div key={member.user_id} className="group flex items-center space-x-4 p-2 hover:bg-[#F9F7F2] rounded-xl transition-all">
                                             <div className="w-10 h-10 rounded-full bg-[#E3DACD] flex items-center justify-center font-bold">{member.name.charAt(0)}</div>
-                                            <div>
+                                            <div className="flex-1">
                                                 <p className="font-bold text-sm">{member.name}</p>
                                                 <p className="text-[10px] uppercase text-[#8C7B70]">{member.assigned_role || member.sub_category}</p>
                                             </div>
+                                            <button
+                                                onClick={() => handleRemoveMember(member.user_id, member.name)}
+                                                className="p-2 text-[#8C7B70] hover:text-red-500 hover:bg-red-50 rounded-xl transition-all opacity-0 group-hover:opacity-100"
+                                                title={`Remove ${member.name} from project`}
+                                            >
+                                                <XCircle size={18} />
+                                            </button>
                                         </div>
                                     ))}
                                     <button onClick={() => setIsDiscoveryOpen(true)} className="w-full py-3 bg-[#FDFCF8] border border-[#E3DACD] rounded-xl text-sm font-bold flex items-center justify-center gap-2 hover:bg-[#F9F7F2]">
@@ -626,8 +653,8 @@ const LandOwnerDashboard = () => {
                                                     <Star
                                                         size={28}
                                                         className={`transition-colors duration-200 ${(teamRatings[member.user_id] || 0) >= star
-                                                                ? 'fill-yellow-500 text-yellow-500'
-                                                                : 'text-gray-300 hover:text-yellow-200'
+                                                            ? 'fill-yellow-500 text-yellow-500'
+                                                            : 'text-gray-300 hover:text-yellow-200'
                                                             }`}
                                                     />
                                                 </button>
