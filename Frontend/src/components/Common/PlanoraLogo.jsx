@@ -3,8 +3,8 @@ import React from 'react';
 const PlanoraLogo = ({
     className = "w-10 h-10",
     iconOnly = false,
-    textColor = "#2A1F1D",
-    accentColor = "#C06842",
+    textColor = "#3E2B26",
+    accentColor = "#b96a41",
     showText = true
 }) => {
     // Helper to get hex from tailwind text-[color]
@@ -28,23 +28,21 @@ const PlanoraLogo = ({
                     {/* Background */}
                     <rect x="5" y="5" width="110" height="110" rx="28" fill="#FDFCF8" />
 
-                    <g transform="translate(26, 26)">
-                        {/* The specific geometry for the Isometric P Logo */}
+                    <g transform="translate(18, 15) scale(0.85)">
+                        {/* Main Left Stem & Top Arch (Primary Accent) */}
+                        <path d="M10,80 L10,30 L50,0 L90,30 L90,45 L50,15 L25,35 L25,80 Z" fill={primaryAccent} />
 
-                        {/* 1. Left Vertical Column (Dark) */}
-                        <path d="M0 68 V22 L22 11 V57 L0 68" fill="#2A1F1D" />
+                        {/* Right Downward Stem (Primary Accent) */}
+                        <path d="M50,45 L50,90 L75,90 L75,65 L90,55 L90,30 Z" fill={primaryAccent} />
 
-                        {/* 2. Top-Left Angled Bar (Medium) */}
-                        <path d="M0 22 L44 0 L66 11 L22 33 L0 22" fill="#C06842" />
+                        {/* Dark Shadow - Right Inner */}
+                        <path d="M50,0 L90,30 L75,40 L50,20 Z" fill={strokeColor} />
 
-                        {/* 3. Top-Right Vertical Column (Dark) */}
-                        <path d="M66 11 V46 L44 57 V22 L66 11" fill="#2A1F1D" />
+                        {/* Dark Shadow - Bottom Left */}
+                        <path d="M10,80 L25,80 L50,60 L50,90 L30,105 Z" fill={strokeColor} />
 
-                        {/* 4. Bottom-Right Angled Bar (Medium) */}
-                        <path d="M66 46 L22 68 L22 45 L44 34 L44 57 L66 46" fill="#C06842" />
-
-                        {/* 5. Center Square/Shadow (Darkest) */}
-                        <path d="M22 33 L44 22 V57 L22 68 V33" fill="#4A342E" opacity="0.4" />
+                        {/* Dark Shadow - Right Outer */}
+                        <path d="M75,65 L90,55 L105,65 L75,85 Z" fill={strokeColor} />
                     </g>
                 </svg>
             </div>

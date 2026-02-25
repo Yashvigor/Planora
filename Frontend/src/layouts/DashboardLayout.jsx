@@ -27,7 +27,6 @@ const DashboardLayout = () => {
             const latestMsg = myMessages[myMessages.length - 1];
             if (!latestMsg.read) {
                 // showToast(`New message from ${latestMsg.sender}`, 'message');
-                console.log("Toast disabled");
             }
         }
         setPrevMessageCount(myMessages.length);
@@ -43,7 +42,6 @@ const DashboardLayout = () => {
                 const uid = currentUser.user_id || currentUser.id;
 
                 try {
-                    console.log('[Dashboard] Updating live location:', latitude, longitude);
                     const response = await fetch(`${import.meta.env.VITE_API_URL}/api/users/${uid}/profile`, {
                         method: 'PUT',
                         headers: { 'Content-Type': 'application/json' },

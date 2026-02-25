@@ -39,7 +39,7 @@ const FindProfessionals = () => {
                 const userId = userData ? (userData.user_id || userData.id) : null;
                 let category = '';
                 if (userData) {
-                    category = (userData.category || userData.user_type || '').toUpperCase();
+                    category = (userData.category || userData.role || userData.user_type || '').toUpperCase();
                     setCurrentUserCategory(category);
                 }
 
@@ -67,7 +67,8 @@ const FindProfessionals = () => {
 
                 // Fetch Projects based on Role
                 if (userId) {
-                    const endpoint = category === 'LAND_OWNER'
+                    const isLandOwner = category === 'LAND OWNER' || category === 'LANDOWNER' || category === 'LAND_OWNER';
+                    const endpoint = isLandOwner
                         ? `/api/projects/user/${userId}`
                         : `/api/professionals/${userId}/projects`;
 
@@ -75,13 +76,13 @@ const FindProfessionals = () => {
                     if (res.ok) {
                         const data = await res.json();
                         // For professionals, only allow sending invites for projects they have Accepted
-                        const activeProjects = category === 'LAND_OWNER'
+                        const activeProjects = isLandOwner
                             ? data
                             : data.filter(p => !p.assignment_status || p.assignment_status === 'Accepted');
 
                         setProjects(activeProjects);
                         if (activeProjects.length > 0) {
-                            setSelectedProjectId(activeProjects[0].project_id);
+                            setSelectedProjectId(activeProjects[0].project_id || activeProjects[0].id);
                         }
                     }
                 }
@@ -221,59 +222,59 @@ const FindProfessionals = () => {
     return (
         <div className="flex flex-col h-[calc(100vh-6rem)] relative">
             {/* Header & Controls */}
-            <div className="mb-6 space-y-4">
-                <div className="flex flex-col xl:flex-row justify-between items-start xl:items-center gap-4">
+            <div className="mb-8 space-y-6">
+                <div className="flex flex-col xl:flex-row justify-between items-start xl:items-center gap-6 bg-white/50 backdrop-blur-md p-6 rounded-3xl border border-[#E3DACD]/50 shadow-sm">
                     <div>
-                        <h1 className="text-2xl font-serif font-bold text-gray-800">Find Professionals</h1>
-                        <p className="text-sm text-gray-500">Connect with top-rated experts nearby</p>
+                        <h1 className="text-3xl font-serif font-black text-[#2A1F1D] tracking-tight">Find Professionals</h1>
+                        <p className="text-sm font-medium text-[#8C7B70] mt-1">Discover & connect with premium experts in your area</p>
                     </div>
 
                     <div className="flex flex-col sm:flex-row gap-4 w-full xl:w-auto">
                         {/* Project Selector */}
-                        <div className="relative min-w-[200px]">
+                        <div className="relative min-w-[220px] group">
                             <select
                                 value={selectedProjectId}
                                 onChange={(e) => setSelectedProjectId(e.target.value)}
-                                className="w-full pl-4 pr-10 py-3 bg-white border border-gray-200 rounded-xl appearance-none focus:outline-none focus:ring-2 focus:ring-[#C06842] cursor-pointer text-sm font-medium"
+                                className="w-full pl-5 pr-10 py-3.5 bg-white border border-[#E3DACD] rounded-2xl appearance-none focus:outline-none focus:ring-2 focus:ring-[#b96a41]/50 focus:border-[#b96a41] cursor-pointer text-sm font-bold text-[#5D4037] shadow-sm transition-all group-hover:border-[#b96a41]/50"
                             >
                                 {projects.length === 0 ? (
                                     <option value="" disabled>No Projects Found</option>
                                 ) : (
                                     projects.map(p => (
-                                        <option key={p.project_id} value={p.project_id}>
+                                        <option key={p.project_id || p.id} value={p.project_id || p.id}>
                                             {p.name}
                                         </option>
                                     ))
                                 )}
                             </select>
-                            <div className="absolute right-3 top-3.5 pointer-events-none text-gray-500">
-                                <Briefcase size={16} />
+                            <div className="absolute right-4 top-3.5 pointer-events-none text-[#b96a41]">
+                                <Briefcase size={18} />
                             </div>
                         </div>
 
                         {/* Search Bar */}
-                        <div className="relative w-full sm:w-96">
+                        <div className="relative w-full sm:w-80 lg:w-96 group">
                             <input
                                 type="text"
-                                placeholder="Search by name, role (e.g. Plumber)..."
+                                placeholder="Search experts by name or role..."
                                 value={searchQuery}
                                 onChange={(e) => setSearchQuery(e.target.value)}
-                                className="w-full pl-10 pr-4 py-3 bg-white border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#C06842] focus:border-transparent shadow-sm transition-all"
+                                className="w-full pl-12 pr-5 py-3.5 bg-white border border-[#E3DACD] rounded-2xl focus:outline-none focus:ring-2 focus:ring-[#b96a41]/50 focus:border-[#b96a41] shadow-sm transition-all font-medium text-sm text-[#2A1F1D] placeholder-[#8C7B70] group-hover:border-[#b96a41]/50"
                             />
-                            <Search className="absolute left-3 top-3.5 text-gray-400" size={20} />
+                            <Search className="absolute left-4 top-[14px] text-[#b96a41]" size={18} />
                         </div>
                     </div>
                 </div>
 
                 {/* Categories */}
-                <div className="flex space-x-2 overflow-x-auto pb-2 scrollbar-hide">
+                <div className="flex space-x-3 overflow-x-auto pb-4 pt-1 px-1 custom-scrollbar">
                     {roles.map(role => (
                         <button
                             key={role.id}
                             onClick={() => setSelectedRole(role.id)}
-                            className={`px-5 py-2.5 rounded-xl text-sm font-bold whitespace-nowrap transition-all border ${selectedRole === role.id
-                                ? 'bg-[#3E2B26] text-white border-[#3E2B26] shadow-lg transform scale-105'
-                                : 'bg-white text-gray-600 border-gray-200 hover:bg-gray-50 hover:border-gray-300'
+                            className={`px-6 py-3 rounded-2xl text-sm font-bold whitespace-nowrap transition-all duration-300 border ${selectedRole === role.id
+                                ? 'bg-[#3E2B26] text-white border-[#3E2B26] shadow-[0_8px_16px_-6px_rgba(62,43,38,0.4)] transform -translate-y-0.5'
+                                : 'bg-white text-[#5D4037] border-[#E3DACD]/80 hover:bg-[#F9F7F2] hover:border-[#b96a41]/40 hover:text-[#b96a41] shadow-sm'
                                 }`}
                         >
                             {role.label}
@@ -290,39 +291,48 @@ const FindProfessionals = () => {
                         <p className="mt-4 text-gray-500 font-medium">Searching nearby...</p>
                     </div>
                 ) : filteredPros.length === 0 ? (
-                    <div className="flex flex-col items-center justify-center h-64 text-center">
-                        <div className="bg-gray-100 p-4 rounded-full mb-4">
-                            <Search size={32} className="text-gray-400" />
+                    <div className="flex flex-col items-center justify-center h-[50vh] text-center px-4">
+                        <div className="bg-[#FDFCF8] p-6 rounded-3xl mb-6 shadow-inner border border-[#E3DACD]/50 relative">
+                            <div className="absolute inset-0 bg-gradient-to-tr from-[#b96a41]/5 to-transparent rounded-3xl"></div>
+                            <Search size={40} className="text-[#b96a41] relative z-10" strokeWidth={1.5} />
                         </div>
-                        <h3 className="text-lg font-bold text-gray-700">No professionals found</h3>
-                        <p className="text-gray-500 max-w-sm mt-1">
+                        <h3 className="text-2xl font-serif font-black text-[#2A1F1D] tracking-tight">No experts found</h3>
+                        <p className="text-[#8C7B70] max-w-sm mt-3 font-medium leading-relaxed">
                             {assignedUserIds.size > 0
-                                ? "Invited professionals are hidden. Try clearing filters."
-                                : "Try adjusting your search or category filters. Ensure location services are enabled."}
+                                ? "Already invited professionals are hidden from this view. Try adjusting your filters."
+                                : "Try adjusting your search criteria or category filters to discover more professionals."}
                         </p>
                     </div>
                 ) : (
-                    <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6 pb-20">
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8 pb-24 px-1">
                         {filteredPros.map(pro => (
                             <motion.div
                                 layout
                                 initial={{ opacity: 0, y: 20 }}
                                 animate={{ opacity: 1, y: 0 }}
                                 key={pro.user_id}
-                                className="bg-white rounded-2xl border border-gray-100 shadow-sm hover:shadow-xl transition-all duration-300 overflow-hidden group"
+                                className="group relative bg-white rounded-3xl border border-[#E3DACD]/50 hover:border-[#b96a41]/30 overflow-hidden transition-all duration-500 hover:shadow-[0_20px_40px_-15px_rgba(185,106,65,0.15)] flex flex-col h-full"
                             >
-                                <div className="p-6">
-                                    <div className="flex justify-between items-start mb-4">
+                                {/* Decorative Gradient Top */}
+                                <div className="absolute top-0 left-0 right-0 h-1.5 bg-gradient-to-r from-[#b96a41] via-[#d48c66] to-[#b96a41] opacity-0 group-hover:opacity-100 transition-opacity duration-500"></div>
+
+                                <div className="p-7 flex-1 flex flex-col">
+                                    {/* Header Section */}
+                                    <div className="flex justify-between items-start mb-6">
                                         <div className="flex items-center gap-4">
-                                            <div className="w-14 h-14 bg-[#F9F7F2] rounded-2xl flex items-center justify-center text-[#C06842] group-hover:bg-[#C06842] group-hover:text-white transition-colors border border-[#E3DACD]">
-                                                <span className="text-xl font-black font-serif">
-                                                    {pro.name.charAt(0)}
+                                            {/* Avatar/Initials Box */}
+                                            <div className="relative w-16 h-16 rounded-2xl bg-gradient-to-br from-[#FDFCF8] to-[#F9F7F2] border border-[#E3DACD]/80 flex items-center justify-center shadow-inner group-hover:from-[#b96a41] group-hover:to-[#8a4d2f] transition-all duration-500 overflow-hidden">
+                                                <span className="text-2xl font-black font-serif text-[#3E2B26] group-hover:text-white transition-colors duration-500 z-10">
+                                                    {pro.name.charAt(0).toUpperCase()}
                                                 </span>
+                                                {/* Decorative inner circle */}
+                                                <div className="absolute -bottom-2 -right-2 w-8 h-8 rounded-full bg-[#E3DACD]/30 group-hover:bg-white/10 blur-sm"></div>
                                             </div>
-                                            <div>
-                                                <h3 className="font-bold text-gray-900 line-clamp-1 text-lg">{pro.name}</h3>
-                                                <div className="flex items-center gap-2 mt-0.5">
-                                                    <span className="text-xs font-bold text-[#C06842] bg-[#F9F7F2] px-2 py-0.5 rounded uppercase tracking-wider">
+
+                                            <div className="space-y-1">
+                                                <h3 className="font-bold text-gray-900 line-clamp-1 text-xl tracking-tight group-hover:text-[#b96a41] transition-colors">{pro.name}</h3>
+                                                <div className="inline-flex items-center">
+                                                    <span className="text-[11px] font-bold text-[#b96a41] bg-[#b96a41]/10 px-2.5 py-1 rounded-full uppercase tracking-widest border border-[#b96a41]/20">
                                                         {pro.sub_category || pro.category}
                                                     </span>
                                                 </div>
@@ -330,52 +340,69 @@ const FindProfessionals = () => {
                                         </div>
                                     </div>
 
-                                    <div className="space-y-3 mb-6">
-                                        <div className="flex items-center text-sm text-gray-600 bg-gray-50 p-2 rounded-lg">
-                                            <MapPin size={16} className="text-gray-400 mr-2 shrink-0" />
-                                            <span className="truncate">{pro.city || "Location details hidden"}</span>
-                                            <span className="mx-2 text-gray-300">|</span>
-                                            <span className="font-medium text-[#C06842] whitespace-nowrap">
-                                                {pro.distance ? `${parseFloat(pro.distance).toFixed(1)} km away` : 'Distance unknown'}
-                                            </span>
+                                    {/* Stats & Info Container */}
+                                    <div className="space-y-4 mb-8 flex-1">
+                                        {/* Location Banner */}
+                                        <div className="flex items-center text-sm text-[#5D4037] bg-gradient-to-r from-[#F9F7F2] to-transparent p-3 rounded-xl border border-[#F9F7F2]">
+                                            <MapPin size={16} className="text-[#b96a41] mr-3 shrink-0" />
+                                            <span className="font-medium truncate flex-1">{pro.city || "Location details hidden"}</span>
+                                            {pro.distance && (
+                                                <span className="text-xs font-bold text-[#b96a41] bg-white px-2 py-1 rounded-lg border border-[#E3DACD]/50 shadow-sm">
+                                                    {parseFloat(pro.distance).toFixed(1)} km
+                                                </span>
+                                            )}
                                         </div>
 
-                                        <div className="flex items-center justify-between text-sm">
+                                        {/* Ratings & Experience Grid */}
+                                        <div className="grid grid-cols-2 gap-3">
                                             {pro.rating ? (
-                                                <div className="flex items-center gap-1.5 bg-yellow-50 text-yellow-700 px-2.5 py-1 rounded-md font-medium">
-                                                    <Star size={14} className="fill-yellow-500 text-yellow-500" />
-                                                    <span>{pro.rating}</span>
+                                                <div className="flex items-center justify-center gap-2 bg-amber-50/80 border border-amber-100/50 py-2.5 rounded-xl">
+                                                    <Star size={16} className="fill-amber-400 text-amber-400" />
+                                                    <span className="font-bold text-amber-700">{pro.rating}</span>
                                                 </div>
                                             ) : (
-                                                <div className="flex items-center gap-1.5 bg-gray-50 text-gray-400 px-2.5 py-1 rounded-md font-medium text-xs">
-                                                    <span>Unrated</span>
+                                                <div className="flex items-center justify-center bg-gray-50/80 border border-gray-100 py-2.5 rounded-xl text-gray-400 text-sm font-medium">
+                                                    Unrated
                                                 </div>
                                             )}
-                                            <div className="text-gray-500 font-medium">
-                                                {pro.experience_years ? `${pro.experience_years} Years Exp.` : 'Experience N/A'}
+
+                                            <div className="flex items-center justify-center bg-[#FDFCF8] border border-[#E3DACD]/50 py-2.5 rounded-xl">
+                                                <span className="text-xs font-bold text-[#8C7B70] uppercase">
+                                                    {pro.experience_years ? (
+                                                        <><span className="text-sm text-[#3E2B26] mr-1">{pro.experience_years}y</span>Exp.</>
+                                                    ) : 'Exp. N/A'}
+                                                </span>
                                             </div>
                                         </div>
 
                                         {pro.specialization && (
-                                            <p className="text-xs text-gray-500 line-clamp-1 italic">
-                                                "{pro.specialization}"
-                                            </p>
+                                            <div className="mt-4 px-1">
+                                                <p className="text-sm text-[#8C7B70] line-clamp-2 leading-relaxed italic">
+                                                    "{pro.specialization}"
+                                                </p>
+                                            </div>
                                         )}
                                     </div>
 
-                                    <div className="grid grid-cols-2 gap-3">
+                                    {/* Action Buttons */}
+                                    <div className="grid grid-cols-2 gap-3 mt-auto pt-4 border-t border-[#E3DACD]/30">
                                         <button
                                             onClick={() => handleViewProfile(pro)}
-                                            className="flex items-center justify-center px-4 py-2.5 bg-gray-50 text-gray-700 rounded-xl text-sm font-bold hover:bg-gray-100 transition-colors border border-transparent hover:border-gray-200"
+                                            className="group/btn relative flex items-center justify-center px-4 py-3 bg-[#FDFCF8] text-[#5D4037] rounded-xl text-sm font-bold hover:bg-white transition-all overflow-hidden border border-[#E3DACD] hover:border-[#b96a41]/30 hover:shadow-md"
                                         >
-                                            View Profile
+                                            <span className="relative z-10">View Profile</span>
                                         </button>
+
                                         <button
                                             onClick={(e) => handleInvite(e, pro)}
                                             disabled={!selectedProjectId}
-                                            className="flex items-center justify-center px-4 py-2.5 bg-[#3E2B26] text-white rounded-xl text-sm font-bold hover:bg-[#2A1F1D] shadow-lg shadow-gray-200 hover:shadow-xl transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                                            className="group/invite flex items-center justify-center px-4 py-3 bg-gradient-to-br from-[#3E2B26] to-[#2A1F1D] text-white rounded-xl text-sm font-bold hover:from-[#b96a41] hover:to-[#8a4d2f] shadow-md shadow-[#3E2B26]/20 transition-all disabled:opacity-50 disabled:cursor-not-allowed border border-[#3E2B26] hover:border-[#b96a41]"
                                         >
-                                            {selectedProjectId ? 'Invite' : 'Select Project'}
+                                            {selectedProjectId ? (
+                                                <span className="flex items-center gap-2">
+                                                    Invite <Plus size={16} className="group-hover/invite:rotate-90 transition-transform duration-300" />
+                                                </span>
+                                            ) : 'Select Project'}
                                         </button>
                                     </div>
                                 </div>
@@ -410,71 +437,85 @@ const FindProfessionals = () => {
                             </div>
 
                             <div className="flex-1 overflow-y-auto p-6 space-y-8 custom-scrollbar">
-                                <div className="text-center">
-                                    <div className="w-24 h-24 mx-auto rounded-3xl bg-[#F9F7F2] border-2 border-[#E3DACD] flex items-center justify-center text-[#A65D3B] shadow-inner mb-4 relative">
-                                        <User size={48} />
+                                <div className="text-center relative">
+                                    <div className="absolute inset-x-0 top-0 h-24 bg-gradient-to-b from-[#F9F7F2] to-transparent -mx-6 -mt-6"></div>
+                                    <div className="w-28 h-28 mx-auto rounded-3xl bg-gradient-to-br from-[#FDFCF8] to-[#F9F7F2] border-2 border-[#E3DACD] flex items-center justify-center text-[#b96a41] shadow-lg shadow-[#E3DACD]/50 mb-5 relative z-10 transition-transform hover:scale-105 duration-300">
+                                        <User size={54} strokeWidth={1.5} />
                                         {selectedPro.rating && (
-                                            <div className="absolute -bottom-2 bg-white px-3 py-1 rounded-full shadow-md border border-gray-100 text-xs font-bold text-gray-600 flex items-center gap-1">
-                                                <Star size={12} className="fill-yellow-400 text-yellow-400" /> {selectedPro.rating}
+                                            <div className="absolute -bottom-3 bg-white px-4 py-1.5 rounded-full shadow-md border border-[#E3DACD] text-xs font-black text-[#8C7B70] flex items-center gap-1.5 ring-4 ring-[#FDFCF8]">
+                                                <Star size={14} className="fill-amber-400 text-amber-400" /> {selectedPro.rating}
                                             </div>
                                         )}
                                     </div>
-                                    <h4 className="text-2xl font-serif font-bold text-[#3E2B26] mb-1">{selectedPro.name}</h4>
-                                    <span className="text-xs font-black uppercase tracking-widest text-[#A65D3B] bg-[#A65D3B]/10 px-3 py-1 rounded-full">
-                                        {selectedPro.sub_category || selectedPro.category}
-                                    </span>
+                                    <h4 className="text-2xl font-serif font-black text-[#2A1F1D] mb-2 tracking-tight">{selectedPro.name}</h4>
+                                    <div className="inline-block mt-1">
+                                        <span className="text-[11px] font-black uppercase tracking-widest text-[#b96a41] bg-[#b96a41]/10 px-4 py-1.5 rounded-full border border-[#b96a41]/20">
+                                            {selectedPro.sub_category || selectedPro.category}
+                                        </span>
+                                    </div>
                                 </div>
 
-                                <div className="space-y-6">
-                                    <div className="space-y-2">
-                                        <label className="text-[10px] font-black text-[#8C7B70] uppercase tracking-widest block">About</label>
-                                        <p className="text-sm text-[#5D4037] leading-relaxed">
-                                            {selectedPro.bio || `Experienced ${selectedPro.sub_category} dedicated to delivering high-quality results for your construction needs.`}
+                                <div className="space-y-8 mt-6">
+                                    {/* About Section */}
+                                    <div className="space-y-3 bg-[#F9F7F2]/50 p-5 rounded-3xl border border-[#E3DACD]/50">
+                                        <label className="text-[10px] font-black text-[#b96a41] uppercase tracking-widest flex items-center gap-2">
+                                            <span className="w-4 h-[1px] bg-[#b96a41]"></span> About Professional
+                                        </label>
+                                        <p className="text-[15px] text-[#5D4037] leading-relaxed font-medium">
+                                            {selectedPro.bio || `Experienced ${selectedPro.sub_category || 'expert'} dedicated to delivering high-quality results for your construction and development needs.`}
                                         </p>
                                     </div>
 
+                                    {/* Quick Stats Grid */}
                                     <div className="grid grid-cols-2 gap-4">
-                                        <div className="p-4 bg-[#F9F7F2] rounded-2xl border border-[#E3DACD]/50 text-center">
-                                            <span className="block text-2xl font-bold text-[#3E2B26]">{selectedPro.experience_years || '1+'}</span>
-                                            <span className="text-[10px] font-black text-[#8C7B70] uppercase tracking-wider">Years Exp</span>
+                                        <div className="p-5 bg-gradient-to-br from-white to-[#F9F7F2] rounded-3xl border border-[#E3DACD] text-center shadow-sm relative overflow-hidden group/stat">
+                                            <div className="absolute inset-0 bg-[#b96a41]/5 transform translate-y-full group-hover/stat:translate-y-0 transition-transform duration-300"></div>
+                                            <span className="block text-3xl font-black text-[#2A1F1D] tracking-tighter relative z-10">{selectedPro.experience_years || '1+'}</span>
+                                            <span className="text-[10px] font-black text-[#8C7B70] uppercase tracking-wider relative z-10">Years Exp</span>
                                         </div>
-                                        <div className="p-4 bg-[#F9F7F2] rounded-2xl border border-[#E3DACD]/50 text-center">
-                                            <span className="block text-xl font-bold text-[#3E2B26] truncate px-1">
+                                        <div className="p-5 bg-gradient-to-br from-white to-[#F9F7F2] rounded-3xl border border-[#E3DACD] text-center shadow-sm relative overflow-hidden group/stat">
+                                            <div className="absolute inset-0 bg-[#b96a41]/5 transform translate-y-full group-hover/stat:translate-y-0 transition-transform duration-300"></div>
+                                            <span className="block text-3xl font-black text-[#2A1F1D] truncate px-1 tracking-tighter relative z-10">
                                                 {selectedPro.distance ? parseFloat(selectedPro.distance).toFixed(1) : '?'}
                                             </span>
-                                            <span className="text-[10px] font-black text-[#8C7B70] uppercase tracking-wider">Km Away</span>
+                                            <span className="text-[10px] font-black text-[#8C7B70] uppercase tracking-wider relative z-10">Km Away</span>
                                         </div>
                                     </div>
 
-                                    <div className="space-y-3">
-                                        <label className="text-[10px] font-black text-[#8C7B70] uppercase tracking-widest block">Contact & Portfolio</label>
+                                    {/* Documents & Links */}
+                                    <div className="space-y-4">
+                                        <label className="text-[10px] font-black text-[#b96a41] uppercase tracking-widest flex items-center gap-2">
+                                            <span className="w-4 h-[1px] bg-[#b96a41]"></span> Contact & Portfolio
+                                        </label>
 
                                         <div className="grid grid-cols-1 gap-3">
                                             {selectedPro.resume_path ? (
-                                                <a href={`${import.meta.env.VITE_API_URL}/${selectedPro.resume_path}`} target="_blank" rel="noreferrer" className="flex items-center gap-3 p-4 border border-[#E3DACD] rounded-xl hover:border-[#A65D3B] hover:bg-[#F9F7F2] text-[#5D4037] transition-all group">
-                                                    <div className="bg-white p-2 rounded-lg text-[#A65D3B] group-hover:scale-110 transition-transform">
-                                                        <FileText size={20} />
+                                                <a href={`${import.meta.env.VITE_API_URL}/${selectedPro.resume_path}`} target="_blank" rel="noreferrer" className="flex items-center gap-4 p-4 bg-white border border-[#E3DACD] rounded-2xl hover:border-[#b96a41] hover:shadow-md hover:-translate-y-0.5 transition-all text-[#5D4037] group">
+                                                    <div className="w-12 h-12 bg-[#F9F7F2] flex items-center justify-center rounded-xl text-[#b96a41] group-hover:bg-[#b96a41] group-hover:text-white transition-colors duration-300">
+                                                        <FileText size={22} />
                                                     </div>
                                                     <div className="flex-1">
-                                                        <span className="block text-sm font-bold text-[#3E2B26]">Resume / CV</span>
-                                                        <span className="text-xs text-gray-500">View credentials</span>
+                                                        <span className="block text-base font-bold text-[#2A1F1D] group-hover:text-[#b96a41] transition-colors">Resume & CV</span>
+                                                        <span className="text-xs font-medium text-[#8C7B70]">View credentials</span>
                                                     </div>
                                                 </a>
                                             ) : (
-                                                <div className="flex items-center gap-3 p-4 border border-dashed border-gray-300 rounded-xl bg-gray-50 opacity-60">
-                                                    <FileText size={20} />
-                                                    <span className="text-sm font-medium">Resume Not Available</span>
+                                                <div className="flex items-center gap-4 p-4 bg-gray-50 border border-dashed border-[#E3DACD] rounded-2xl opacity-70">
+                                                    <div className="w-12 h-12 bg-gray-100 flex items-center justify-center rounded-xl text-gray-400">
+                                                        <FileText size={22} />
+                                                    </div>
+                                                    <span className="text-sm font-bold text-gray-500">Resume Not Available</span>
                                                 </div>
                                             )}
 
                                             {selectedPro.portfolio_url && (
-                                                <a href={selectedPro.portfolio_url} target="_blank" rel="noreferrer" className="flex items-center gap-3 p-4 border border-[#E3DACD] rounded-xl hover:border-[#A65D3B] hover:bg-[#F9F7F2] text-[#5D4037] transition-all group">
-                                                    <div className="bg-white p-2 rounded-lg text-[#A65D3B] group-hover:scale-110 transition-transform">
-                                                        <Briefcase size={20} />
+                                                <a href={selectedPro.portfolio_url} target="_blank" rel="noreferrer" className="flex items-center gap-4 p-4 bg-white border border-[#E3DACD] rounded-2xl hover:border-[#b96a41] hover:shadow-md hover:-translate-y-0.5 transition-all text-[#5D4037] group">
+                                                    <div className="w-12 h-12 bg-[#F9F7F2] flex items-center justify-center rounded-xl text-[#b96a41] group-hover:bg-[#b96a41] group-hover:text-white transition-colors duration-300">
+                                                        <Briefcase size={22} />
                                                     </div>
                                                     <div className="flex-1">
-                                                        <span className="block text-sm font-bold text-[#3E2B26]">Portfolio</span>
-                                                        <span className="text-xs text-gray-500">View past work</span>
+                                                        <span className="block text-base font-bold text-[#2A1F1D] group-hover:text-[#b96a41] transition-colors">Portfolio Link</span>
+                                                        <span className="text-xs font-medium text-[#8C7B70]">View past work</span>
                                                     </div>
                                                 </a>
                                             )}

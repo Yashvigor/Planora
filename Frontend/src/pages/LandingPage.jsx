@@ -2,7 +2,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import Navbar from '../components/Navbar';
 import Footer from '../components/Footer';
 import { useNavigate } from 'react-router-dom';
-import { ArrowRight, CheckCircle, Star, Quote, ChevronLeft, ChevronRight, Layout, Activity, Package, ClipboardCheck } from 'lucide-react';
+import { ArrowRight, CheckCircle, Star, Quote, ChevronLeft, ChevronRight, Layout, Activity, Package, ClipboardCheck, Briefcase } from 'lucide-react';
 
 const LandingPage = () => {
     const navigate = useNavigate();
@@ -128,7 +128,7 @@ const LandingPage = () => {
                                 onClick={() => document.getElementById('features').scrollIntoView({ behavior: 'smooth' })}
                                 className="text-[#2A1F1D] font-semibold hover:text-[#C06842] transition-colors flex items-center gap-2 group text-base"
                             >
-                                Learn More
+
                                 <ArrowRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
                             </button>
                         </div>
@@ -139,7 +139,7 @@ const LandingPage = () => {
 
 
             {/* --- CONSTRUCTION LIFECYCLE SECTION --- */}
-            <section id="lifecycle" className="py-32 relative scroll-animate opacity-0">
+            <section id="features" className="py-32 relative scroll-animate opacity-0">
                 <div className="container mx-auto px-6 relative z-10">
                     <div className="text-center mb-24">
                         <h2 className="text-5xl font-serif text-[#2A1F1D] mb-6">End-to-End Construction Management</h2>
@@ -216,6 +216,78 @@ const LandingPage = () => {
 
 
 
+            {/* --- PROFESSIONALS SECTION --- */}
+            <section id="professionals" className="py-32 bg-[#F9F7F2] relative scroll-animate opacity-0">
+                <div className="container mx-auto px-6">
+                    <div className="flex flex-col lg:flex-row items-center gap-16">
+                        <div className="lg:w-1/2">
+                            <h2 className="text-4xl md:text-5xl font-serif text-[#2A1F1D] mb-6 leading-tight">
+                                Are you a Construction Professional?
+                            </h2>
+                            <p className="text-[#6E5E56] text-lg mb-8 leading-relaxed">
+                                Join Planora's elite network of architects, contractors, and specialized tradesmen. Connect directly with visionary land owners, manage your projects efficiently, and grow your reputation.
+                            </p>
+
+                            <ul className="space-y-4 mb-10">
+                                {[
+                                    'Access premium high-value projects',
+                                    'Showcase your portfolio and verified ratings',
+                                    'Collaborate seamlessly with unified tools',
+                                    'Streamline your payments and invoicing'
+                                ].map((item, i) => (
+                                    <li key={i} className="flex items-center gap-3 text-[#2A1F1D] font-medium">
+                                        <div className="w-6 h-6 rounded-full bg-[#C06842]/20 flex items-center justify-center flex-shrink-0 text-[#C06842]">
+                                            <CheckCircle className="w-4 h-4" />
+                                        </div>
+                                        {item}
+                                    </li>
+                                ))}
+                            </ul>
+
+                            <button
+                                onClick={() => scrollToLogin('Architect')}
+                                className="group bg-[#C06842] text-white px-8 py-4 rounded-xl font-bold hover:bg-[#A65D3B] transition-all shadow-lg hover:shadow-xl hover:-translate-y-1 flex items-center gap-3"
+                            >
+                                Join as Professional
+                                <ArrowRight className="w-5 h-5 group-hover:translate-x-1 transition-transform" />
+                            </button>
+                        </div>
+                        <div className="lg:w-1/2 relative w-full">
+                            <div className="aspect-square bg-gradient-to-tr from-[#3E2B26] to-[#A65D3B] rounded-[3rem] p-1 shadow-2xl overflow-hidden transform rotate-3 hover:rotate-0 transition-transform duration-700">
+                                <div className="w-full h-full bg-[#FDFCF8] rounded-[2.8rem] p-8 md:p-12 flex flex-col justify-center relative overflow-hidden">
+                                    <div className="absolute top-0 right-0 w-64 h-64 bg-[#C06842]/10 rounded-full blur-3xl -mr-20 -mt-20 pointer-events-none"></div>
+                                    <div className="absolute bottom-0 left-0 w-64 h-64 bg-[#3E2B26]/10 rounded-full blur-3xl -ml-20 -mb-20 pointer-events-none"></div>
+
+                                    <div className="relative z-10 space-y-6">
+                                        <div className="flex items-center gap-4 p-4 bg-white rounded-2xl shadow-sm border border-[#EAE0D5] animate-fade-in-up">
+                                            <div className="w-12 h-12 bg-[#F9F7F2] rounded-full flex items-center justify-center text-[#C06842] flex-shrink-0"><Star className="w-6 h-6" /></div>
+                                            <div className="flex-1">
+                                                <div className="h-4 w-24 bg-gray-200 rounded animate-pulse"></div>
+                                                <div className="h-3 w-16 bg-gray-100 rounded mt-2"></div>
+                                            </div>
+                                        </div>
+                                        <div className="flex items-center gap-4 p-4 bg-white rounded-2xl shadow-sm border border-[#EAE0D5] animate-fade-in-up" style={{ animationDelay: '0.2s' }}>
+                                            <div className="w-12 h-12 bg-[#F9F7F2] rounded-full flex items-center justify-center text-[#3E2B26] flex-shrink-0"><Briefcase className="w-6 h-6" /></div>
+                                            <div className="flex-1">
+                                                <div className="h-4 w-32 bg-gray-200 rounded animate-pulse"></div>
+                                                <div className="h-3 w-20 bg-gray-100 rounded mt-2"></div>
+                                            </div>
+                                        </div>
+                                        <div className="flex items-center gap-4 p-4 bg-white rounded-2xl shadow-sm border border-[#EAE0D5] animate-fade-in-up" style={{ animationDelay: '0.4s' }}>
+                                            <div className="w-12 h-12 bg-[#F9F7F2] rounded-full flex items-center justify-center text-[#A65D3B] flex-shrink-0"><Activity className="w-6 h-6" /></div>
+                                            <div className="flex-1">
+                                                <div className="h-4 w-28 bg-gray-200 rounded animate-pulse"></div>
+                                                <div className="h-3 w-24 bg-gray-100 rounded mt-2"></div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
             {/* --- CTA SECTION --- */}
             <section className="py-32 bg-gradient-to-br from-[#3E2B26] to-[#5D4037] text-white scroll-animate opacity-0">
                 <div className="container mx-auto px-6 text-center">
@@ -229,7 +301,7 @@ const LandingPage = () => {
                         onClick={() => scrollToLogin('owner')}
                         className="group bg-white text-[#3E2B26] px-12 py-5 rounded-xl font-bold text-lg hover:bg-[#EAE0D5] transition-all duration-300 shadow-xl hover:shadow-2xl hover:scale-105 inline-flex items-center gap-3"
                     >
-                        Start Your Free Trial
+                        Begin Journey with Planora
                         <ArrowRight className="w-5 h-5 group-hover:translate-x-1 transition-transform" />
                     </button>
                 </div>

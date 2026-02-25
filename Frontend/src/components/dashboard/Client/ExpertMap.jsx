@@ -123,7 +123,6 @@ const ExpertMap = ({ currentProjectId, category, subCategory, onAssign, onClose 
 
                 // If explicit coordinates are missing, attempt to convert their saved 'city' into lat/lon
                 if ((!lat || !lon) && data.city) {
-                    console.log(`[ExpertMap] Coordinates missing. Geocoding city: ${data.city} via Nominatim OSMap`);
                     try {
                         const geoRes = await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(data.city)}&limit=1`, {
                             headers: { 'User-Agent': 'PlanoraApp/1.0' } // Required by Nominatim policy
@@ -132,7 +131,6 @@ const ExpertMap = ({ currentProjectId, category, subCategory, onAssign, onClose 
                         if (geoData && geoData.length > 0) {
                             lat = parseFloat(geoData[0].lat);
                             lon = parseFloat(geoData[0].lon);
-                            console.log(`[ExpertMap] Geocoded ${data.city} successfully.`);
                         }
                     } catch (geoErr) {
                         console.error('[ExpertMap] Final geocoding fallback failed:', geoErr);
@@ -165,7 +163,6 @@ const ExpertMap = ({ currentProjectId, category, subCategory, onAssign, onClose 
     const fetchProfessionals = async () => {
         // Prevent API call if we haven't locked in a center coordinate yet
         if (!userLocation) {
-            console.log('[ExpertMap] Waiting for user location before scanning for experts...');
             return;
         }
 

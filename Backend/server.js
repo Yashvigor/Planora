@@ -360,7 +360,7 @@ app.post('/api/login', async (req, res) => {
         });
 
         if (!isComplete) {
-            console.log(`[Auth] User ${user.email} profile incomplete. Category: ${user.category}, Sub: ${user.sub_category}, Lat: ${user.latitude}`);
+            // Profile incomplete, will be routed to onboarding by frontend
         }
 
     } catch (err) {
@@ -527,8 +527,6 @@ app.post('/api/auth/google', async (req, res) => {
     }
 
     try {
-        console.log(`[Google Auth] Received auth request for token: ${token.substring(0, 10)}...`);
-
         let payload;
 
         try {
@@ -555,7 +553,6 @@ app.post('/api/auth/google', async (req, res) => {
         }
 
         const { email, name, sub: google_id } = payload;
-        console.log(`[Google Auth] Verified user: ${email} (${google_id})`);
 
         if (!email) {
             return res.status(401).json({ error: 'Failed to retrieve email from Google token' });
@@ -565,7 +562,6 @@ app.post('/api/auth/google', async (req, res) => {
         const userResult = await pool.query('SELECT * FROM Users WHERE email = $1', [email]);
 
         if (userResult.rows.length === 0) {
-            console.log(`[Google Auth] New user detected: ${email}`);
             // New User - Create partial record
             const insertResult = await pool.query(
                 'INSERT INTO Users (name, email, google_id) VALUES ($1, $2, $3) RETURNING user_id, name, email',
@@ -582,13 +578,11 @@ app.post('/api/auth/google', async (req, res) => {
 
         // Link Google ID if missing
         if (!user.google_id) {
-            console.log(`[Google Auth] Linking Google ID for existing user: ${email}`);
             await pool.query('UPDATE Users SET google_id = $1 WHERE user_id = $2', [google_id, user.user_id]);
         }
 
         // Check internal status (category/sub_category)
         if (!user.profile_completed) {
-            console.log(`[Google Auth] Profile incomplete for user: ${email}`);
             return res.json({
                 status: 'incomplete',
                 message: 'Please complete your profile',
@@ -620,7 +614,6 @@ app.post('/api/auth/google', async (req, res) => {
             roleKey = roleMap[user.sub_category];
         }
 
-        console.log(`[Google Auth] Successful login: ${email} as ${roleKey}`);
         res.json({
             status: 'success',
             user: {
