@@ -21,8 +21,20 @@ const fs = require('fs');
 const { OAuth2Client } = require('google-auth-library');
 const axios = require('axios');
 
-// 🔐 Load environment variables from .env file (e.g., DB_USER, DB_PASSWORD, JWT_SECRET)
+// 🔐 Load environment variables from .env file
 dotenv.config();
+
+// 🛠️ DNS WORKAROUND: Global Resolver for Neon DB hostnames.
+const { setupDNSOverride } = require('./middleware/dns');
+setupDNSOverride();
+
+// 📂 Middleware Imports
+const { authenticateToken } = require('./middleware/auth');
+const { errorHandler } = require('./middleware/error');
+const { upload } = require('./middleware/upload');
+const jwt = require('jsonwebtoken');
+
+
 
 // 🌐 Initialize Google OAuth Client for SSO
 const googleClient = new OAuth2Client(process.env.GOOGLE_CLIENT_ID);
@@ -33,6 +45,8 @@ const port = process.env.PORT || 5000;
 // 🛡️ Global Middleware
 app.use(cors()); // Allow Cross-Origin requests from the React frontend
 app.use(express.json()); // Parse incoming JSON request bodies
+app.use(express.urlencoded({ extended: true })); // Parse URL-encoded bodies (form data)
+app.use('/uploads', express.static(path.join(__dirname, 'uploads'))); // Serve uploaded files statically
 
 // Test Route
 app.get('/', (req, res) => {
@@ -40,14 +54,19 @@ app.get('/', (req, res) => {
 });
 
 // 🗄️ Database Connection Pool (Neon PostgreSQL)
-// Uses a connection pool to efficiently manage multiple concurrent database queries
 const pool = new Pool({
     user: process.env.DB_USER,
     host: process.env.DB_HOST,
     database: process.env.DB_NAME,
     password: process.env.DB_PASSWORD,
     port: process.env.DB_PORT,
-    ssl: process.env.DB_HOST !== 'localhost' ? { rejectUnauthorized: false } : false // Required for remote Neon DB connections
+    ssl: { require: true }
+});
+
+
+// Enforce standard schema selection for all dynamically scaled Neon DB connections
+pool.on('connect', client => {
+    client.query('SET search_path TO public');
 });
 
 // Test DB Connection on startup
@@ -76,30 +95,7 @@ const logActivity = async (userId, projectId, action, details) => {
     }
 };
 
-/**
- * 📂 Multer Configuration for Dynamic File Uploads
- * 
- * Instead of dumping all files into a single 'uploads' folder, this logic
- * dynamically creates sub-folders (e.g., /uploads/Architect, /uploads/SiteWork)
- * based on the 'category' passed in the request body. This keeps server storage organized.
- */
-const storage = multer.diskStorage({
-    destination: (req, file, cb) => {
-        // Fallback to 'General' folder if no category is specified
-        const category = req.body.category || 'General';
-        const dest = path.join('uploads', category);
 
-        // Ensure the directory physical path exists before saving the file
-        if (!fs.existsSync(dest)) {
-            fs.mkdirSync(dest, { recursive: true });
-        }
-        cb(null, dest);
-    },
-    filename: (req, file, cb) => {
-        cb(null, Date.now() + '-' + file.originalname);
-    }
-});
-const upload = multer({ storage });
 
 /**
  * 👤 USER AUTHENTICATION & ONBOARDING ROUTES
@@ -174,12 +170,25 @@ app.post('/api/signup', async (req, res) => {
 
         const { category, sub_category } = roleMapping[role] || { category: 'Planning', sub_category: role };
 
+        // 📜 New Logic: Professionals must be approved before entering role tables.
+        // Land Owners and Admins are approved by default.
+        const userStatus = (sub_category === 'Land Owner' || category === 'Admin') ? 'Approved' : 'Pending';
+
         // Save User Data (Returns auto-generated UUID)
         const userInsert = await client.query(
-            'INSERT INTO Users (name, email, password_hash, category, sub_category) VALUES ($1, $2, $3, $4, $5) RETURNING user_id',
-            [name, email, passwordHash, category, sub_category]
+            'INSERT INTO Users (name, email, password_hash, category, sub_category, status) VALUES ($1, $2, $3, $4, $5, $6) RETURNING user_id',
+            [name, email, passwordHash, category, sub_category, userStatus]
         );
         const userId = userInsert.rows[0].user_id;
+
+        // 🔗 Relational Link: ONLY insert Land Owner into their table immediately.
+        // Professionals are inserted LATER by the Admin during verification.
+        if (sub_category === 'Land Owner') {
+            await client.query(
+                `INSERT INTO landowner (user_id, name) VALUES ($1, $2)`,
+                [userId, name]
+            );
+        }
 
         // Finalize transaction
         await client.query('COMMIT');
@@ -194,11 +203,16 @@ app.post('/api/signup', async (req, res) => {
         });
     } catch (err) {
         if (client) {
-            await client.query('ROLLBACK'); // Error occurred, undo any DB changes made during this request
+            await client.query('ROLLBACK');
         }
         console.error('Signup error:', err);
-        res.status(500).json({ error: 'Server error during signup. Check backend logs.' });
+        res.status(500).json({
+            error: 'Server error during signup. Check backend logs.',
+            details: err.message,
+            code: err.code
+        });
     } finally {
+
         if (client) {
             client.release(); // Return connection back to the pool
         }
@@ -346,16 +360,32 @@ app.post('/api/login', async (req, res) => {
         // Determines if app should push user to wizard or main dashboard
         const isComplete = user.profile_completed;
 
+        // 🛡️ Admin Verification Logic check
+        // Land Owners and Admins are Approved by default. Professionals start as Pending.
+
+        // 🛡️ SECURITY: Sign a JWT for the user to enable secure, stateless sessions.
+        const token = jwt.sign(
+            { id: user.user_id, email: user.email, role: roleKey },
+            process.env.JWT_SECRET || 'secret-planora-key',
+            { expiresIn: '24h' }
+        );
+
         res.json({
             message: 'Login successful',
             status: isComplete ? 'success' : 'incomplete',
+            token, // 🔑 Return token to client
             user: {
                 id: user.user_id,
                 name: user.name,
                 email: user.email,
                 category: user.category,
                 sub_category: user.sub_category,
-                role: roleKey // UI Routing key
+                role: roleKey, // UI Routing key
+                status: user.status,
+                rejection_reason: user.rejection_reason,
+                resume_path: user.resume_path,
+                degree_path: user.degree_path,
+                profile_completed: user.profile_completed
             }
         });
 
@@ -381,17 +411,15 @@ app.post('/api/login', async (req, res) => {
  * Retrieves the core profile information (Name, Email, Phone, Address, etc.)
  * based on the provided UUID. Used by the frontend 'Settings' or 'Profile' pages.
  */
-app.get('/api/user/:id', async (req, res) => {
+app.get('/api/user/:id', authenticateToken, async (req, res) => {
     const { id } = req.params;
     try {
-        const result = await pool.query('SELECT user_id, category, sub_category, name, email, mobile_number, personal_id_document_path, birthdate, status, address, city, state, zip_code, created_at FROM Users WHERE user_id = $1', [id]);
+        const result = await pool.query('SELECT user_id, category, sub_category, name, email, mobile_number, personal_id_document_path, birthdate, status, rejection_reason, resume_path, degree_path, address, city, state, zip_code, bio, profile_completed, created_at FROM Users WHERE user_id = $1', [id]);
 
         if (result.rows.length === 0) {
             return res.status(404).json({ error: 'User not found' });
         }
 
-        // Also fetch role specific details if needed? 
-        // For now, returning User table details is sufficient for Personal Details section.
         res.json(result.rows[0]);
     } catch (err) {
         console.error('Error fetching user profile:', err);
@@ -407,7 +435,7 @@ app.get('/api/user/:id', async (req, res) => {
  * Incorporates Multer middleware `upload.single('aadhar_card')` to securely intercept
  * and save file attachments before the controller logic executes.
  */
-app.put('/api/user/:id', upload.single('aadhar_card'), async (req, res) => {
+app.put('/api/user/:id', authenticateToken, upload.single('aadhar_card'), async (req, res) => {
     const { id } = req.params;
     const { name, mobile_number, birthdate, address, city, state, zip_code } = req.body;
     let personal_id_document_path = null;
@@ -446,6 +474,91 @@ app.put('/api/user/:id', upload.single('aadhar_card'), async (req, res) => {
 });
 
 /**
+ * 🎓 Complete Professional Profile (Onboarding)
+ * Endpoint: PUT /api/user/:id/complete-profile
+ * 
+ * Specifically for the Onboarding / Verification flow.
+ * Handles multi-file uploads for Resume and Degree.
+ */
+app.put('/api/user/:id/complete-profile', authenticateToken, upload.fields([
+    { name: 'resume', maxCount: 1 },
+    { name: 'degree', maxCount: 1 }
+]), async (req, res) => {
+    const { id } = req.params;
+    const { phone, address, bio, experience_years, specialization, portfolio_url } = req.body;
+
+    let resume_path = null;
+    let degree_path = null;
+
+    if (req.files) {
+        if (req.files['resume'] && req.files['resume'][0]) {
+            resume_path = req.files['resume'][0].path.replace(/\\/g, "/");
+        }
+        if (req.files['degree'] && req.files['degree'][0]) {
+            degree_path = req.files['degree'][0].path.replace(/\\/g, "/");
+        }
+    }
+
+    try {
+        // Fetch user to check role
+        const userCheck = await pool.query('SELECT category, sub_category FROM Users WHERE user_id = $1', [id]);
+        if (userCheck.rows.length === 0) {
+            return res.status(404).json({ error: 'User not found' });
+        }
+
+        const user = userCheck.rows[0];
+        const isProfessional = user.sub_category !== 'Land Owner' && user.category !== 'Admin';
+
+        // Update Users table with onboarding details
+        // Clear rejection_reason and set status to Pending for professionals if they were rejected
+        let query = `
+            UPDATE Users 
+            SET mobile_number = COALESCE($1, mobile_number),
+                address = COALESCE($2, address),
+                bio = COALESCE($3, bio),
+                experience_years = COALESCE($4, experience_years::integer),
+                specialization = COALESCE($5, specialization),
+                portfolio_url = COALESCE($6, portfolio_url),
+                profile_completed = true,
+                rejection_reason = NULL,
+                updated_at = CURRENT_TIMESTAMP
+        `;
+        const values = [phone, address, bio, experience_years || null, specialization, portfolio_url];
+
+        let paramCount = 7;
+        if (resume_path) {
+            query += `, resume_path = $${paramCount}`;
+            values.push(resume_path);
+            paramCount++;
+        }
+        if (degree_path) {
+            query += `, degree_path = $${paramCount}`;
+            values.push(degree_path);
+            paramCount++;
+        }
+
+        // Only professionals go back to 'Pending' for review
+        if (isProfessional) {
+            query += `, status = 'Pending'`;
+        }
+
+        query += ` WHERE user_id = $${paramCount} RETURNING *`;
+        values.push(id);
+
+        const result = await pool.query(query, values);
+
+        await logActivity(id, null, 'Profile Completed', `User completed profile as ${user.sub_category}`);
+
+        res.json({ message: 'Profile completed successfully', user: result.rows[0] });
+
+    } catch (err) {
+        console.error('Error completing profile:', err);
+        res.status(500).json({ error: 'Failed to complete profile: ' + err.message });
+    }
+});
+
+
+/**
  * 🛡️ ADMINISTRATOR / SYSTEM MODERATION ROUTES
  * --------------------------------------------------------------------------
  */
@@ -457,10 +570,10 @@ app.put('/api/user/:id', upload.single('aadhar_card'), async (req, res) => {
  * Used by the system Administrator or high-level Land Owners to review platform participants.
  * Orders results chronologically so newest pending users appear first.
  */
-app.get('/api/admin/users', async (req, res) => {
+app.get('/api/admin/users', authenticateToken, async (req, res) => {
     try {
-        // Fetch all users, order by created_at desc
-        const result = await pool.query('SELECT user_id, name, email, category, sub_category, status, created_at FROM Users ORDER BY created_at DESC');
+        // Fetch all users with verification details
+        const result = await pool.query('SELECT user_id, name, email, category, sub_category, status, resume_path, degree_path, rejection_reason, created_at FROM Users ORDER BY created_at DESC');
         res.json(result.rows);
     } catch (err) {
         console.error('Error fetching users:', err);
@@ -469,25 +582,70 @@ app.get('/api/admin/users', async (req, res) => {
 });
 
 // Verify User (Accept/Reject)
-app.put('/api/admin/verify/:id', async (req, res) => {
+app.put('/api/admin/verify/:id', authenticateToken, async (req, res) => {
     const { id } = req.params;
-    const { status } = req.body; // 'Approved' or 'Rejected'
+    const { status, rejection_reason } = req.body; // 'Approved' or 'Rejected'
 
     if (!['Approved', 'Rejected', 'Pending'].includes(status)) {
         return res.status(400).json({ error: 'Invalid status' });
     }
 
+    const client = await pool.connect();
     try {
-        const result = await pool.query('UPDATE Users SET status = $1, updated_at = CURRENT_TIMESTAMP WHERE user_id = $2 RETURNING *', [status, id]);
+        await client.query('BEGIN');
 
-        if (result.rows.length === 0) {
+        // Update main Users table
+        const updateResult = await client.query(
+            'UPDATE Users SET status = $1, rejection_reason = $2, updated_at = CURRENT_TIMESTAMP WHERE user_id = $3 RETURNING *',
+            [status, rejection_reason || null, id]
+        );
+
+        if (updateResult.rows.length === 0) {
+            await client.query('ROLLBACK');
             return res.status(404).json({ error: 'User not found' });
         }
 
-        res.json({ message: `User status updated to ${status} `, user: result.rows[0] });
+        const user = updateResult.rows[0];
+
+        // If Approved, insert into role-specific table
+        if (status === 'Approved') {
+            const tableMap = {
+                'Architect': 'architect',
+                'Structural Engineer': 'structuralengineer',
+                'Civil Engineer': 'civilengineer',
+                'Interior Designer': 'interiordesigner',
+                'False Ceiling Worker': 'falseceilingworker',
+                'Fabrication Worker': 'fabricationworker',
+                'Contractor': 'contractor',
+                'Mason': 'mason',
+                'Electrician': 'electrician',
+                'Plumber': 'plumber',
+                'Carpenter': 'carpenter',
+                'Tile Worker': 'tileworker',
+                'Painter': 'painter'
+            };
+
+            const targetTable = roleTableMap[user.sub_category];
+            if (targetTable) {
+                // Ensure they aren't already there
+                const check = await client.query(`SELECT * FROM ${targetTable} WHERE user_id = $1`, [id]);
+                if (check.rows.length === 0) {
+                    await client.query(
+                        `INSERT INTO ${targetTable} (user_id, name) VALUES ($1, $2)`,
+                        [id, user.name]
+                    );
+                }
+            }
+        }
+
+        await client.query('COMMIT');
+        res.json({ message: `User status updated to ${status}`, user });
     } catch (err) {
+        await client.query('ROLLBACK');
         console.error('Error updating user status:', err);
         res.status(500).json({ error: 'Server error updating status' });
+    } finally {
+        client.release();
     }
 });
 
@@ -738,29 +896,68 @@ app.post('/api/auth/google/complete', async (req, res) => {
     const { category, sub_category } = roleMapping[role] || { category: 'Planning', sub_category: role };
 
     try {
-        await pool.query(
-            'UPDATE Users SET category = $1, sub_category = $2 WHERE user_id = $3',
-            [category, sub_category, userId]
-        );
+        const client = await pool.connect();
+        try {
+            await client.query('BEGIN');
 
-        // Fetch user to confirm
-        const userResult = await pool.query('SELECT * FROM Users WHERE user_id = $1', [userId]);
-        const user = userResult.rows[0];
+            // 📜 New Logic: Defer relational insert for professionals until Admin verification.
+            const userStatus = (sub_category === 'Land Owner' || category === 'Admin') ? 'Approved' : 'Pending';
 
-        // Send Welcome Email for new users (if not already sent)
-        sendWelcomeEmail(user.email, user.name).catch(console.error);
+            // 1. Update primary Users table including status
+            await client.query(
+                'UPDATE Users SET category = $1, sub_category = $2, status = $3 WHERE user_id = $4',
+                [category, sub_category, userStatus, userId]
+            );
 
-        logActivity(userId, null, 'Profile Completed', `User ${user.name} completed profile as ${role}`);
+            // Fetch user to confirm and get name
+            const userResult = await client.query('SELECT * FROM Users WHERE user_id = $1', [userId]);
+            const user = userResult.rows[0];
 
-        res.json({
-            message: 'Profile completed successfully',
-            user: {
-                user_id: user.user_id,
-                name: user.name,
-                email: user.email,
-                role: role
+            // 2. ONLY insert Land Owner into their table immediately.
+            if (sub_category === 'Land Owner') {
+                const checkExistence = await client.query(
+                    `SELECT * FROM landowner WHERE user_id = $1`,
+                    [userId]
+                );
+
+                if (checkExistence.rows.length === 0) {
+                    await client.query(
+                        `INSERT INTO landowner (user_id, name) VALUES ($1, $2)`,
+                        [userId, user.name]
+                    );
+                }
             }
-        });
+
+            await client.query('COMMIT');
+
+            // Send Welcome Email for new users (if not already sent)
+            sendWelcomeEmail(user.email, user.name).catch(console.error);
+
+            logActivity(userId, null, 'Profile Completed', `User ${user.name} completed profile as ${role}`);
+
+            res.json({
+                message: 'Profile completed successfully',
+                user: {
+                    user_id: user.user_id,
+                    name: user.name,
+                    email: user.email,
+                    category: user.category,
+                    sub_category: user.sub_category,
+                    status: user.status,
+                    rejection_reason: user.rejection_reason,
+                    resume_path: user.resume_path,
+                    degree_path: user.degree_path,
+                    profile_completed: user.profile_completed,
+                    role: role // Frontend routing key
+                }
+            });
+
+        } catch (innerErr) {
+            await client.query('ROLLBACK');
+            throw innerErr;
+        } finally {
+            client.release();
+        }
     } catch (err) {
         console.error('Profile Completion Error:', err);
         res.status(500).json({ error: 'Failed to complete profile' });
@@ -777,9 +974,7 @@ app.post('/api/auth/google/complete', async (req, res) => {
  */
 app.put('/api/users/:userId/profile', async (req, res) => {
     const { userId } = req.params;
-    const { phone, address, city, state, zip_code, birthdate, bio } = req.body;
-
-    // (removed)
+    const { name, phone, address, city, state, zip_code, birthdate, bio } = req.body;
 
     try {
         let latitude = null;
@@ -789,51 +984,97 @@ app.put('/api/users/:userId/profile', async (req, res) => {
         if (req.body.latitude && req.body.longitude) {
             latitude = parseFloat(req.body.latitude);
             longitude = parseFloat(req.body.longitude);
-            // (removed)
         } else if (address) {
             const fullAddress = `${address}, ${city || ''}, ${state || ''}, ${zip_code || ''}`.trim();
             const coords = await geocodeAddress(fullAddress);
             if (coords) {
                 latitude = coords.lat;
                 longitude = coords.lon;
-                // (removed)
-            } else {
-                // (removed)
             }
         }
 
-        const result = await pool.query(
-            `UPDATE Users SET 
-                mobile_number = COALESCE($1, mobile_number), 
-                address = COALESCE($2, address), 
-                city = COALESCE($3, city),
-                state = COALESCE($4, state),
-                zip_code = COALESCE($5, zip_code),
-                birthdate = COALESCE($6, birthdate),
-                bio = COALESCE($7, bio),
-                latitude = COALESCE($8, latitude), 
-                longitude = COALESCE($9, longitude), 
-                updated_at = CURRENT_TIMESTAMP 
-            WHERE user_id = $10 
-            RETURNING *`,
-            [
-                phone || null,
-                address || null,
-                city || null,
-                state || null,
-                zip_code || null,
-                birthdate || null,
-                bio || null,
-                latitude || null,
-                longitude || null,
-                userId
-            ]
-        );
+        const client = await pool.connect();
+        try {
+            await client.query('BEGIN');
 
-        if (result.rows.length === 0) return res.status(404).json({ error: 'User not found' });
+            const result = await client.query(
+                `UPDATE Users SET 
+                    name = COALESCE($1, name),
+                    mobile_number = COALESCE($2, mobile_number), 
+                    address = COALESCE($3, address), 
+                    city = COALESCE($4, city),
+                    state = COALESCE($5, state),
+                    zip_code = COALESCE($6, zip_code),
+                    birthdate = COALESCE($7, birthdate),
+                    bio = COALESCE($8, bio),
+                    latitude = COALESCE($9, latitude), 
+                    longitude = COALESCE($10, longitude), 
+                    updated_at = CURRENT_TIMESTAMP 
+                WHERE user_id = $11 
+                RETURNING *`,
+                [
+                    name || null,
+                    phone || null,
+                    address || null,
+                    city || null,
+                    state || null,
+                    zip_code || null,
+                    birthdate || null,
+                    bio || null,
+                    latitude || null,
+                    longitude || null,
+                    userId
+                ]
+            );
 
-        // (removed)
-        res.json({ message: 'Profile updated successfully', user: result.rows[0] });
+            if (result.rows.length === 0) {
+                await client.query('ROLLBACK');
+                return res.status(404).json({ error: 'User not found' });
+            }
+
+            const updatedUser = result.rows[0];
+
+            // 🔄 Relational Sync: Push name and location changes down to the specific role table
+            const roleTableMap = {
+                'Land Owner': 'landowner',
+                'Architect': 'architect',
+                'Structural Engineer': 'structuralengineer',
+                'Civil Engineer': 'civilengineer',
+                'Interior Designer': 'interiordesigner',
+                'False Ceiling Worker': 'falseceilingworker',
+                'Fabrication Worker': 'fabricationworker',
+                'Contractor': 'contractor',
+                'Mason': 'mason',
+                'Electrician': 'electrician',
+                'Plumber': 'plumber',
+                'Carpenter': 'carpenter',
+                'Tile Worker': 'tileworker',
+                'Painter': 'painter'
+            };
+
+            const targetTable = roleTableMap[updatedUser.sub_category];
+            if (targetTable) {
+                // Not all role tables have identical column structures, but they all share 'name'.
+                // Many also share address info if they aren't physical site workers.
+                // We'll update name universally. Address is only updated on tables that possess the columns.
+                await client.query(
+                    `UPDATE ${targetTable} SET 
+                        name = COALESCE($1, name)
+                    WHERE user_id = $2`,
+                    [name || null, userId]
+                );
+            }
+
+            await client.query('COMMIT');
+            res.json({ message: 'Profile updated successfully', user: updatedUser });
+
+        } catch (innerErr) {
+            await client.query('ROLLBACK');
+            throw innerErr;
+        } finally {
+            client.release();
+        }
+
     } catch (err) {
         console.error('[Profile Update] Error:', err);
         res.status(500).json({
@@ -942,14 +1183,20 @@ app.get('/api/professionals/:id/public', async (req, res) => {
 });
 
 // Complete Profile (Onboarding)
-app.put('/api/user/:id/complete-profile', upload.single('resume'), async (req, res) => {
+app.put('/api/user/:id/complete-profile', upload.fields([{ name: 'resume', maxCount: 1 }, { name: 'degree', maxCount: 1 }]), async (req, res) => {
     const { id } = req.params;
-    // (removed)
     const { name, phone, address, gender, bio, category, sub_category, portfolio_url, experience_years, specialization } = req.body;
-    let resume_path = null;
 
-    if (req.file) {
-        resume_path = req.file.path.replace(/\\/g, "/");
+    let resume_path = null;
+    let degree_path = null;
+
+    if (req.files) {
+        if (req.files['resume'] && req.files['resume'][0]) {
+            resume_path = req.files['resume'][0].path.replace(/\\/g, "/");
+        }
+        if (req.files['degree'] && req.files['degree'][0]) {
+            degree_path = req.files['degree'][0].path.replace(/\\/g, "/");
+        }
     }
 
     try {
@@ -977,9 +1224,12 @@ app.put('/api/user/:id/complete-profile', upload.single('resume'), async (req, r
                 latitude = COALESCE($10, latitude),
                 longitude = COALESCE($11, longitude),
                 resume_path = COALESCE($12, resume_path),
+                degree_path = COALESCE($13, degree_path),
+                status = 'Pending',
+                rejection_reason = NULL,
                 updated_at = CURRENT_TIMESTAMP,
                 profile_completed = TRUE 
-            WHERE user_id = $13 RETURNING *`,
+            WHERE user_id = $14 RETURNING *`,
             [
                 name || null,
                 phone || null,
@@ -993,17 +1243,17 @@ app.put('/api/user/:id/complete-profile', upload.single('resume'), async (req, r
                 latitude || null,
                 longitude || null,
                 resume_path || null,
+                degree_path || null,
                 id
             ]
         );
 
         if (result.rows.length === 0) return res.status(404).json({ error: 'User not found' });
 
-        await logActivity(id, null, 'Profile Completed', `User completed profile as ${sub_category}`);
-        res.json({ message: 'Profile completed successfully', user: result.rows[0] });
+        await logActivity(id, null, 'Profile Completed', `User ${name || 'unknown'} resubmitted profile for verification as ${sub_category}`);
+        res.json({ message: 'Profile submitted for verification', user: result.rows[0] });
     } catch (err) {
         console.error('Profile Completion Error:', err);
-        console.error('Stack:', err.stack);
         res.status(500).json({ error: 'Failed to complete profile', details: err.message });
     }
 });
@@ -1021,7 +1271,7 @@ app.put('/api/user/:id/complete-profile', upload.single('resume'), async (req, r
  * Uses an ON CONFLICT UPSERT strategy: if the user was previously rejected or left,
  * we update their role rather than violating unique SQL constraints.
  */
-app.post('/api/projects/:projectId/assign', async (req, res) => {
+app.post('/api/projects/:projectId/assign', authenticateToken, async (req, res) => {
     const { projectId } = req.params;
     const { userId, role } = req.body;
 
@@ -1049,7 +1299,7 @@ app.post('/api/projects/:projectId/assign', async (req, res) => {
  * Update Project Assignment Status
  * Endpoint: PUT /api/projects/:projectId/assign/:userId/status
  */
-app.put('/api/projects/:projectId/assign/:userId/status', async (req, res) => {
+app.put('/api/projects/:projectId/assign/:userId/status', authenticateToken, async (req, res) => {
     const { projectId, userId } = req.params;
     const { status } = req.body; // 'Accepted' or 'Rejected'
 
@@ -1075,7 +1325,7 @@ app.put('/api/projects/:projectId/assign/:userId/status', async (req, res) => {
 });
 
 // Get Projects for a Professional
-app.get('/api/professionals/:userId/projects', async (req, res) => {
+app.get('/api/professionals/:userId/projects', authenticateToken, async (req, res) => {
     const { userId } = req.params;
     try {
         const result = await pool.query(
@@ -1094,7 +1344,7 @@ app.get('/api/professionals/:userId/projects', async (req, res) => {
 });
 
 // Get Project Team
-app.get('/api/projects/:projectId/team', async (req, res) => {
+app.get('/api/projects/:projectId/team', authenticateToken, async (req, res) => {
     const { projectId } = req.params;
     try {
         const result = await pool.query(
@@ -1112,7 +1362,7 @@ app.get('/api/projects/:projectId/team', async (req, res) => {
 });
 
 // Remove Team Member
-app.delete('/api/projects/:projectId/team/:userId', async (req, res) => {
+app.delete('/api/projects/:projectId/team/:userId', authenticateToken, async (req, res) => {
     const { projectId, userId } = req.params;
     try {
         const result = await pool.query(
@@ -1147,7 +1397,7 @@ app.delete('/api/projects/:projectId/team/:userId', async (req, res) => {
  * Invoked by Land Owners to initialize a workspace. Ties the project
  * strictly to their `owner_id`. Logs the action for auditing.
  */
-app.post('/api/projects', async (req, res) => {
+app.post('/api/projects', authenticateToken, async (req, res) => {
     const { owner_id, name, type, location, description, budget } = req.body;
     // (removed)
 
@@ -1194,16 +1444,21 @@ app.get('/api/projects/:id', async (req, res) => {
 });
 
 // Get User Projects (Owner)
-app.get('/api/projects/user/:userId', async (req, res) => {
+app.get('/api/projects/user/:userId', authenticateToken, async (req, res) => {
     const { userId } = req.params;
     try {
         const result = await pool.query('SELECT * FROM Projects WHERE owner_id = $1 ORDER BY created_at DESC', [userId]);
         res.json(result.rows);
     } catch (err) {
         console.error('Error fetching user projects:', err);
-        res.status(500).json({ error: 'Failed to fetch projects' });
+        res.status(500).json({
+            error: 'Failed to fetch projects',
+            details: err.message,
+            code: err.code
+        });
     }
 });
+
 
 /**
  * 🏞️ LAND MANAGEMENT ROUTES
@@ -1216,7 +1471,7 @@ app.get('/api/projects/user/:userId', async (req, res) => {
  * 
  * Allows Land Owners to digitize their physical assets with geolocation coordinates.
  */
-app.post('/api/lands', upload.single('document'), async (req, res) => {
+app.post('/api/lands', authenticateToken, upload.single('document'), async (req, res) => {
     const { owner_id, name, location, area, type, latitude, longitude } = req.body;
     let documents_path = null;
 
@@ -1239,7 +1494,7 @@ app.post('/api/lands', upload.single('document'), async (req, res) => {
 });
 
 // Get User Lands
-app.get('/api/lands/user/:userId', async (req, res) => {
+app.get('/api/lands/user/:userId', authenticateToken, async (req, res) => {
     const { userId } = req.params;
     try {
         const result = await pool.query('SELECT * FROM Lands WHERE owner_id = $1 ORDER BY created_at DESC', [userId]);
@@ -1251,7 +1506,7 @@ app.get('/api/lands/user/:userId', async (req, res) => {
 });
 
 // Update Land
-app.put('/api/lands/:id', upload.single('document'), async (req, res) => {
+app.put('/api/lands/:id', authenticateToken, upload.single('document'), async (req, res) => {
     const { id } = req.params;
     const { name, location, area, type } = req.body;
 
@@ -1281,7 +1536,7 @@ app.put('/api/lands/:id', upload.single('document'), async (req, res) => {
 });
 
 // Delete Land
-app.delete('/api/lands/:id', async (req, res) => {
+app.delete('/api/lands/:id', authenticateToken, async (req, res) => {
     const { id } = req.params;
     try {
         const result = await pool.query('DELETE FROM Lands WHERE land_id = $1 RETURNING *', [id]);
@@ -1305,7 +1560,7 @@ app.delete('/api/lands/:id', async (req, res) => {
  * Retrieves secure, project-scoped chat history. Uses LEFT JOIN to pull
  * full display names for both the Sender and the Receiver.
  */
-app.get('/api/messages/:projectId', async (req, res) => {
+app.get('/api/messages/:projectId', authenticateToken, async (req, res) => {
     const { projectId } = req.params;
     try {
         const result = await pool.query(`
@@ -1323,7 +1578,7 @@ app.get('/api/messages/:projectId', async (req, res) => {
     }
 });
 
-app.post('/api/messages', async (req, res) => {
+app.post('/api/messages', authenticateToken, async (req, res) => {
     const { project_id, sender_id, receiver_id, text } = req.body;
     try {
         const result = await pool.query(
@@ -1366,13 +1621,13 @@ app.get('/api/site-progress/:projectId', async (req, res) => {
  * Used primarily by SiteWorkers (Masons, Engineers) to upload photographic evidence
  * of completed tasks. Integrates `multer` to intercept image attachments before inserting rows.
  */
-app.post('/api/site-progress', upload.single('image'), async (req, res) => {
+app.post('/api/site-progress', authenticateToken, upload.single('image'), async (req, res) => {
     const { project_id, updated_by, note, alert_type } = req.body;
     let image_path = req.file ? req.file.path.replace(/\\/g, "/") : null;
 
     try {
         const result = await pool.query(
-            'INSERT INTO SiteProgress (project_id, updated_by, note, image_path, alert_type) VALUES ($1, $2, $3, $4, $5) RETURNING *',
+            'INSERT INTO SiteProgress (project_id, updated_by, note, image_path, alert_type, status) VALUES ($1, $2, $3, $4, $5, \'Pending\') RETURNING *',
             [project_id, updated_by, note, image_path, alert_type]
         );
         logActivity(updated_by, project_id, 'Site Progress Updated', note);
@@ -1380,6 +1635,34 @@ app.post('/api/site-progress', upload.single('image'), async (req, res) => {
     } catch (err) {
         console.error('Error adding site progress:', err);
         res.status(500).json({ error: 'Failed to add progress update' });
+    }
+});
+
+/**
+ * 🛠️ Review Site Progress (Contractor Control)
+ * Endpoint: PUT /api/site-progress/:progressId/review
+ */
+app.put('/api/site-progress/:progressId/review', authenticateToken, async (req, res) => {
+    const { progressId } = req.params;
+    const { status, rejection_reason, contractor_id } = req.body;
+
+    if (!['Approved', 'Rejected'].includes(status)) {
+        return res.status(400).json({ error: 'Invalid status' });
+    }
+
+    try {
+        const result = await pool.query(
+            'UPDATE SiteProgress SET status = $1, rejection_reason = $2 WHERE progress_id = $3 RETURNING *',
+            [status, rejection_reason || null, progressId]
+        );
+
+        if (result.rows.length === 0) return res.status(404).json({ error: 'Progress update not found' });
+
+        logActivity(contractor_id || null, result.rows[0].project_id, 'Progress Reviewed', `Status: ${status}`);
+        res.json(result.rows[0]);
+    } catch (err) {
+        console.error('Error reviewing site progress:', err);
+        res.status(500).json({ error: 'Failed to review progress' });
     }
 });
 
@@ -1432,7 +1715,7 @@ app.patch('/api/phases/:phaseId', async (req, res) => {
 // Update Document Status (Approve/Reject)
 app.put('/api/documents/:docId/status', async (req, res) => {
     const { docId } = req.params;
-    const { status } = req.body;
+    const { status, rejection_reason } = req.body;
 
     if (!['Approved', 'Rejected', 'Pending'].includes(status)) {
         return res.status(400).json({ error: 'Invalid status' });
@@ -1440,8 +1723,8 @@ app.put('/api/documents/:docId/status', async (req, res) => {
 
     try {
         const result = await pool.query(
-            'UPDATE Documents SET status = $1 WHERE doc_id = $2 RETURNING doc_id, project_id, name, status',
-            [status, docId]
+            'UPDATE Documents SET status = $1, rejection_reason = $2 WHERE doc_id = $3 RETURNING *',
+            [status, rejection_reason || null, docId]
         );
 
         if (result.rows.length === 0) {
@@ -1469,12 +1752,13 @@ app.post('/api/documents', upload.single('file'), async (req, res) => {
 
     try {
         const result = await pool.query(
-            'INSERT INTO Documents (project_id, uploaded_by, name, file_path, file_type, file_size) VALUES ($1, $2, $3, $4, $5, $6) RETURNING *',
+            'INSERT INTO Documents (project_id, uploaded_by, name, file_path, file_type, file_size, status) VALUES ($1, $2, $3, $4, $5, $6, \'Pending\') RETURNING *',
             [project_id, uploaded_by, name || req.file.originalname, filePath, fileType, fileSize]
         );
         const doc = result.rows[0];
         logActivity(uploaded_by, project_id, 'Document Uploaded', `Uploaded: ${doc.name}`);
         res.status(201).json(doc);
+
     } catch (err) {
         console.error('Error uploading document:', err);
         res.status(500).json({ error: 'Failed to upload document' });
@@ -1710,6 +1994,9 @@ app.post('/api/projects/:id/rate', async (req, res) => {
         }
     }
 });
+
+// 🛠️ Global Error Handling Middleware (Imported from middleware/error.js)
+app.use(errorHandler);
 
 app.listen(port, () => {
     console.log(`Server running on port ${port}`);
