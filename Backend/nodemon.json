@@ -1,0 +1,21 @@
+{
+  "watch": [
+    "server.js",
+    "middleware/",
+    "utils/"
+  ],
+  "ext": "js,json",
+  "ignore": [
+    "node_modules/",
+    "uploads/",
+    "*.log",
+    "migrate_*.js",
+    "checkDb.js"
+  ],
+  "delay": 1000,
+  "env": {
+    "NODE_ENV": "development"
+  },
+  "restartable": "rs",
+  "verbose": true
+}
