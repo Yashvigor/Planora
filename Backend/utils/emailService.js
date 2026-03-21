@@ -16,7 +16,7 @@ const sendWelcomeEmail = async (toEmail, name) => {
     try {
         console.log(`Attempting to send Welcome Email to ${toEmail}...`);
         const info = await transporter.sendMail({
-            from: `"Planora Support" <${process.env.SENDER_EMAIL}>`,
+            from: `"Planora" <${process.env.SENDER_EMAIL}>`,
             to: toEmail,
             subject: 'Welcome to Planora - Your Construction Management Partner',
             html: `
@@ -89,7 +89,7 @@ const sendOTPEmail = async (toEmail, otp) => {
     try {
         console.log(`Attempting to send OTP Email to ${toEmail}...`);
         const info = await transporter.sendMail({
-            from: `"Planora Security" <${process.env.SENDER_EMAIL}>`,
+            from: `"Planora" <${process.env.SENDER_EMAIL}>`,
             to: toEmail,
             subject: 'Password Reset Request',
             html: `
@@ -146,7 +146,7 @@ const sendVerificationEmail = async (toEmail, name, status, reason) => {
         }
 
         const info = await transporter.sendMail({
-            from: `"Planora Administration" <${process.env.SENDER_EMAIL}>`,
+            from: `"Planora" <${process.env.SENDER_EMAIL}>`,
             to: toEmail,
             subject: `Planora Account Verification: ${status}`,
             html: `
@@ -215,7 +215,7 @@ const sendDeactivatedEmail = async (toEmail, name, reason) => {
     try {
         console.log(`Sending Deactivation Email to ${toEmail}...`);
         const info = await transporter.sendMail({
-            from: `"Planora Security" <${process.env.SENDER_EMAIL}>`,
+            from: `"Planora" <${process.env.SENDER_EMAIL}>`,
             to: toEmail,
             subject: 'Urgent: Your Planora Account Has Been Suspended',
             html: `
@@ -252,7 +252,7 @@ const sendReactivatedEmail = async (toEmail, name) => {
     try {
         console.log(`Sending Reactivation Email to ${toEmail}...`);
         const info = await transporter.sendMail({
-            from: `"Planora Administration" <${process.env.SENDER_EMAIL}>`,
+            from: `"Planora" <${process.env.SENDER_EMAIL}>`,
             to: toEmail,
             subject: 'Welcome Back: Your Planora Account Has Been Reinstated',
             html: `

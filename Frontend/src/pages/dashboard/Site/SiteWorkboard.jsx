@@ -11,7 +11,7 @@ const Card = ({ children, className = "" }) => (
     </div>
 );
 
-const SiteWorkboard = ({ currentUser }) => {
+const SiteWorkboard = ({ currentUser, projectId: propProjectId }) => {
     const [tasks, setTasks] = useState([]);
     const [loading, setLoading] = useState(true);
     const [selectedProject, setSelectedProject] = useState(null);
@@ -24,7 +24,11 @@ const SiteWorkboard = ({ currentUser }) => {
         if (!userId) return;
         setLoading(true);
         try {
-            const res = await fetch(`${import.meta.env.VITE_API_URL}/api/tasks/user/${userId}`, {
+            const url = propProjectId 
+                ? `${import.meta.env.VITE_API_URL}/api/projects/${propProjectId}/tasks`
+                : `${import.meta.env.VITE_API_URL}/api/tasks/user/${userId}`;
+                
+            const res = await fetch(url, {
                 headers: { 'Authorization': `Bearer ${localStorage.getItem('planora_token')}` }
             });
             if (res.ok) {
@@ -35,7 +39,7 @@ const SiteWorkboard = ({ currentUser }) => {
         } finally {
             setLoading(false);
         }
-    }, [userId]);
+    }, [userId, propProjectId]);
 
     useEffect(() => {
         fetchTasks();

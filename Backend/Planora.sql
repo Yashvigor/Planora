@@ -190,6 +190,7 @@ CREATE TABLE IF NOT EXISTS siteprogress (
     alert_type character varying(50),
     status character varying(50) DEFAULT 'Pending'::character varying,
     rejection_reason text,
+    personal_id_document_path TEXT,
     created_at timestamp with time zone DEFAULT CURRENT_TIMESTAMP
 );
 

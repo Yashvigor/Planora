@@ -653,7 +653,7 @@ const LandOwnerDashboard = () => {
                             {activeProject && (
                                 <Card>
                                     <SectionHeader title="Live Construction Tracker" />
-                                    <SiteWorkboard currentUser={currentUser} />
+                                    <SiteWorkboard currentUser={currentUser} projectId={activeProject.project_id} />
                                 </Card>
                             )}
                         </div>

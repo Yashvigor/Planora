@@ -6,6 +6,7 @@ import { Menu, Bell, ShieldCheck, AlertCircle } from 'lucide-react';
 import Sidebar from '../components/Layout/Sidebar';
 import { motion } from 'framer-motion';
 import Onboarding from '../components/dashboard/Common/Onboarding';
+import AccountDisabled from '../pages/dashboard/Common/AccountDisabled';
 
 const DashboardLayout = () => {
     const { currentUser } = useMockApp();
@@ -56,12 +57,23 @@ const DashboardLayout = () => {
     const isAdmin = effectiveRole === 'admin';
     const isLandOwner = effectiveRole === 'land_owner';
     const isContractor = effectiveRole === 'contractor';
-    const isExempt = isAdmin || isLandOwner || isContractor;
-
+    
     const status = (currentUser.status || '').toLowerCase();
     const isPending = status === 'pending';
     const isRejected = status === 'rejected';
+    const isDisabled = status === 'disabled';
+    const isExempt = isAdmin || isLandOwner || isContractor;
+    const isAppealing = currentUser.appeal_reason || currentUser.rejection_reason?.startsWith('[APPEAL SUBMITTED]');
 
+    // 🔒 RESTRICTION GATE: 
+    // ONLY block established accounts if they are explicitly 'Disabled', 
+    // or if they have an active appeal pending review.
+    if (isDisabled || (isAppealing && isExempt)) {
+        return <AccountDisabled />;
+    }
+
+    // 🛡️ VERIFICATION GATE:
+    // Block new professionals (non-exempt) who are Pending or Rejected.
     if ((isPending || isRejected) && !isExempt) {
         return (
             <div className="flex items-center justify-center min-h-screen bg-[#FDFCF8] p-8">

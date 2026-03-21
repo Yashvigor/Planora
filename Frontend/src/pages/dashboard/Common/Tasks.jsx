@@ -161,11 +161,15 @@ const TaskReviewModal = ({ task, isOpen, onClose, onReview, isSubmitting }) => {
 
 const Tasks = () => {
     const { currentUser } = useMockApp();
-    const [tasks, setTasks] = useState([]); // My Queue
+    const isContractor = currentUser?.role === 'contractor' || currentUser?.sub_category === 'Contractor';
+    const isLandOwner = currentUser?.role === 'land_owner' || currentUser?.sub_category === 'Land Owner';
+    const isManager = isContractor || isLandOwner; // Landowner can now manage tasks same as contractor
+
+    const [tasks, setTasks] = useState([]); // Will stay empty for Landowner/Contractor
     const [assignedTasks, setAssignedTasks] = useState([]);
     const [tasksToReview, setTasksToReview] = useState([]);
     const [loading, setLoading] = useState(true);
-    const [activeTab, setActiveTab] = useState('my_queue');
+    const [activeTab, setActiveTab] = useState(isManager ? 'assignments' : 'my_queue');
     const [selectedTask, setSelectedTask] = useState(null);
     const [reviewingTask, setReviewingTask] = useState(null);
     const [isAssignModalOpen, setIsAssignModalOpen] = useState(false);
@@ -173,10 +177,6 @@ const Tasks = () => {
     const [file, setFile] = useState(null);
     const [preview, setPreview] = useState(null);
     const [projects, setProjects] = useState([]);
-
-    const isContractor = currentUser?.role === 'contractor' || currentUser?.sub_category === 'Contractor';
-    const isLandOwner = currentUser?.role === 'land_owner' || currentUser?.sub_category === 'Land Owner';
-    const isManager = isContractor || isLandOwner; // Landowner can now manage tasks same as contractor
 
     const fetchTasks = useCallback(async () => {
         if (!currentUser) return;
@@ -343,27 +343,37 @@ const Tasks = () => {
                     )}
                 </div>
 
-                {isManager && (
-                    <div className="flex gap-4 border-b border-[#E3DACD]">
-                        {[
-                            { id: 'my_queue', label: 'My Queue', icon: User },
-                            { id: 'assignments', label: 'Manage Assignments', icon: FileText },
-                            { id: 'to_review', label: 'Pending Reviews', icon: Clock, count: tasksToReview.length },
-                            { id: 'history', label: 'Work History', icon: CheckCircle }
-                        ].map(tab => (
-                            <button
-                                key={tab.id}
-                                onClick={() => setActiveTab(tab.id)}
-                                className={`px-6 py-4 text-xs font-black uppercase tracking-widest transition-all relative flex items-center gap-3 ${activeTab === tab.id ? 'text-[#C06842]' : 'text-[#8C7B70] hover:text-[#2A1F1D]'}`}
-                            >
-                                <tab.icon size={16} />
-                                {tab.label}
-                                {tab.count > 0 && <span className="w-5 h-5 bg-[#C06842] text-white text-[9px] flex items-center justify-center rounded-full animate-pulse">{tab.count}</span>}
-                                {activeTab === tab.id && <motion.div layoutId="tab-underline" className="absolute bottom-0 left-0 right-0 h-1 bg-[#C06842] rounded-t-full" />}
-                            </button>
-                        ))}
-                    </div>
-                )}
+                <div className="flex gap-4 border-b border-[#E3DACD]">
+                    {isManager ? ([
+                        { id: 'assignments', label: 'Manage Assignments', icon: FileText },
+                        { id: 'to_review', label: 'Pending Reviews', icon: Clock, count: tasksToReview.length },
+                        { id: 'history', label: 'Work History', icon: CheckCircle }
+                    ].map(tab => (
+                        <button
+                            key={tab.id}
+                            onClick={() => setActiveTab(tab.id)}
+                            className={`px-6 py-4 text-xs font-black uppercase tracking-widest transition-all relative flex items-center gap-3 ${activeTab === tab.id ? 'text-[#C06842]' : 'text-[#8C7B70] hover:text-[#2A1F1D]'}`}
+                        >
+                            <tab.icon size={16} />
+                            {tab.label}
+                            {tab.count > 0 && <span className="w-5 h-5 bg-[#C06842] text-white text-[9px] flex items-center justify-center rounded-full animate-pulse">{tab.count}</span>}
+                            {activeTab === tab.id && <motion.div layoutId="tab-underline" className="absolute bottom-0 left-0 right-0 h-1 bg-[#C06842] rounded-t-full" />}
+                        </button>
+                    ))) : ([
+                        { id: 'my_queue', label: 'My Queue', icon: User },
+                        { id: 'history', label: 'Work History', icon: CheckCircle }
+                    ].map(tab => (
+                        <button
+                            key={tab.id}
+                            onClick={() => setActiveTab(tab.id)}
+                            className={`px-6 py-4 text-xs font-black uppercase tracking-widest transition-all relative flex items-center gap-3 ${activeTab === tab.id ? 'text-[#C06842]' : 'text-[#8C7B70] hover:text-[#2A1F1D]'}`}
+                        >
+                            <tab.icon size={16} />
+                            {tab.label}
+                            {activeTab === tab.id && <motion.div layoutId="tab-underline" className="absolute bottom-0 left-0 right-0 h-1 bg-[#C06842] rounded-t-full" />}
+                        </button>
+                    )))}
+                </div>
 
                 {loading ? (
                     <div className="flex flex-col items-center justify-center py-20 space-y-4"><div className="w-12 h-12 border-4 border-[#A65D3B]/20 border-t-[#A65D3B] rounded-full animate-spin" /><p className="text-[#8C7B70] font-medium">Synchronizing Work Hub...</p></div>

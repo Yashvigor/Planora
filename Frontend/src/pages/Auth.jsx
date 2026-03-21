@@ -1,7 +1,7 @@
 import React, { useState, useCallback } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useMockApp } from '../hooks/useMockApp';
-import { Eye, EyeOff, Mail, Lock, User, MapPin, Briefcase, Camera, Upload, CheckCircle, ChevronRight, ArrowLeft, ArrowRight, Loader2, Check } from 'lucide-react';
+import { Eye, EyeOff, Mail, Lock, User, MapPin, Briefcase, Camera, Upload, CheckCircle, ChevronRight, ArrowLeft, ArrowRight, Loader2, Check, Shield, Send } from 'lucide-react';
 import PlanoraLogo from '../components/common/PlanoraLogo';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useGoogleLogin } from '@react-oauth/google';
@@ -273,6 +273,45 @@ const Auth = () => {
         }
     };
 
+    const [showAppeal, setShowAppeal] = useState(false);
+    const [appealReason, setAppealReason] = useState('');
+    const [appealFile, setAppealFile] = useState(null);
+    const [appealSuccess, setAppealSuccess] = useState('');
+
+    const handleAppealSubmit = async (e) => {
+        e.preventDefault();
+        setLoading(true);
+        setError('');
+        
+        const appealData = new FormData();
+        appealData.append('email', formData.email);
+        appealData.append('password', formData.password);
+        appealData.append('reason', appealReason);
+        if (appealFile) appealData.append('document', appealFile);
+
+        try {
+            const response = await fetch(`${import.meta.env.VITE_API_URL}/api/auth/appeal`, {
+                method: 'POST',
+                body: appealData,
+            });
+
+            const data = await response.json();
+            if (!response.ok) throw new Error(data.error || 'Appeal submission failed');
+
+            setAppealSuccess(data.message);
+            setTimeout(() => {
+                setShowAppeal(false);
+                setAppealSuccess('');
+                setAppealReason('');
+                setAppealFile(null);
+            }, 3000);
+        } catch (err) {
+            setError(err.message);
+        } finally {
+            setLoading(false);
+        }
+    };
+
     const handleSubmit = async (e) => {
         e.preventDefault();
         if (authState === 'onboarding') return handleCompleteProfile(e);
@@ -307,6 +346,9 @@ const Auth = () => {
 
             const data = await response.json();
             if (!response.ok) {
+                if (response.status === 403 && (data.error === 'Account Suspended' || data.message?.includes('suspended'))) {
+                    setShowAppeal(true);
+                }
                 throw new Error(data.error || 'Authentication failed');
             }
 
@@ -354,6 +396,97 @@ const Auth = () => {
 
     return (
         <div className="min-h-screen flex font-sans bg-[#FDFCF8] relative overflow-hidden text-[#2A1F1D]">
+            {/* Appeal Modal */}
+            <AnimatePresence>
+                {showAppeal && (
+                    <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-[#2A1F1D]/60 backdrop-blur-md">
+                        <motion.div
+                            initial={{ scale: 0.9, opacity: 0 }}
+                            animate={{ scale: 1, opacity: 1 }}
+                            exit={{ scale: 0.9, opacity: 0 }}
+                            className="bg-white w-full max-w-lg rounded-[2.5rem] p-10 border border-[#E3DACD] shadow-2xl overflow-y-auto max-h-[90vh]"
+                        >
+                            {appealSuccess ? (
+                                <div className="text-center py-10 space-y-6">
+                                    <div className="w-20 h-20 bg-green-50 text-green-500 rounded-3xl flex items-center justify-center mx-auto shadow-sm">
+                                        <CheckCircle size={40} />
+                                    </div>
+                                    <h3 className="text-2xl font-serif font-black text-[#2A1F1D]">Appeal Submitted</h3>
+                                    <p className="text-[#8C7B70] text-sm font-medium">{appealSuccess}</p>
+                                </div>
+                            ) : (
+                                <form onSubmit={handleAppealSubmit} className="space-y-8">
+                                    <div className="flex items-center gap-4 border-b border-[#F9F7F2] pb-6">
+                                        <div className="w-14 h-14 bg-red-50 text-red-500 rounded-2xl flex items-center justify-center shadow-inner">
+                                            <Shield size={28} />
+                                        </div>
+                                        <div>
+                                            <h3 className="text-2xl font-serif font-black text-[#2A1F1D]">Account Appeal</h3>
+                                            <p className="text-[#8C7B70] text-xs font-bold uppercase tracking-widest">Workspace Reinstatement Protocol</p>
+                                        </div>
+                                    </div>
+
+                                    <div className="space-y-6">
+                                        <div className="bg-red-50/50 p-4 rounded-2xl border border-red-100 flex gap-3 italic text-[#A65D3B] text-xs font-medium">
+                                            <p>Access for <b>{formData.email}</b> is restricted. Please provide a formal clarification for HQ review.</p>
+                                        </div>
+
+                                        <div className="space-y-2">
+                                            <label className="text-[10px] font-black text-[#8C7B70] uppercase tracking-widest ml-1">Clarification Statement</label>
+                                            <textarea
+                                                required
+                                                value={appealReason}
+                                                onChange={(e) => setAppealReason(e.target.value)}
+                                                placeholder="Explain why your account should be reinstated..."
+                                                className="w-full bg-[#F9F7F2] border-2 border-transparent focus:border-[#C06842] focus:bg-white p-5 rounded-2xl outline-none transition-all h-32 resize-none text-sm font-medium"
+                                            ></textarea>
+                                        </div>
+
+                                        <div className="space-y-2">
+                                            <label className="text-[10px] font-black text-[#8C7B70] uppercase tracking-widest ml-1">Verification Document (Optional)</label>
+                                            <div className="relative">
+                                                <input
+                                                    type="file"
+                                                    id="appeal-upload"
+                                                    className="hidden"
+                                                    onChange={(e) => setAppealFile(e.target.files[0])}
+                                                />
+                                                <label
+                                                    htmlFor="appeal-upload"
+                                                    className="w-full flex items-center justify-between p-4 bg-white border-2 border-dashed border-[#E3DACD] rounded-2xl cursor-pointer hover:border-[#C06842] transition-colors"
+                                                >
+                                                    <div className="flex items-center gap-3">
+                                                        <div className="p-2 bg-[#F9F7F2] text-[#8C7B70] rounded-xl"><Upload size={18} /></div>
+                                                        <span className="text-xs font-bold text-[#5D4037]">{appealFile ? appealFile.name : 'Upload supporting evidence'}</span>
+                                                    </div>
+                                                    <ChevronRight size={18} className="text-[#B8AFA5]" />
+                                                </label>
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    <div className="flex gap-4 pt-4">
+                                        <button
+                                            type="button"
+                                            onClick={() => setShowAppeal(false)}
+                                            className="flex-1 py-4 bg-[#F9F7F2] text-[#8C7B70] font-black text-[10px] uppercase tracking-widest rounded-3xl hover:bg-[#E3DACD]/30 transition-all border border-[#E3DACD]/50"
+                                        >
+                                            Cancel
+                                        </button>
+                                        <button
+                                            type="submit"
+                                            disabled={loading}
+                                            className="flex-1 py-4 bg-[#2A1F1D] text-white font-black text-[10px] uppercase tracking-widest rounded-3xl shadow-xl hover:shadow-black/10 transition-all flex items-center justify-center gap-2"
+                                        >
+                                            {loading ? <Loader2 className="animate-spin" size={16} /> : <><Send size={16} /> Submit Appeal</>}
+                                        </button>
+                                    </div>
+                                </form>
+                            )}
+                        </motion.div>
+                    </div>
+                )}
+            </AnimatePresence>
 
             {/* Enhanced Animated Background Elements */}
             <div className="absolute inset-0 overflow-hidden pointer-events-none">

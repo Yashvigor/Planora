@@ -1,13 +1,16 @@
 import React, { useState, useEffect, useCallback } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useMockApp } from '../../../hooks/useMockApp';
 import {
     HardHat, Clock, CheckCircle, FileText,
     MapPin, Plus, ArrowLeft, XCircle, Briefcase,
     TrendingUp, ArrowUpRight, Star, AlertOctagon, Eye, Image as ImageIcon,
-    ClipboardList, ChevronDown, Check, X, AlertTriangle, Trash2, Calendar, ExternalLink, PieChart
+    ClipboardList, ChevronDown, Check, X, AlertTriangle, Trash2, Calendar, ExternalLink, PieChart,
+    Shield, Hammer
 } from 'lucide-react';
 import ExpertMap from '../../../components/dashboard/Client/ExpertMap';
 import ProfilePromptModal from '../../../components/dashboard/Common/ProfilePromptModal';
+import SiteWorkboard from '../Site/SiteWorkboard';
 
 const Card = ({ children, className = "" }) => (
     <div className={`glass-card rounded-[2rem] p-8 shadow-sm ${className}`}>
@@ -45,6 +48,7 @@ const ProgressBar = ({ percent, label }) => (
 );
 
 const ContractorOverview = () => {
+    const navigate = useNavigate();
     const { currentUser, setAuthUser } = useMockApp();
     const [projects, setProjects] = useState([]);
     const [invitations, setInvitations] = useState([]);
@@ -70,6 +74,7 @@ const ContractorOverview = () => {
     const [isRatingModalOpen, setIsRatingModalOpen] = useState(false);
     const [teamRatings, setTeamRatings] = useState({});
     const [isSubmittingRating, setIsSubmittingRating] = useState(false);
+    const [activeTab, setActiveTab] = useState('overview'); // overview, workboard
 
     // -------------------------------------------------------------------------
     // Fetchers
@@ -304,6 +309,22 @@ const ContractorOverview = () => {
         } catch (err) { console.error("Error removing team member:", err); }
     };
 
+    const handleCompleteProject = async () => {
+        if (!activeProject || activeProject.status === 'Completed') return;
+        if (!window.confirm("Mark project as completed? This will finalize the project lifecycle.")) return;
+        try {
+            const res = await fetch(`${import.meta.env.VITE_API_URL}/api/projects/${activeProject.project_id}/status`, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ status: 'Completed' })
+            });
+            if (res.ok) {
+                fetchData();
+                setIsRatingModalOpen(true);
+            }
+        } catch (error) { console.error("Error completing project:", error); }
+    };
+
     const handleRatingChange = (userId, ratingValue) => setTeamRatings(prev => ({ ...prev, [userId]: ratingValue }));
 
     const handleSubmitRatings = async () => {
@@ -383,91 +404,27 @@ const ContractorOverview = () => {
 
 
 
-            {/* Header */}
-            <div className="glass-panel rounded-[2.5rem] p-10 shadow-xl relative overflow-hidden group hover:shadow-2xl transition-all duration-500 border border-[#E3DACD]">
-                <div className="absolute right-0 top-0 w-80 h-80 bg-[#C06842]/10 rounded-full blur-3xl -mr-16 -mt-16 pointer-events-none" />
-                <div className="relative z-10 flex flex-col lg:flex-row justify-between items-center gap-8">
-                    <div className="flex items-center space-x-6">
-                        <div className="w-20 h-20 bg-gradient-to-br from-[#2A1F1D] to-[#C06842] rounded-2xl flex items-center justify-center text-white shadow-lg">
-                            <HardHat size={40} />
-                        </div>
-                        <div>
-                            <p className="text-[#8C7B70] text-xs font-bold tracking-widest uppercase mb-1">Contractor Workspace</p>
-                            <h1 className="text-4xl font-bold text-[#2A1F1D] font-serif">Welcome, {currentUser?.name || "Contractor"}</h1>
-                        </div>
-                    </div>
-                    <div className="flex gap-4">
-                        <div className="bg-white/60 backdrop-blur-md px-6 py-3 rounded-2xl border border-[#E3DACD] text-center shadow-sm">
-                            <p className="text-[10px] text-[#8C7B70] font-bold uppercase tracking-widest">Active Sites</p>
-                            <p className="text-2xl font-serif font-bold text-[#2A1F1D]">{projects.length}</p>
-                        </div>
-                        {activeProject && (
-                            <div className="bg-white/60 backdrop-blur-md px-6 py-3 rounded-2xl border border-[#E3DACD] text-center shadow-sm">
-                                <p className="text-[10px] text-[#8C7B70] font-bold uppercase tracking-widest">Task Progress</p>
-                                <p className="text-2xl font-serif font-bold text-[#C06842]">{progress}%</p>
-                            </div>
-                        )}
-                        {submittedTasks > 0 && (
-                            <div className="bg-blue-50 px-6 py-3 rounded-2xl border border-blue-200 text-center shadow-sm animate-pulse">
-                                <p className="text-[10px] text-blue-600 font-bold uppercase tracking-widest">Awaiting Review</p>
-                                <p className="text-2xl font-serif font-bold text-blue-700">{submittedTasks}</p>
-                            </div>
-                        )}
-                    </div>
+            {/* Tab Navigation */}
+            <div className="flex justify-center mb-6">
+                <div className="glass-panel p-1.5 rounded-2xl border border-[#E3DACD]/50 flex gap-1 shadow-sm backdrop-blur-xl">
+                    <button
+                        onClick={() => setActiveTab('overview')}
+                        className={`flex items-center gap-2 px-6 py-2.5 rounded-xl text-xs font-black uppercase tracking-widest transition-all duration-300 ${activeTab === 'overview' ? 'bg-[#C06842] text-white shadow-lg' : 'text-[#8C7B70] hover:bg-white hover:text-[#C06842]'}`}
+                    >
+                        <PieChart size={16} /> Overview
+                    </button>
+                    <button
+                        onClick={() => setActiveTab('workboard')}
+                        className={`flex items-center gap-2 px-6 py-2.5 rounded-xl text-xs font-black uppercase tracking-widest transition-all duration-300 ${activeTab === 'workboard' ? 'bg-[#C06842] text-white shadow-lg' : 'text-[#8C7B70] hover:bg-white hover:text-[#C06842]'}`}
+                    >
+                        <Hammer size={16} /> Work Board
+                    </button>
                 </div>
             </div>
 
-            <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-                {/* Left - Projects + Tasks */}
-                <div className="lg:col-span-2 space-y-8">
-
-                    {/* QUICK STATS & PORTFOLIO */}
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                        <Card className="bg-gradient-to-br from-[#FDFCF8] to-[#F9F7F2] border-[#E3DACD]">
-                            <div className="flex items-center gap-4 mb-4">
-                                <div className="p-3 bg-amber-100 text-amber-600 rounded-xl">
-                                    <Briefcase size={24} />
-                                </div>
-                                <h4 className="font-bold text-[#2A1F1D]">Project Portfolio</h4>
-                            </div>
-                            <div className="space-y-3">
-                                <div className="flex justify-between items-center text-sm">
-                                    <span className="text-[#8C7B70]">Total Projects Managed</span>
-                                    <span className="font-black text-[#2A1F1D]">{projects.length}</span>
-                                </div>
-                                <div className="flex justify-between items-center text-sm">
-                                    <span className="text-[#8C7B70]">Completed Sites</span>
-                                    <span className="font-black text-green-600">{projects.filter(p => p.status === 'Completed').length}</span>
-                                </div>
-                                <div className="flex justify-between items-center text-sm">
-                                    <span className="text-[#8C7B70]">Active Construction</span>
-                                    <span className="font-black text-blue-600">{projects.filter(p => p.status !== 'Completed').length}</span>
-                                </div>
-                            </div>
-                        </Card>
-
-                        <Card className="bg-gradient-to-br from-[#FDFCF8] to-[#F9F7F2] border-[#E3DACD]">
-                            <div className="flex items-center gap-4 mb-4">
-                                <div className="p-3 bg-blue-100 text-blue-600 rounded-xl">
-                                    <ClipboardList size={24} />
-                                </div>
-                                <h4 className="font-bold text-[#2A1F1D]">Quality Oversight</h4>
-                            </div>
-                            <div className="space-y-3">
-                                <div className="flex justify-between items-center text-sm">
-                                    <span className="text-[#8C7B70]">Critical Submissions</span>
-                                    <span className="font-black text-red-600">{totalPendingReviews}</span>
-                                </div>
-                                <div className="flex justify-between items-center text-sm">
-                                    <span className="text-[#8C7B70]">Overall Success Rate</span>
-                                    <span className="font-black text-[#C06842]">94%</span>
-                                </div>
-                                <a href="/dashboard/tasks" className="block w-full py-2 bg-[#2A1F1D] text-white text-[10px] font-black uppercase tracking-widest text-center rounded-lg hover:bg-[#C06842] transition-all">Go to Task Hub</a>
-                            </div>
-                        </Card>
-                    </div>
-
-                    {/* INVITATIONS PENDING */}
+            {activeTab === 'workboard' ? (
+                <div className="animate-fade-in space-y-8">
+                    {/* INVITATIONS PENDING (Keep this for Contractors) */}
                     {invitations.length > 0 && (
                         <Card className="border-blue-100 bg-blue-50/20">
                             <SectionHeader
@@ -482,12 +439,11 @@ const ContractorOverview = () => {
                                             <p className="text-xs text-[#8C7B70] mt-1 line-clamp-2">{inv.description || "No description provided."}</p>
                                             <div className="flex gap-2 mt-2">
                                                 <span className="text-[10px] uppercase font-black text-[#C06842]">{inv.assigned_role}</span>
-                                                {inv.location && <span className="text-[10px] uppercase font-black text-[#8C7B70]">• {inv.location}</span>}
                                             </div>
                                         </div>
                                         <div className="flex gap-2">
-                                            <button onClick={() => handleInvitationResponse(inv.project_id, 'Rejected')} className="py-2 px-4 text-red-600 hover:bg-red-50 rounded-xl text-[10px] font-black uppercase tracking-widest transition-colors border border-transparent hover:border-red-200">Decline</button>
-                                            <button onClick={() => handleInvitationResponse(inv.project_id, 'Accepted')} className="py-2 px-6 bg-[#2A1F1D] text-white rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-[#C06842] transition-all shadow-md">Accept</button>
+                                            <button onClick={() => handleInvitationResponse(inv.project_id, 'Rejected')} className="py-2 px-4 text-red-600 hover:bg-red-50 rounded-xl text-[10px] font-black uppercase tracking-widest transition-colors">Decline</button>
+                                            <button onClick={() => handleInvitationResponse(inv.project_id, 'Accepted')} className="py-2 px-6 bg-[#2A1F1D] text-white rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-[#C06842] transition-all">Accept</button>
                                         </div>
                                     </div>
                                 ))}
@@ -495,215 +451,321 @@ const ContractorOverview = () => {
                         </Card>
                     )}
 
-                    {/* PROJECT NAVIGATOR */}
+                    {/* PROJECT SELECTOR / NAVIGATOR */}
                     <Card>
-                        <SectionHeader
-                            title="Construction Pipeline"
-                            action={
-                                <div className="flex items-center gap-4">
-                                    <p className="text-[10px] font-black text-[#8C7B70] uppercase">Selected: {activeProject?.name || 'None'}</p>
-                                </div>
-                            }
-                        />
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                            {projects.length === 0 ? (
-                                <div className="col-span-2 text-center py-16 opacity-50">
-                                    <Briefcase size={40} className="mx-auto mb-2 text-[#8C7B70]" />
-                                    <p className="text-sm font-bold">No projects assigned yet</p>
-                                </div>
-                            ) : projects.map(project => (
+                        <SectionHeader title="Active Construction Sites" action={<span className="text-xs font-bold text-[#8C7B70]">SELECT PROJECT TO MANAGE</span>} />
+                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                            {projects.map(project => (
                                 <div
                                     key={project.project_id}
                                     onClick={() => setActiveProject(project)}
-                                    className={`p-6 rounded-3xl border cursor-pointer transition-all ${activeProject?.project_id === project.project_id ? 'bg-[#2A1F1D] text-white border-transparent shadow-xl scale-[1.02]' : 'bg-white border-[#E3DACD]/40 hover:border-[#C06842]/20 hover:bg-[#FDFCF8]'}`}
+                                    className={`p-6 rounded-3xl border cursor-pointer transition-all ${activeProject?.project_id === project.project_id ? 'bg-[#2A1F1D] text-white border-transparent shadow-xl' : 'bg-white border-[#E3DACD]/40 hover:border-[#C06842]/20'}`}
                                 >
-                                    <div className="flex justify-between items-start mb-4">
-                                        <div className="min-w-0">
-                                            <h3 className={`font-bold text-lg font-serif truncate ${activeProject?.project_id === project.project_id ? 'text-white' : 'text-[#2A1F1D]'}`}>{project.name}</h3>
-                                            <p className={`text-[10px] flex items-center gap-1 mt-1 font-bold uppercase tracking-wider ${activeProject?.project_id === project.project_id ? 'text-white/60' : 'text-[#8C7B70]'}`}>
-                                                <MapPin size={10} className={activeProject?.project_id === project.project_id ? 'text-[#C06842]' : 'text-[#C06842]'} /> {project.location || 'Site Location'}
-                                            </p>
-                                        </div>
-                                        <span className={`px-2 py-0.5 rounded-lg text-[8px] font-black uppercase tracking-widest border ${activeProject?.project_id === project.project_id ? 'bg-white/10 border-white/20' : 'bg-blue-50 text-blue-700 border-blue-100'}`}>
-                                            {project.status || 'Active'}
-                                        </span>
-                                    </div>
-
-                                    {activeProject?.project_id === project.project_id && (
-                                        <div className="space-y-4 animate-in fade-in slide-in-from-top-2 duration-300">
-                                            <div className="bg-white/10 rounded-xl p-3 border border-white/10">
-                                                <div className="flex justify-between mb-1.5 items-center">
-                                                    <span className="text-[10px] font-bold uppercase text-white/60">Construction Phases</span>
-                                                    <div className="flex gap-1">
-                                                        <div className={`w-2 h-2 rounded-full ${project.planning_completed ? 'bg-green-500' : 'bg-white/20'}`}></div>
-                                                        <div className={`w-2 h-2 rounded-full ${project.design_completed ? 'bg-green-500' : 'bg-white/20'}`}></div>
-                                                        <div className={`w-2 h-2 rounded-full ${project.execution_completed ? 'bg-green-500' : 'bg-white/20'}`}></div>
-                                                    </div>
-                                                </div>
-                                                <div className="flex justify-between mb-1.5">
-                                                    <span className="text-[10px] font-bold uppercase text-white/60">Site Progress</span>
-                                                    <span className="text-[10px] font-black text-[#C06842]">{progress}%</span>
-                                                </div>
-                                                <div className="w-full bg-white/10 h-1.5 rounded-full overflow-hidden">
-                                                    <div className="h-full bg-[#C06842] rounded-full" style={{ width: `${progress}%` }} />
-                                                </div>
-                                            </div>
-                                            
-                                            <div className="grid grid-cols-3 gap-1">
-                                                <button 
-                                                    onClick={(e) => { e.stopPropagation(); handlePhaseUpdate('planning', !project.planning_completed); }}
-                                                    className={`py-1 rounded text-[8px] font-black uppercase ${project.planning_completed ? 'bg-green-600' : 'bg-white/10 hover:bg-white/20'}`}
-                                                >
-                                                    Planning
-                                                </button>
-                                                <button 
-                                                    onClick={(e) => { e.stopPropagation(); handlePhaseUpdate('design', !project.design_completed); }}
-                                                    disabled={!project.planning_completed}
-                                                    className={`py-1 rounded text-[8px] font-black uppercase ${project.design_completed ? 'bg-green-600' : 'bg-white/10 hover:bg-white/20'} ${!project.planning_completed ? 'opacity-30 cursor-not-allowed' : ''}`}
-                                                >
-                                                    Design
-                                                </button>
-                                                <button 
-                                                    onClick={(e) => { e.stopPropagation(); handlePhaseUpdate('execution', !project.execution_completed); }}
-                                                    disabled={!project.design_completed}
-                                                    className={`py-1 rounded text-[8px] font-black uppercase ${project.execution_completed ? 'bg-green-600' : 'bg-white/10 hover:bg-white/20'} ${!project.design_completed ? 'opacity-30 cursor-not-allowed' : ''}`}
-                                                >
-                                                    Execution
-                                                </button>
-                                            </div>
-
-                                            <div className="flex items-center justify-between text-[10px] font-black uppercase border-t border-white/10 pt-2 mt-2">
-                                                <span className="text-white/60">Team Size: {projectTeam.length}</span>
-                                                {project.execution_completed && project.status !== 'Completed' && (
-                                                    <button onClick={(e) => { e.stopPropagation(); handleCompleteProject(); }} className="text-[#C06842] hover:text-white transition-colors">Mark Project Complete</button>
-                                                )}
-                                            </div>
-                                        </div>
-                                    )}
+                                    <h3 className={`font-bold font-serif truncate ${activeProject?.project_id === project.project_id ? 'text-white' : 'text-[#2A1F1D]'}`}>{project.name}</h3>
+                                    <p className={`text-[10px] font-bold uppercase tracking-wider mt-1 ${activeProject?.project_id === project.project_id ? 'text-[#C06842]' : 'text-[#8C7B70]'}`}>
+                                        <MapPin size={10} className="inline mr-1" /> {project.location || 'Site Location'}
+                                    </p>
                                 </div>
                             ))}
                         </div>
                     </Card>
 
-                    {/* Pending Site Progress & Doc Reviews */}
-                    {totalPendingReviews > 0 && (
-                        <Card className="border-amber-100 bg-amber-50/20">
-                            <SectionHeader
-                                title="Pending Team Submissions"
-                                action={<span className="text-[10px] font-black uppercase text-amber-600 bg-amber-100 px-3 py-1 rounded-full">{totalPendingReviews} Awaiting Review</span>}
-                            />
-                            <div className="space-y-4">
-                                {pendingReviews.progress.map(p => (
-                                    <div key={p.progress_id} className="p-4 bg-white rounded-2xl border border-amber-100 shadow-sm flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
-                                        <div className="flex gap-4 items-start">
-                                            <div className="w-16 h-16 rounded-xl bg-amber-100 flex items-center justify-center text-amber-600 shrink-0 overflow-hidden border border-amber-200 relative group/img">
-                                                {p.image_path ? (
-                                                    <>
-                                                        <img src={`${import.meta.env.VITE_API_URL}/${p.image_path}`} alt="Progress" className="w-full h-full object-cover" />
-                                                        <a
-                                                            href={`${import.meta.env.VITE_API_URL}/${p.image_path}`}
-                                                            target="_blank"
-                                                            rel="noopener noreferrer"
-                                                            className="absolute inset-0 bg-black/40 opacity-0 group-hover/img:opacity-100 flex items-center justify-center text-white transition-opacity"
-                                                        >
-                                                            <ExternalLink size={16} />
-                                                        </a>
-                                                    </>
-                                                ) : <ImageIcon size={24} />}
-                                            </div>
-                                            <div>
-                                                <h4 className="font-bold text-sm text-[#2A1F1D]">Site Progress Update</h4>
-                                                <p className="text-xs text-[#8C7B70] mt-1 italic">"{p.note}"</p>
-                                                <div className="flex gap-2 mt-2">
-                                                    <span className="text-[10px] uppercase font-black text-amber-500">{p.alert_type}</span>
-                                                    <span className="text-[10px] uppercase font-black text-[#8C7B70]">• {new Date(p.created_at).toLocaleDateString()}</span>
-                                                </div>
-                                            </div>
-                                        </div>
-                                        <div className="flex gap-2">
-                                            <button onClick={() => handleReviewAction('progress', p.progress_id, 'Rejected')} className="p-2 text-red-600 hover:bg-red-50 rounded-xl transition-colors"><XCircle size={20} /></button>
-                                            <button onClick={() => handleReviewAction('progress', p.progress_id, 'Approved')} className="py-2 px-6 bg-[#2A1F1D] text-white rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-[#C06842] transition-all">Approve</button>
-                                        </div>
-                                    </div>
-                                ))}
-                                {pendingReviews.docs.map(d => (
-                                    <div key={d.doc_id} className="p-4 bg-white rounded-2xl border border-amber-100 shadow-sm flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
-                                        <div className="flex gap-4 items-start">
-                                            <div className="w-12 h-12 rounded-xl bg-blue-50 flex items-center justify-center text-blue-600 shrink-0 border border-blue-100"><FileText size={24} /></div>
-                                            <div>
-                                                <h4 className="font-bold text-sm text-[#2A1F1D]">{d.name}</h4>
-                                                <p className="text-[10px] text-[#8C7B70] uppercase font-bold tracking-tighter">{d.file_type} • {d.file_size}</p>
-                                                <a href={`${import.meta.env.VITE_API_URL}/${d.file_path.replace(/\\/g, '/')}`} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 text-[10px] font-black text-blue-600 mt-2 uppercase tracking-widest hover:underline">
-                                                    <Eye size={12} /> Preview
-                                                </a>
-                                            </div>
-                                        </div>
-                                        <div className="flex gap-2">
-                                            <button onClick={() => handleReviewAction(d.source_type, d.doc_id, 'Rejected')} className="p-2 text-red-600 hover:bg-red-50 rounded-xl transition-colors"><XCircle size={20} /></button>
-                                            <button onClick={() => handleReviewAction(d.source_type, d.doc_id, 'Approved')} className="py-2 px-6 bg-[#2A1F1D] text-white rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-[#C06842] transition-all">Approve</button>
-                                        </div>
-                                    </div>
-                                ))}
-                            </div>
+                    {activeProject && (
+                        <Card>
+                            <SectionHeader title={`Site Workboard: ${activeProject.name}`} />
+                            <SiteWorkboard currentUser={currentUser} projectId={activeProject.project_id} />
                         </Card>
                     )}
                 </div>
-
-                {/* Right - Team + Tools */}
-                <div className="space-y-8">
-                    <Card>
-                        <SectionHeader
-                            title="Site Team"
-                            action={
-                                <button onClick={() => setIsDiscoveryOpen(true)} className="w-8 h-8 flex items-center justify-center bg-[#2A1F1D] text-white rounded-full hover:bg-[#C06842] transition-colors shadow-lg">
-                                    <Plus size={16} />
-                                </button>
-                            }
-                        />
-                        <div className="space-y-4">
-                            {projectTeam.filter(m => m.status === 'Accepted').length > 0 ? projectTeam.filter(m => m.status === 'Accepted').map(member => (
-                                <div key={member.user_id} className="flex items-center space-x-4 p-3 bg-[#FDFCF8] border border-[#E3DACD]/30 rounded-2xl hover:bg-white transition-all group">
-                                    <div className="w-10 h-10 rounded-full bg-gradient-to-br from-[#E3DACD] to-[#FDFCF8] flex items-center justify-center font-bold text-[#5D4037] border border-[#E3DACD]">
-                                        {member.name.charAt(0)}
+            ) : (
+                <div className="animate-fade-in space-y-8">
+                    {/* Header / Hero (Lifecycle Section) */}
+                    {!activeProject ? (
+                        <Card className="text-center py-20 bg-[#F9F7F2]/50">
+                            <div className="w-24 h-24 bg-[#E3DACD]/30 rounded-full flex items-center justify-center mx-auto mb-8 text-[#C06842]">
+                                <HardHat size={48} />
+                            </div>
+                            <h1 className="text-4xl font-serif font-bold text-[#2A1F1D] mb-4">No Active Project Selected</h1>
+                            <p className="text-[#8C7B70] text-lg mb-10 max-w-md mx-auto">Select a project from your work board or accept an invitation to begin managing construction lifecycles.</p>
+                            <button
+                                onClick={() => setActiveTab('workboard')}
+                                className="px-10 py-5 bg-[#C06842] text-white rounded-2xl font-bold text-lg shadow-xl hover:bg-[#A65D3B] transition-all transform hover:scale-105"
+                            >
+                                Go to Work Board
+                            </button>
+                        </Card>
+                    ) : (
+                        <div className="glass-panel rounded-[2.5rem] p-10 shadow-xl relative overflow-hidden group hover:shadow-2xl transition-all duration-500 border border-[#E3DACD]">
+                            <div className="absolute right-0 top-0 w-80 h-80 bg-[#C06842]/10 rounded-full blur-3xl -mr-16 -mt-16 pointer-events-none" />
+                            <div className="relative z-10 flex flex-col lg:flex-row justify-between items-center gap-8">
+                                <div className="flex items-center space-x-8">
+                                    <div className="relative group cursor-pointer" onClick={() => setActiveTab('workboard')}>
+                                        <div className="w-24 h-24 rounded-2xl p-1 bg-gradient-to-br from-[#E3DACD] to-[#C06842]">
+                                            <img
+                                                src={`https://i.pravatar.cc/150?u=${activeProject.land_owner_id}`}
+                                                alt="Owner"
+                                                className="w-full h-full rounded-xl object-cover border-2 border-[#FDFCF8]"
+                                            />
+                                        </div>
+                                        <div className="absolute -bottom-2 -right-2 bg-[#4A342E] border-4 border-[#FDFCF8] w-8 h-8 rounded-full flex items-center justify-center shadow-md">
+                                            <Shield size={14} className="text-[#FDFCF8]" />
+                                        </div>
                                     </div>
-                                    <div className="flex-1">
-                                        <p className="font-bold text-sm text-[#2A1F1D] flex items-center gap-2">
-                                            {member.name}
+                                    <div>
+                                        <p className="text-[#8C7B70] text-sm font-bold tracking-wide uppercase mb-2 flex items-center">
+                                            Welcome back, {currentUser?.name?.split(' ')[0]} <span className="w-2 h-2 bg-green-500 rounded-full ml-2 animate-pulse"></span>
                                         </p>
-                                        <p className="text-[10px] uppercase text-[#8C7B70] font-bold tracking-tight">{member.assigned_role || member.sub_category}</p>
+                                        <h1 className="text-4xl font-serif font-medium text-[#2A1F1D] leading-tight mb-2">{activeProject.name}</h1>
+                                        <div className="flex items-center space-x-3 text-sm font-medium text-[#6E5E56]">
+                                            <span className="bg-[#E3DACD]/30 px-3 py-1 rounded-full text-xs font-bold text-[#5D4037] border border-[#E3DACD]/50 uppercase">{activeProject.assigned_role || 'CONTRACTOR'}</span>
+                                            <span>•</span>
+                                            <span>{activeProject.location}</span>
+                                        </div>
                                     </div>
-                                    <button onClick={() => handleRemoveMember(member.user_id, member.name)} className="p-2 text-[#8C7B70] hover:text-red-500 hover:bg-red-50 rounded-xl transition-all opacity-0 group-hover:opacity-100">
-                                        <XCircle size={18} />
+                                </div>
+                                <div className="flex-1 w-full lg:w-auto bg-[#FDFCF8]/60 backdrop-blur-md rounded-2xl p-6 border border-[#E3DACD]/40 shadow-sm hover:shadow-md transition-all duration-300">
+                                    <div className="flex justify-between items-center mb-4">
+                                        <div>
+                                            <h2 className="font-bold text-lg text-[#2A1F1D]">Current Phase</h2>
+                                            <p className="text-xs text-[#C06842] font-bold uppercase tracking-wide mt-1">{activeProject.status}</p>
+                                        </div>
+                                        <div className="text-right">
+                                            <p className="text-[10px] text-[#8C7B70] font-bold uppercase tracking-widest">Target (Est)</p>
+                                            <p className="text-sm font-bold text-[#2A1F1D]">{activeProject.expected_completion ? new Date(activeProject.expected_completion).toLocaleDateString() : "TBD"}</p>
+                                        </div>
+                                    </div>
+                                    {/* Lifecycle Progress */}
+                                    <div className="space-y-4">
+                                        <div className="flex justify-between items-end">
+                                            <div>
+                                                <p className="text-[10px] font-black text-[#8C7B70] uppercase tracking-[0.2em] mb-1">Project Lifecycle</p>
+                                                <h4 className="text-2xl font-serif font-bold text-[#2A1F1D]">{progress}%</h4>
+                                            </div>
+                                            <div className="flex gap-2">
+                                                <button
+                                                    onClick={() => handlePhaseUpdate('planning', !activeProject.planning_completed)}
+                                                    className={`px-3 py-1 rounded-lg text-[9px] font-black uppercase border transition-all ${activeProject.planning_completed ? 'bg-green-600 text-white' : 'bg-white text-[#8C7B70] border-[#E3DACD]'}`}
+                                                >
+                                                    1. Planning {activeProject.planning_completed ? '✓' : ''}
+                                                </button>
+                                                <button
+                                                    onClick={() => handlePhaseUpdate('design', !activeProject.design_completed)}
+                                                    disabled={!activeProject.planning_completed}
+                                                    className={`px-3 py-1 rounded-lg text-[9px] font-black uppercase border transition-all ${activeProject.design_completed ? 'bg-green-600 text-white' : 'bg-white text-[#8C7B70] border-[#E3DACD] opacity-50 cursor-not-allowed'}`}
+                                                >
+                                                    2. Design {activeProject.design_completed ? '✓' : ''}
+                                                </button>
+                                                <button
+                                                    onClick={() => handlePhaseUpdate('execution', !activeProject.execution_completed)}
+                                                    disabled={!activeProject.design_completed}
+                                                    className={`px-3 py-1 rounded-lg text-[9px] font-black uppercase border transition-all ${activeProject.execution_completed ? 'bg-green-600 text-white' : 'bg-white text-[#8C7B70] border-[#E3DACD] opacity-50 cursor-not-allowed'}`}
+                                                >
+                                                    3. Execution {activeProject.execution_completed ? '✓' : ''}
+                                                </button>
+                                            </div>
+                                        </div>
+
+                                        <div className="w-full bg-[#F9F7F2] h-4 rounded-full overflow-hidden border border-[#E3DACD]/50 shadow-inner p-1">
+                                            <div
+                                                className="bg-gradient-to-r from-[#D98B6C] to-[#C06842] h-full rounded-full transition-all duration-1000 shadow-[0_0_10px_rgba(192,104,66,0.2)]"
+                                                style={{ width: `${progress || 0}%` }}
+                                            />
+                                        </div>
+
+                                        <div className="pt-4 flex gap-4">
+                                            <button onClick={() => navigate(`/dashboard/project/${activeProject.project_id}`)} className="flex-1 py-4 bg-[#2A1F1D] text-white rounded-2xl font-black text-[10px] uppercase tracking-widest shadow-xl shadow-[#2A1F1D]/20 transition-all hover:scale-[1.02] active:scale-95 flex items-center justify-center gap-2">
+                                                <Hammer size={16} /> Open Workspace
+                                            </button>
+                                            <button onClick={() => setIsAssignModalOpen(true)} className="flex-1 py-4 bg-white border border-[#E3DACD] text-[#8C7B70] rounded-2xl font-black text-[10px] uppercase tracking-widest transition-all hover:bg-[#F9F7F2] hover:text-[#2A1F1D] flex items-center justify-center gap-2 shadow-sm">
+                                                <Plus size={16} /> Assign Task
+                                            </button>
+                                        </div>
+
+                                        {activeProject.status !== 'Completed' && (
+                                            <button
+                                                onClick={handleCompleteProject}
+                                                className="w-full py-3 mt-2 bg-gradient-to-r from-[#C27E43] to-[#C06842] text-white rounded-xl text-[10px] font-black uppercase tracking-widest hover:opacity-90 transition-all shadow-md flex items-center justify-center gap-2"
+                                            >
+                                                <CheckCircle size={14} /> Close Project Lifecycle
+                                            </button>
+                                        )}
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    )}
+
+                    <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+                        {/* Left - Projects + Tasks */}
+                        <div className="lg:col-span-2 space-y-8">
+
+                            {/* QUICK STATS & PORTFOLIO */}
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                                <Card className="bg-gradient-to-br from-[#FDFCF8] to-[#F9F7F2] border-[#E3DACD]">
+                                    <div className="flex items-center gap-4 mb-4">
+                                        <div className="p-3 bg-amber-100 text-amber-600 rounded-xl">
+                                            <Briefcase size={24} />
+                                        </div>
+                                        <h4 className="font-bold text-[#2A1F1D]">Project Portfolio</h4>
+                                    </div>
+                                    <div className="space-y-3">
+                                        <div className="flex justify-between items-center text-sm">
+                                            <span className="text-[#8C7B70]">Total Projects Managed</span>
+                                            <span className="font-black text-[#2A1F1D]">{projects.length}</span>
+                                        </div>
+                                        <div className="flex justify-between items-center text-sm">
+                                            <span className="text-[#8C7B70]">Completed Sites</span>
+                                            <span className="font-black text-green-600">{projects.filter(p => p.status === 'Completed').length}</span>
+                                        </div>
+                                        <div className="flex justify-between items-center text-sm">
+                                            <span className="text-[#8C7B70]">Active Construction</span>
+                                            <span className="font-black text-blue-600">{projects.filter(p => p.status !== 'Completed').length}</span>
+                                        </div>
+                                    </div>
+                                </Card>
+
+                                <Card className="bg-gradient-to-br from-[#FDFCF8] to-[#F9F7F2] border-[#E3DACD]">
+                                    <div className="flex items-center gap-4 mb-4">
+                                        <div className="p-3 bg-blue-100 text-blue-600 rounded-xl">
+                                            <ClipboardList size={24} />
+                                        </div>
+                                        <h4 className="font-bold text-[#2A1F1D]">Quality Oversight</h4>
+                                    </div>
+                                    <div className="space-y-3">
+                                        <div className="flex justify-between items-center text-sm">
+                                            <span className="text-[#8C7B70]">Critical Submissions</span>
+                                            <span className="font-black text-red-600">{totalPendingReviews}</span>
+                                        </div>
+                                        <div className="flex justify-between items-center text-sm">
+                                            <span className="text-[#8C7B70]">Overall Success Rate</span>
+                                            <span className="font-black text-[#C06842]">94%</span>
+                                        </div>
+                                        <a href="/dashboard/tasks" className="block w-full py-2 bg-[#2A1F1D] text-white text-[10px] font-black uppercase tracking-widest text-center rounded-lg hover:bg-[#C06842] transition-all">Go to Task Hub</a>
+                                    </div>
+                                </Card>
+                            </div>
+
+                            {/* Pending Site Progress & Doc Reviews */}
+                            {totalPendingReviews > 0 && (
+                                <Card className="border-amber-100 bg-amber-50/20">
+                                    <SectionHeader
+                                        title="Pending Team Submissions"
+                                        action={<span className="text-[10px] font-black uppercase text-amber-600 bg-amber-100 px-3 py-1 rounded-full">{totalPendingReviews} Awaiting Review</span>}
+                                    />
+                                    <div className="space-y-4">
+                                        {pendingReviews.progress.map(p => (
+                                            <div key={p.progress_id} className="p-4 bg-white rounded-2xl border border-amber-100 shadow-sm flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+                                                <div className="flex gap-4 items-start">
+                                                    <div className="w-16 h-16 rounded-xl bg-amber-100 flex items-center justify-center text-amber-600 shrink-0 overflow-hidden border border-amber-200 relative group/img">
+                                                        {p.image_path ? (
+                                                            <>
+                                                                <img src={`${import.meta.env.VITE_API_URL}/${p.image_path}`} alt="Progress" className="w-full h-full object-cover" />
+                                                                <a
+                                                                    href={`${import.meta.env.VITE_API_URL}/${p.image_path}`}
+                                                                    target="_blank"
+                                                                    rel="noopener noreferrer"
+                                                                    className="absolute inset-0 bg-black/40 opacity-0 group-hover/img:opacity-100 flex items-center justify-center text-white transition-opacity"
+                                                                >
+                                                                    <ExternalLink size={16} />
+                                                                </a>
+                                                            </>
+                                                        ) : <ImageIcon size={24} />}
+                                                    </div>
+                                                    <div>
+                                                        <h4 className="font-bold text-sm text-[#2A1F1D]">Site Progress Update</h4>
+                                                        <p className="text-xs text-[#8C7B70] mt-1 italic">"{p.note}"</p>
+                                                        <div className="flex gap-2 mt-2">
+                                                            <span className="text-[10px] uppercase font-black text-amber-500">{p.alert_type}</span>
+                                                            <span className="text-[10px] uppercase font-black text-[#8C7B70]">• {new Date(p.created_at).toLocaleDateString()}</span>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                                <div className="flex gap-2">
+                                                    <button onClick={() => handleReviewAction('progress', p.progress_id, 'Rejected')} className="p-2 text-red-600 hover:bg-red-50 rounded-xl transition-colors"><XCircle size={20} /></button>
+                                                    <button onClick={() => handleReviewAction('progress', p.progress_id, 'Approved')} className="py-2 px-6 bg-[#2A1F1D] text-white rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-[#C06842] transition-all">Approve</button>
+                                                </div>
+                                            </div>
+                                        ))}
+                                        {pendingReviews.docs.map(d => (
+                                            <div key={d.doc_id} className="p-4 bg-white rounded-2xl border border-amber-100 shadow-sm flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+                                                <div className="flex gap-4 items-start">
+                                                    <div className="w-12 h-12 rounded-xl bg-blue-50 flex items-center justify-center text-blue-600 shrink-0 border border-blue-100"><FileText size={24} /></div>
+                                                    <div>
+                                                        <h4 className="font-bold text-sm text-[#2A1F1D]">{d.name}</h4>
+                                                        <p className="text-[10px] text-[#8C7B70] uppercase font-bold tracking-tighter">{d.file_type} • {d.file_size}</p>
+                                                        <a href={`${import.meta.env.VITE_API_URL}/${d.file_path.replace(/\\/g, '/')}`} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 text-[10px] font-black text-blue-600 mt-2 uppercase tracking-widest hover:underline">
+                                                            <Eye size={12} /> Preview
+                                                        </a>
+                                                    </div>
+                                                </div>
+                                                <div className="flex gap-2">
+                                                    <button onClick={() => handleReviewAction(d.source_type, d.doc_id, 'Rejected')} className="p-2 text-red-600 hover:bg-red-50 rounded-xl transition-colors"><XCircle size={20} /></button>
+                                                    <button onClick={() => handleReviewAction(d.source_type, d.doc_id, 'Approved')} className="py-2 px-6 bg-[#2A1F1D] text-white rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-[#C06842] transition-all">Approve</button>
+                                                </div>
+                                            </div>
+                                        ))}
+                                    </div>
+                                </Card>
+                            )}
+                        </div>
+
+                        {/* Right - Team + Tools */}
+                        <div className="space-y-8">
+                            <Card>
+                                <SectionHeader
+                                    title="Site Team"
+                                    action={
+                                        <button onClick={() => setIsDiscoveryOpen(true)} className="w-8 h-8 flex items-center justify-center bg-[#2A1F1D] text-white rounded-full hover:bg-[#C06842] transition-colors shadow-lg">
+                                            <Plus size={16} />
+                                        </button>
+                                    }
+                                />
+                                <div className="space-y-4">
+                                    {projectTeam.filter(m => m.status === 'Accepted').length > 0 ? projectTeam.filter(m => m.status === 'Accepted').map(member => (
+                                        <div key={member.user_id} className="flex items-center space-x-4 p-3 bg-[#FDFCF8] border border-[#E3DACD]/30 rounded-2xl hover:bg-white transition-all group">
+                                            <div className="w-10 h-10 rounded-full bg-gradient-to-br from-[#E3DACD] to-[#FDFCF8] flex items-center justify-center font-bold text-[#5D4037] border border-[#E3DACD]">
+                                                {member.name?.charAt(0) || 'U'}
+                                            </div>
+                                            <div className="flex-1">
+                                                <p className="font-bold text-sm text-[#2A1F1D] flex items-center gap-2">
+                                                    {member.name}
+                                                </p>
+                                                <p className="text-[10px] uppercase text-[#8C7B70] font-bold tracking-tight">{member.assigned_role || member.sub_category}</p>
+                                            </div>
+                                            <button onClick={() => handleRemoveMember(member.user_id, member.name)} className="p-2 text-[#8C7B70] hover:text-red-500 hover:bg-red-50 rounded-xl transition-all opacity-0 group-hover:opacity-100">
+                                                <XCircle size={18} />
+                                            </button>
+                                        </div>
+                                    )) : (
+                                        <div className="text-center py-8 opacity-50">
+                                            <Briefcase size={32} className="mx-auto mb-2 text-[#8C7B70]" />
+                                            <p className="text-xs font-bold">No active experts on team</p>
+                                        </div>
+                                    )}
+                                    <button onClick={() => setIsDiscoveryOpen(true)} className="w-full py-4 mt-4 bg-[#F9F7F2] border-2 border-dashed border-[#E3DACD] rounded-2xl text-xs font-black text-[#5D4037] uppercase tracking-widest hover:border-[#C06842] hover:bg-white transition-all flex items-center justify-center gap-2">
+                                        <MapPin size={16} className="text-[#C06842]" /> Find Sub-Experts
                                     </button>
                                 </div>
-                            )) : (
-                                <div className="text-center py-8 opacity-50">
-                                    <Briefcase size={32} className="mx-auto mb-2 text-[#8C7B70]" />
-                                    <p className="text-xs font-bold">No active experts on team</p>
-                                </div>
-                            )}
-                            <button onClick={() => setIsDiscoveryOpen(true)} className="w-full py-4 mt-4 bg-[#F9F7F2] border-2 border-dashed border-[#E3DACD] rounded-2xl text-xs font-black text-[#5D4037] uppercase tracking-widest hover:border-[#C06842] hover:bg-white transition-all flex items-center justify-center gap-2">
-                                <MapPin size={16} className="text-[#C06842]" /> Find Sub-Experts
-                            </button>
-                        </div>
-                    </Card>
+                            </Card>
 
-                    <Card className="bg-[#2A1F1D] text-white border-none overflow-hidden relative">
-                        <div className="absolute top-0 right-0 w-32 h-32 bg-[#C06842]/20 rounded-full blur-2xl -mr-16 -mt-16" />
-                        <SectionHeader title="Project Tools" />
-                        <div className="grid grid-cols-2 gap-3 relative z-10">
-                            <button className="p-4 bg-white/5 hover:bg-white/10 rounded-2xl border border-white/10 transition-all text-left">
-                                <FileText size={20} className="mb-2 text-[#C06842]" />
-                                <p className="text-[10px] font-bold uppercase tracking-wider">Reports</p>
-                            </button>
-                            <button className="p-4 bg-white/5 hover:bg-white/10 rounded-2xl border border-white/10 transition-all text-left">
-                                <Clock size={20} className="mb-2 text-[#E68A2E]" />
-                                <p className="text-[10px] font-bold uppercase tracking-wider">Timeline</p>
-                            </button>
+                            <Card className="bg-[#2A1F1D] text-white border-none overflow-hidden relative">
+                                <div className="absolute top-0 right-0 w-32 h-32 bg-[#C06842]/20 rounded-full blur-2xl -mr-16 -mt-16" />
+                                <SectionHeader title="Project Tools" />
+                                <div className="grid grid-cols-2 gap-3 relative z-10">
+                                    <button className="p-4 bg-white/5 hover:bg-white/10 rounded-2xl border border-white/10 transition-all text-left">
+                                        <FileText size={20} className="mb-2 text-[#C06842]" />
+                                        <p className="text-[10px] font-bold uppercase tracking-wider">Reports</p>
+                                    </button>
+                                    <button className="p-4 bg-white/5 hover:bg-white/10 rounded-2xl border border-white/10 transition-all text-left">
+                                        <Clock size={20} className="mb-2 text-[#E68A2E]" />
+                                        <p className="text-[10px] font-bold uppercase tracking-wider">Timeline</p>
+                                    </button>
+                                </div>
+                            </Card>
                         </div>
-                    </Card>
+                    </div>
                 </div>
-            </div>
+            )}
 
             {/* ================================================================ */}
             {/* ASSIGN TASK MODAL */}

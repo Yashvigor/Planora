@@ -91,7 +91,9 @@ const WorkerProfile = ({ currentUser }) => {
                 </p>
                 <div className="flex items-center gap-1 text-[#E68A2E] mt-3 bg-[#E68A2E]/10 px-4 py-1.5 rounded-full border border-[#E68A2E]/20">
                     <Star size={16} fill="currentColor" />
-                    <span className="font-bold text-sm">Active Professional</span>
+                    <span className="font-bold text-sm">
+                        {profileData.avg_rating > 0 ? `${profileData.avg_rating} Rating` : 'Active Professional'}
+                    </span>
                 </div>
             </Card>
 
@@ -197,7 +199,8 @@ const WorkerProfile = ({ currentUser }) => {
 };
 
 import ProjectWorkManager from '../Common/ProjectWorkManager';
-import SiteWorkboard from './SiteWorkboard';
+import SiteWorkerWorkboard from './SiteWorkerWorkboard';
+import ArchitectWorkboard from '../Planning/ArchitectWorkboard';
 
 const statusStyle = {
     Pending: 'bg-amber-50 text-amber-700 border-amber-200',
@@ -524,7 +527,11 @@ const WorkerDashboard = ({ roleType }) => {
 
             <div className="p-4 md:p-6 animate-fade-in">
                 {activeTab === 'home' && <WorkerHome currentUser={currentUser} />}
-                {activeTab === 'workboard' && <SiteWorkboard currentUser={currentUser} />}
+                {activeTab === 'workboard' && (
+                    roleType === 'architect' 
+                    ? <ArchitectWorkboard currentUser={currentUser} /> 
+                    : <SiteWorkerWorkboard currentUser={currentUser} />
+                )}
                 {activeTab === 'profile' && <WorkerProfile currentUser={currentUser} />}
             </div>
 

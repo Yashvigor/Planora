@@ -4,7 +4,7 @@ import {
     Shield, Users, AlertCircle, CheckCircle, XCircle, Search, FileText,
     Activity, AlertTriangle, Home, Briefcase, DollarSign, Bell,
     Settings, BarChart3, Lock, Eye, Download, MessageSquare,
-    UserCheck, Building, Gavel, Ban, Flag, Send, Layout, Menu, Award
+    UserCheck, Building, Gavel, Ban, Flag, Send, Layout, Menu, Award, ShieldCheck
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
@@ -23,7 +23,6 @@ const AdminDashboard = ({ initialSection = 'verify_land' }) => {
     // Real Data State
     const [users, setUsers] = useState([]);
     const [lands, setLands] = useState([]);
-    const [pendingAuctions, setPendingAuctions] = useState([]);
     const [loading, setLoading] = useState(true);
     const [projects, setProjects] = useState([]);
     const [stats, setStats] = useState({
@@ -98,14 +97,6 @@ const AdminDashboard = ({ initialSection = 'verify_land' }) => {
             } catch (err) {
                 console.error("Failed to fetch projects", err);
             }
-
-            // Fetch Pending Auctions
-            try {
-                const auctionRes = await fetch(`${import.meta.env.VITE_API_URL}/api/admin/auctions/pending`, {
-                    headers: { 'Authorization': `Bearer ${localStorage.getItem('planora_token') || localStorage.getItem('token')}` }
-                });
-                if (auctionRes.ok) setPendingAuctions(await auctionRes.json());
-            } catch (e) { console.error('Failed to fetch auctions', e); }
 
         } catch (error) {
             console.error("Failed to fetch admin data", error);
@@ -298,64 +289,7 @@ const AdminDashboard = ({ initialSection = 'verify_land' }) => {
         }
     };
 
-    const handleVerifyAuction = (auctionId, status) => {
-        if (status === 'rejected') {
-            openModal({
-                title: 'Reject Auction Request',
-                message: 'Specify reason for rejecting this land auction listing.',
-                type: 'prompt',
-                inputValue: 'Base price is too high or invalid duration.',
-                confirmText: 'Reject Auction',
-                icon: Gavel,
-                iconColor: 'text-red-500',
-                onConfirm: (reason) => executeVerifyAuction(auctionId, status, reason)
-            });
-        } else {
-            openModal({
-                title: 'Approve Auction Listing',
-                message: 'Confirm to push this land auction live to the marketplace.',
-                type: 'confirm',
-                confirmText: 'Go Live',
-                icon: CheckCircle,
-                iconColor: 'text-green-600',
-                onConfirm: () => executeVerifyAuction(auctionId, 'Approved')
-            });
-        }
-    };
 
-    const executeVerifyAuction = async (auctionId, status, reason = '') => {
-        try {
-            const res = await fetch(`${import.meta.env.VITE_API_URL}/api/admin/auctions/${auctionId}/verify`, {
-                method: 'PATCH',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'Authorization': `Bearer ${localStorage.getItem('planora_token') || localStorage.getItem('token')}`
-                },
-                body: JSON.stringify({ status: status === 'Approved' ? 'active' : 'rejected', rejection_reason: reason })
-            });
-            if (res.ok) {
-                openModal({
-                    title: 'Marketplace Sync',
-                    message: `Auction listing has been ${status === 'Approved' ? 'Approved' : 'Rejected'} successfully!`,
-                    type: 'alert',
-                    icon: CheckCircle,
-                    iconColor: 'text-green-500'
-                });
-                fetchData(true);
-            } else {
-                const err = await res.json();
-                openModal({
-                    title: 'Sync Failed',
-                    message: err.error || 'Failed to update auction status.',
-                    type: 'alert',
-                    icon: XCircle,
-                    iconColor: 'text-red-500'
-                });
-            }
-        } catch (err) {
-            console.error('Error verifying auction:', err);
-        }
-    };
 
     // Sub-components
     const StatCard = ({ label, value, icon: Icon, color }) => (
@@ -449,10 +383,11 @@ const AdminDashboard = ({ initialSection = 'verify_land' }) => {
                                         </div>
                                     </td>
                                 </tr>
-                            ) : (filteredData.map(user => {
-                                const isAppeal = user.rejection_reason?.startsWith('[APPEAL SUBMITTED]');
+                            ) : filteredData.map(user => {
+                                const isAppeal = user.appeal_reason || user.rejection_reason?.startsWith('[APPEAL SUBMITTED]');
                                 const joinedDate = user.created_at ? new Date(user.created_at).toLocaleDateString('en-US', { month: 'numeric', day: 'numeric', year: 'numeric' }) : '';
-
+                                const isProfessional = !['Admin', 'Land Owner'].includes(user.category) && user.sub_category !== 'Land Owner';
+ 
                                 return (
                                     <tr key={user.user_id} className="hover:bg-[#FDFCF8]/60 transition-colors duration-200 group">
                                         {/* USER Column */}
@@ -470,7 +405,7 @@ const AdminDashboard = ({ initialSection = 'verify_land' }) => {
                                                 </div>
                                             </div>
                                         </td>
-
+ 
                                         {/* CATEGORY / ROLE Column */}
                                         <td className="px-6 py-4">
                                             <p className="font-semibold text-[#2A1F1D] text-sm">{user.category || 'Unassigned'}</p>
@@ -478,7 +413,7 @@ const AdminDashboard = ({ initialSection = 'verify_land' }) => {
                                                 <p className="text-[11px] text-[#8C7B70] mt-0.5">{user.sub_category}</p>
                                             )}
                                         </td>
-
+ 
                                         {/* STATUS Column */}
                                         <td className="px-6 py-4">
                                             <span className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-[10px] font-bold uppercase tracking-wide ${
@@ -494,8 +429,14 @@ const AdminDashboard = ({ initialSection = 'verify_land' }) => {
                                                     {user.rejection_reason}
                                                 </p>
                                             )}
+                                            {isAppeal && (
+                                                <div className="flex items-center gap-1 mt-1">
+                                                    <div className="w-1.5 h-1.5 rounded-full bg-[#C06842] animate-pulse"></div>
+                                                    <span className="text-[9px] font-bold text-[#C06842] uppercase tracking-tighter">Appeal Pending</span>
+                                                </div>
+                                            )}
                                         </td>
-
+ 
                                         {/* VERIFICATION Column */}
                                         <td className="px-6 py-4">
                                             <div className="flex items-center gap-2">
@@ -529,29 +470,53 @@ const AdminDashboard = ({ initialSection = 'verify_land' }) => {
                                                     </div>
                                                 )}
 
+                                                {/* Identity Proof Icon (Aadhar) */}
+                                                {user.personal_id_document_path ? (
+                                                    <button 
+                                                        onClick={() => window.open(`${import.meta.env.VITE_API_URL}/api/documents/view/${user.personal_id_document_path.split('/').pop()}`, '_blank')} 
+                                                        className="p-2 text-[#8C7B70] hover:text-[#C06842] hover:bg-[#C06842]/5 rounded-lg transition-colors" 
+                                                        title="View Identity Proof"
+                                                    >
+                                                        <ShieldCheck size={18} strokeWidth={1.5} />
+                                                    </button>
+                                                ) : (isProfessional && user.category !== 'Land Owner') && (
+                                                    <div className="p-2 text-[#E3DACD]" title="No Identity Proof">
+                                                        <ShieldCheck size={18} strokeWidth={1.5} />
+                                                    </div>
+                                                )}
+ 
                                                 {/* Appeal Indicator */}
                                                 {isAppeal && (
                                                     <button
                                                         onClick={() => {
-                                                            const detail = user.rejection_reason.replace('[APPEAL SUBMITTED]', '').split('| DOC:')[0].trim();
-                                                            const doc = user.rejection_reason.includes('| DOC:') ? user.rejection_reason.split('| DOC:')[1].trim() : null;
+                                                            const detail = user.appeal_reason || (user.rejection_reason?.replace('[APPEAL SUBMITTED]', '').split('| DOC:')[0].trim());
+                                                            const doc = user.appeal_document_path || (user.rejection_reason?.includes('| DOC:') ? user.rejection_reason.split('| DOC:')[1].trim() : null);
                                                             openModal({
-                                                                title: 'Appeal Review',
-                                                                message: detail,
+                                                                title: 'Review Account Appeal',
+                                                                message: detail || 'No formal statement provided.',
                                                                 type: 'detailed',
                                                                 icon: MessageSquare,
                                                                 iconColor: 'text-[#C06842]',
                                                                 extraContent: doc && (
-                                                                    <button
-                                                                        onClick={() => window.open(`${import.meta.env.VITE_API_URL}${doc}`, '_blank')}
-                                                                        className="mt-4 flex items-center gap-2 text-xs font-bold text-[#C06842] hover:underline"
-                                                                    >
-                                                                        <Download size={14} /> View Document
-                                                                    </button>
+                                                                    <div className="space-y-4">
+                                                                        <div className="text-[10px] font-black text-[#8C7B70] uppercase tracking-widest border-b border-[#E3DACD]/30 pb-2">Supporting Evidence</div>
+                                                                        <button
+                                                                            onClick={() => window.open(doc.startsWith('http') ? doc : `${import.meta.env.VITE_API_URL}${doc.startsWith('/') ? '' : '/'}${doc}`, '_blank')}
+                                                                            className="flex items-center gap-3 p-4 bg-white border border-[#E3DACD] rounded-2xl w-full hover:border-[#C06842] transition-all group"
+                                                                        >
+                                                                            <div className="p-2 bg-[#F9F7F2] text-[#C06842] rounded-xl group-hover:bg-[#C06842] group-hover:text-white transition-colors">
+                                                                                <Download size={16} />
+                                                                            </div>
+                                                                            <div className="text-left">
+                                                                                <p className="text-xs font-bold text-[#2A1F1D]">View Appeal Document</p>
+                                                                                <p className="text-[10px] text-[#B8AFA5]">Official attachment provided by user</p>
+                                                                            </div>
+                                                                        </button>
+                                                                    </div>
                                                                 )
                                                             });
                                                         }}
-                                                        className="p-2 text-[#C06842] hover:bg-[#C06842]/5 rounded-lg transition-colors"
+                                                        className="p-2 text-[#C06842] hover:bg-[#C06842]/10 rounded-lg transition-colors bg-[#C06842]/5 border border-[#C06842]/20"
                                                         title="Review Appeal"
                                                     >
                                                         <Flag size={18} strokeWidth={1.5} />
@@ -563,28 +528,26 @@ const AdminDashboard = ({ initialSection = 'verify_land' }) => {
                                         {/* ACTIONS Column */}
                                         <td className="px-6 py-4 text-right">
                                             <div className="flex justify-end items-center gap-2">
-                                                {!isAppeal && (
-                                                    <>
-                                                        {user.status !== 'Approved' && (
-                                                            <button 
-                                                                onClick={() => handleVerifyUser(user.user_id, 'Approved')} 
-                                                                className="p-2 text-green-600 hover:bg-green-50 rounded-lg transition-colors border border-transparent hover:border-green-100" 
-                                                                title="Approve"
-                                                            >
-                                                                <CheckCircle size={16} strokeWidth={2} />
-                                                            </button>
-                                                        )}
-                                                        {user.status !== 'Rejected' && (
-                                                            <button 
-                                                                onClick={() => handleVerifyUser(user.user_id, 'Rejected')} 
-                                                                className="p-2 text-red-500 hover:bg-red-50 rounded-lg transition-colors border border-transparent hover:border-red-100" 
-                                                                title="Reject"
-                                                            >
-                                                                <XCircle size={16} strokeWidth={2} />
-                                                            </button>
-                                                        )}
-                                                    </>
+                                                {user.status !== 'Approved' && (
+                                                    <button 
+                                                        onClick={() => handleVerifyUser(user.user_id, 'Approved')} 
+                                                        className="p-2 text-green-600 hover:bg-green-50 rounded-lg transition-colors border border-transparent hover:border-green-100" 
+                                                        title="Approve"
+                                                    >
+                                                        <CheckCircle size={16} strokeWidth={2} />
+                                                    </button>
                                                 )}
+                                                {user.status !== 'Rejected' && (
+                                                    <button 
+                                                        onClick={() => handleVerifyUser(user.user_id, 'Rejected')} 
+                                                        className="p-2 text-red-500 hover:bg-red-50 rounded-lg transition-colors border border-transparent hover:border-red-100" 
+                                                        title="Reject"
+                                                    >
+                                                        <XCircle size={16} strokeWidth={2} />
+                                                    </button>
+                                                )}
+                                                
+                                                <div className="h-6 w-px bg-[#E3DACD]/20 mx-1" />
 
                                                 <button
                                                     onClick={() => handleToggleDisableUser(user.user_id, user.status)}
@@ -600,7 +563,7 @@ const AdminDashboard = ({ initialSection = 'verify_land' }) => {
                                         </td>
                                     </tr>
                                 )
-                            }))}
+                            })}
                         </tbody>
                     </table>
                 </div>
@@ -703,9 +666,14 @@ const AdminDashboard = ({ initialSection = 'verify_land' }) => {
                         </span>
                     </div>
                     <UserManagementTable
-                        data={users.filter(u => u.category !== 'Admin')}
-                        title="Verification Queue"
-                        badge={`${users.filter(u => u.status === 'Pending').length}`}
+                        data={users.filter(u => 
+                            u.status === 'Pending' && 
+                            u.category !== 'Admin' && 
+                            u.sub_category !== 'Land Owner' && 
+                            u.sub_category !== 'Contractor'
+                        )}
+                        title="Pending Reviews"
+                        badge={`${users.filter(u => u.status === 'Pending' && u.sub_category !== 'Land Owner' && u.sub_category !== 'Contractor').length}`}
                     />
                 </div>
             )}
@@ -718,13 +686,13 @@ const AdminDashboard = ({ initialSection = 'verify_land' }) => {
                             <p className="text-sm text-[#8C7B70] mt-1">All registered professionals on the platform</p>
                         </div>
                         <span className="text-xs font-semibold text-[#8C7B70] bg-[#F9F7F2] px-4 py-2 rounded-lg border border-[#E3DACD]/50">
-                            {users.filter(u => u.category !== 'Land Owner' && u.category !== 'Admin').length} Total
+                            {users.filter(u => u.sub_category !== 'Land Owner' && u.category !== 'Admin').length} Total
                         </span>
                     </div>
                     <UserManagementTable
-                        data={users.filter(u => u.category !== 'Land Owner' && u.category !== 'Admin')}
+                        data={users.filter(u => u.sub_category !== 'Land Owner' && u.category !== 'Admin')}
                         title="Professional Directory"
-                        badge={`${users.filter(u => u.category !== 'Land Owner' && u.category !== 'Admin').length}`}
+                        badge={`${users.filter(u => u.sub_category !== 'Land Owner' && u.category !== 'Admin').length}`}
                         isProfessional={true}
                     />
                 </div>
@@ -738,13 +706,13 @@ const AdminDashboard = ({ initialSection = 'verify_land' }) => {
                             <p className="text-sm text-[#8C7B70] mt-1">Registered land owners on the platform</p>
                         </div>
                         <span className="text-xs font-semibold text-[#8C7B70] bg-[#F9F7F2] px-4 py-2 rounded-lg border border-[#E3DACD]/50">
-                            {users.filter(u => u.category === 'Land Owner').length} Total
+                            {users.filter(u => u.sub_category === 'Land Owner').length} Total
                         </span>
                     </div>
                     <UserManagementTable
-                        data={users.filter(u => u.category === 'Land Owner')}
+                        data={users.filter(u => u.sub_category === 'Land Owner')}
                         title="Owner Directory"
-                        badge={`${users.filter(u => u.category === 'Land Owner').length}`}
+                        badge={`${users.filter(u => u.sub_category === 'Land Owner').length}`}
                     />
                 </div>
             )}
@@ -834,64 +802,7 @@ const AdminDashboard = ({ initialSection = 'verify_land' }) => {
             )}
 
 
-            {activeSection === 'verify_auctions' && (
-                <div className="space-y-6 animate-fade-in max-w-7xl mx-auto">
-                    <div className="flex justify-between items-center pb-4">
-                        <div>
-                            <h2 className="text-2xl font-bold text-[#2A1F1D]">Auction Requests</h2>
-                            <p className="text-sm text-[#8C7B70] mt-1">Review and authorize land listings for the marketplace</p>
-                        </div>
-                        <span className="text-xs font-semibold text-[#C06842] bg-[#C06842]/5 px-4 py-2 rounded-lg border border-[#C06842]/10">
-                            {pendingAuctions.length} Pending
-                        </span>
-                    </div>
 
-                    <div className="bg-white rounded-2xl border border-[#E3DACD]/40 shadow-sm overflow-hidden">
-                        <div className="px-6 py-5 border-b border-[#E3DACD]/30 bg-[#FDFCF8] flex justify-between items-center">
-                            <h3 className="text-lg font-bold text-[#2A1F1D]">Pending Authorizations</h3>
-                            <span className="text-[10px] text-[#8C7B70] bg-[#F9F7F2] px-3 py-1 rounded-lg font-bold border border-[#E3DACD]/50 uppercase tracking-wider">
-                                TOTAL: {pendingAuctions.length}
-                            </span>
-                        </div>
-                        <div className="overflow-x-auto">
-                            <table className="w-full text-sm text-left">
-                                <thead className="bg-[#FDFCF8]/50 text-[#8C7B70] uppercase text-[10px] font-bold tracking-wider border-b border-[#E3DACD]/30">
-                                    <tr>
-                                        <th className="px-6 py-3.5">Property</th>
-                                        <th className="px-6 py-3.5 text-center">Base Price</th>
-                                        <th className="px-6 py-3.5 text-center">End Date</th>
-                                        <th className="px-6 py-3.5 text-right">Actions</th>
-                                    </tr>
-                                </thead>
-                                <tbody className="divide-y divide-[#E3DACD]/20 text-[#2A1F1D]">
-                                    {pendingAuctions.length === 0 ? (
-                                        <tr><td colSpan="4" className="px-8 py-16 text-center text-[#B8AFA5] italic font-serif text-lg">No auction requests awaiting authorization.</td></tr>
-                                    ) : pendingAuctions.map(auction => (
-                                        <tr key={auction.auction_id} className="hover:bg-[#FDFCF8]/50 transition-all duration-300">
-                                            <td className="px-6 py-4">
-                                                <p className="font-black text-[#2A1F1D] tracking-tight text-base mb-0.5">{auction.land_title}</p>
-                                                <p className="text-[11px] text-[#8C7B70] font-bold italic tracking-wide">{auction.owner_name} ({auction.owner_email})</p>
-                                            </td>
-                                            <td className="px-6 py-4 text-center">
-                                                <p className="text-xl font-serif font-black text-[#C06842]">₹{parseFloat(auction.base_price).toLocaleString()}</p>
-                                            </td>
-                                            <td className="px-6 py-4 text-center">
-                                                <p className="text-sm font-black text-[#2A1F1D]">{new Date(auction.end_time).toLocaleDateString()}</p>
-                                            </td>
-                                            <td className="px-6 py-4 text-right">
-                                                <div className="flex justify-end gap-3">
-                                                    <button onClick={() => handleVerifyAuction(auction.auction_id, 'Approved')} className="p-3 text-green-700 bg-green-50 hover:bg-green-600 hover:text-white rounded-2xl transition-all border border-green-100"><CheckCircle size={20} /></button>
-                                                    <button onClick={() => handleVerifyAuction(auction.auction_id, 'rejected')} className="p-3 text-red-700 bg-red-50 hover:bg-red-600 hover:text-white rounded-2xl transition-all border border-red-100"><XCircle size={20} /></button>
-                                                </div>
-                                            </td>
-                                        </tr>
-                                    ))}
-                                </tbody>
-                            </table>
-                        </div>
-                    </div>
-                </div>
-            )}
 
             {activeSection === 'projects' && (
                 <div className="space-y-6 animate-fade-in max-w-7xl mx-auto">

@@ -103,8 +103,6 @@ const Sidebar = ({ isOpen, onClose }) => {
         if (role === 'admin') {
             return [
                 { icon: Home, label: 'Land Verifications', path: '/dashboard/verify-land', badge: counts.lands > 0 ? counts.lands : null },
-                { icon: Gavel, label: 'Auction Requests', path: '/dashboard/verify-auctions', badge: counts.auctions > 0 ? counts.auctions : null },
-                { icon: Gavel, label: 'Auction House', path: '/dashboard/bidding' },
                 { icon: UserCheck, label: 'Account Verifications', path: '/dashboard/verify-accounts', badge: counts.accounts > 0 ? counts.accounts : null },
                 { icon: Users, label: 'Professionals', path: '/dashboard/professionals' },
                 { icon: Building, label: 'Land Owners', path: '/dashboard/land-owners' },

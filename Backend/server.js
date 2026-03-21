@@ -166,7 +166,14 @@ app.use('/uploads', express.static(uploadsPath, { dotfiles: 'allow' }));
 app.get('/api/documents/view/:id', async (req, res) => {
     const { id } = req.params;
     try {
-        const result = await pool.query('SELECT name, file_path, file_type, file_data FROM documents WHERE doc_id = $1', [id]);
+        // Find document by ID, Name, or Path snippet (Robust lookup for legacy vs modern records)
+        const result = await pool.query(
+            `SELECT name, file_path, file_type, file_data 
+             FROM documents 
+             WHERE doc_id::text = $1 OR name = $1 OR file_path LIKE $2`,
+            [id, `%${id}%`]
+        );
+
         if (result.rows.length === 0) return res.status(404).json({ error: 'Document not found' });
 
         const doc = result.rows[0];
@@ -186,12 +193,16 @@ app.get('/api/documents/view/:id', async (req, res) => {
             };
             const contentType = mimeTypes[doc.file_type] || 'application/octet-stream';
             res.setHeader('Content-Type', contentType);
+            // Ensure no download headers for inline viewing
+            res.setHeader('Content-Disposition', 'inline');
             return res.send(doc.file_data);
         }
 
         // Fallback to local disk only if it's a relative path starting with uploads/
-        if (doc.file_path && doc.file_path.startsWith('uploads/')) {
-            const absolutePath = path.resolve(process.cwd(), doc.file_path);
+        if (doc.file_path && (doc.file_path.startsWith('uploads/') || doc.file_path.startsWith('api/documents/view/'))) {
+            // Resolve actual path from DB if it was a legacy upload
+            const relativePath = doc.file_path.startsWith('api/') ? `uploads/${doc.name}` : doc.file_path;
+            const absolutePath = path.resolve(process.cwd(), relativePath);
             if (fs.existsSync(absolutePath)) {
                 return res.sendFile(absolutePath);
             }
@@ -228,10 +239,15 @@ pool.on('connect', client => {
 
 // Migration: Ensure land_auctions has rejection_reason
 // Migration: Ensure necessary columns exist
-pool.query("ALTER TABLE land_auctions ADD COLUMN IF NOT EXISTS rejection_reason TEXT").catch(console.error);
-pool.query("ALTER TABLE projects ADD COLUMN IF NOT EXISTS planning_completed BOOLEAN DEFAULT FALSE").catch(console.error);
-pool.query("ALTER TABLE projects ADD COLUMN IF NOT EXISTS design_completed BOOLEAN DEFAULT FALSE").catch(console.error);
-pool.query("ALTER TABLE projects ADD COLUMN IF NOT EXISTS execution_completed BOOLEAN DEFAULT FALSE").catch(console.error);
+// Migration: Ensure necessary columns exist in both users and pending tables
+pool.query("ALTER TABLE pendingprofessionals ADD COLUMN IF NOT EXISTS personal_id_document_path TEXT")
+    .then(() => console.log('? Database: pendingprofessionals table synced'))
+    .catch(err => console.error('? Migration Error (pendingprofessionals):', err.message));
+
+pool.query("ALTER TABLE land_auctions ADD COLUMN IF NOT EXISTS rejection_reason TEXT").catch(() => { });
+pool.query("ALTER TABLE projects ADD COLUMN IF NOT EXISTS planning_completed BOOLEAN DEFAULT FALSE").catch(() => { });
+pool.query("ALTER TABLE projects ADD COLUMN IF NOT EXISTS design_completed BOOLEAN DEFAULT FALSE").catch(() => { });
+pool.query("ALTER TABLE projects ADD COLUMN IF NOT EXISTS execution_completed BOOLEAN DEFAULT FALSE").catch(() => { });
 
 
 // Maintenance: Ingest local files and synchronize all paths to use the universal database URL
@@ -323,20 +339,16 @@ pool.connect()
 // Helper to compute project progress based on phases
 const enrichProjectWithProgress = (project, team = [], tasks = []) => {
     let phaseProgress = 0;
-    if (project.planning_completed) phaseProgress += 30;
-    if (project.design_completed) phaseProgress += 30;
-    if (project.execution_completed) phaseProgress += 40;
+    if (project.planning_completed) phaseProgress = 30;
+    if (project.design_completed) phaseProgress = 60;
+    if (project.execution_completed) phaseProgress = 100;
 
     const completedTasks = tasks.filter(t => t.status === 'Approved' || t.status === 'Completed').length;
 
     return {
         ...project,
         team: team,
-        progress: {
-            total: tasks.length,
-            completed: completedTasks,
-            percentage: phaseProgress
-        }
+        progress: phaseProgress
     };
 };
 
@@ -844,6 +856,49 @@ app.post('/api/login', async (req, res) => {
 });
 
 /**
+ * 🚩 SUBMIT ACCOUNT APPEAL (For Suspended/Disabled Users)
+ * Endpoint: POST /api/auth/appeal
+ */
+app.post('/api/auth/appeal', upload.single('document'), async (req, res) => {
+    const { email, password, reason } = req.body;
+    let documentPath = null;
+
+    if (!email || !password || !reason) {
+        return res.status(400).json({ error: 'Email, password, and appeal reason are required.' });
+    }
+
+    if (req.file) {
+        documentPath = `uploads/appeals/${req.file.filename}`;
+    }
+
+    try {
+        const result = await pool.query('SELECT * FROM users WHERE email = $1', [email]);
+        if (result.rows.length === 0) return res.status(401).json({ error: 'Invalid security credentials.' });
+
+        const user = result.rows[0];
+        const isMatch = await bcrypt.compare(password, user.password_hash);
+        if (!isMatch) return res.status(401).json({ error: 'Invalid security credentials.' });
+
+        if (user.status !== 'Disabled') {
+            return res.status(400).json({ error: 'Account is active. Appeals are only for suspended workspaces.' });
+        }
+
+        // We use isAppeal=true in the column and also prefix rejection_reason for legacy compat
+        await pool.query(
+            'UPDATE users SET appeal_reason = $1, appeal_document_path = $2, rejection_reason = $3 WHERE user_id = $4',
+            [reason, documentPath, `[APPEAL SUBMITTED] ${reason}`, user.user_id]
+        );
+
+        await logActivity(user.user_id, null, 'Appeal Submitted', 'Formal appeal submitted for account reinstatement.');
+
+        res.json({ message: 'Your appeal has been submitted successfully and is awaiting review.' });
+    } catch (err) {
+        console.error('Error submitting appeal:', err);
+        res.status(500).json({ error: 'Infrastructure failure during appeal submission.' });
+    }
+});
+
+/**
  * ?? USER PROFILE MANAGEMENT
  * --------------------------------------------------------------------------
  */
@@ -859,7 +914,12 @@ app.get('/api/user/:id', authenticateToken, async (req, res) => {
     const { id } = req.params;
     try {
         // First try the main users table
-        let result = await pool.query('SELECT user_id, category, sub_category, name, email, mobile_number, personal_id_document_path, birthdate, status, rejection_reason, resume_path, degree_path, address, city, state, zip_code, bio, profile_completed, created_at FROM users WHERE user_id = $1', [id]);
+        let result = await pool.query(`
+            SELECT u.*, 
+            (SELECT ROUND(AVG(rating), 1) FROM ratings WHERE rated_user_id = u.user_id) as avg_rating,
+            (SELECT COUNT(*) FROM ratings WHERE rated_user_id = u.user_id) as total_ratings
+            FROM users u WHERE u.user_id = $1
+        `, [id]);
 
         // If not found, try PendingProfessionals
         if (result.rows.length === 0) {
@@ -990,24 +1050,25 @@ app.put('/api/user/:id/complete-profile', authenticateToken, upload.fields([
 
     if (req.files) {
         const category = req.body.category || 'General';
+        const uploadPromises = [];
+
         if (req.files['resume'] && req.files['resume'][0]) {
-            const doc = await storeInDocuments(pool, {
+            uploadPromises.push(storeInDocuments(pool, {
                 project_id: null, uploaded_by: id, name: 'Resume', file: req.files['resume'][0], category
-            });
-            resume_path = doc.file_path;
+            }).then(doc => resume_path = doc.file_path));
         }
         if (req.files['degree'] && req.files['degree'][0]) {
-            const doc = await storeInDocuments(pool, {
+            uploadPromises.push(storeInDocuments(pool, {
                 project_id: null, uploaded_by: id, name: 'Degree', file: req.files['degree'][0], category
-            });
-            degree_path = doc.file_path;
+            }).then(doc => degree_path = doc.file_path));
         }
         if (req.files['aadhar_card'] && req.files['aadhar_card'][0]) {
-            const doc = await storeInDocuments(pool, {
+            uploadPromises.push(storeInDocuments(pool, {
                 project_id: null, uploaded_by: id, name: 'Aadhar Card', file: req.files['aadhar_card'][0], category
-            });
-            personal_id_document_path = doc.file_path;
+            }).then(doc => personal_id_document_path = doc.file_path));
         }
+
+        await Promise.all(uploadPromises);
     }
 
     try {
@@ -1294,7 +1355,7 @@ app.put('/api/admin/verify/:id', authenticateToken, async (req, res) => {
         } else {
             // Already in users or existing legacy user
             const updateResult = await client.query(
-                'UPDATE users SET status = $1, rejection_reason = $2, updated_at = CURRENT_TIMESTAMP WHERE user_id = $3 RETURNING *',
+                'UPDATE users SET status = $1, rejection_reason = $2, appeal_reason = NULL, appeal_document_path = NULL, updated_at = CURRENT_TIMESTAMP WHERE user_id = $3 RETURNING *',
                 [status, rejection_reason || null, id]
             );
 
@@ -1411,6 +1472,10 @@ app.post('/api/user/appeal', authenticateToken, upload.single('appealDocument'),
     if (!message) return res.status(400).json({ error: 'Appeal statement is required.' });
 
     try {
+        const checkStatus = await pool.query('SELECT status FROM users WHERE user_id = $1', [userId]);
+        if (checkStatus.rows.length > 0 && checkStatus.rows[0].status === 'Pending') {
+            return res.status(400).json({ error: 'An appeal is already pending review. Please wait for an administrative response.' });
+        }
         if (req.file) {
             // Use the established storeInDocuments utility if possible, 
             // but for simplicity here we just store the path in users table or rejection_reason
@@ -1420,8 +1485,8 @@ app.post('/api/user/appeal', authenticateToken, upload.single('appealDocument'),
         const appealCombined = `[APPEAL SUBMITTED] ${message}${appeal_doc_path ? ` | DOC: ${appeal_doc_path}` : ''}`;
 
         const result = await pool.query(
-            "UPDATE users SET status = 'Pending', rejection_reason = $1, updated_at = CURRENT_TIMESTAMP WHERE user_id = $2 RETURNING *",
-            [appealCombined, userId]
+            "UPDATE users SET status = 'Pending', rejection_reason = $1, appeal_reason = $2, appeal_document_path = $3, updated_at = CURRENT_TIMESTAMP WHERE user_id = $4 RETURNING *",
+            [appealCombined, message, appeal_doc_path, userId]
         );
 
         if (result.rows.length === 0) return res.status(404).json({ error: 'User not found' });
@@ -1643,10 +1708,21 @@ app.get('/api/users', async (req, res) => {
  */
 app.get('/api/users/verifications', async (req, res) => {
     try {
-        // Professionals pending approval live in PendingProfessionals table until admin approves
+        // Fetch BOTH: 
+        // 1. Professionals in PendingProfessionals (new signups)
+        // 2. Professionals in users table (already approved but visible for history)
+        // 3. Any user with a pending appeal
         const result = await pool.query(
-            `SELECT id AS user_id, name, email, category, sub_category, status, resume_path, degree_path, created_at
+            `SELECT id AS user_id, name, email, category, sub_category, status, resume_path, degree_path, created_at, 'pending' as source_table
              FROM PendingProfessionals
+             
+             UNION ALL
+             
+             SELECT user_id, name, email, category, sub_category, status, resume_path, degree_path, created_at, 'users' as source_table
+             FROM users
+             WHERE (category NOT IN ('Land Owner', 'Admin', 'LAND OWNER', 'ADMIN') 
+               OR (status = 'Pending' AND appeal_reason IS NOT NULL))
+             
              ORDER BY created_at DESC`
         );
         res.json(result.rows);
@@ -2045,6 +2121,8 @@ app.get('/api/professionals/nearby', async (req, res) => {
             scored_pros AS (
                 SELECT p.*,
                        COALESCE((SELECT ROUND(AVG(rating), 1) FROM ratings WHERE rated_user_id = p.id), 0.0) as rating,
+                       (SELECT ROUND(AVG(rating), 1) FROM ratings WHERE rated_user_id = p.id) as avg_rating,
+                       (SELECT COUNT(*) FROM ratings WHERE rated_user_id = p.id) as total_ratings,
                        (CASE 
                          -- Direct Proximity Match
                          WHEN $1::numeric IS NOT NULL AND $2::numeric IS NOT NULL AND p.latitude IS NOT NULL AND p.longitude IS NOT NULL AND 
@@ -2423,15 +2501,8 @@ app.get('/api/projects/:id', async (req, res) => {
         const result = await pool.query('SELECT * FROM projects WHERE project_id = $1', [id]);
         if (result.rows.length === 0) return res.status(404).json({ error: 'Project not found' });
 
-        const project = result.rows[0];
-
-        // Calculate progress based on phases and tasks
-        let progress = 0;
-        if (project.planning_completed) progress += 30;
-        if (project.design_completed) progress += 30;
-        if (project.execution_completed) progress += 40;
-
-        project.progress = progress;
+        const tasksRes = await pool.query('SELECT status FROM tasks WHERE project_id = $1', [id]);
+        const project = enrichProjectWithProgress(result.rows[0], [], tasksRes.rows);
         res.json(project);
     } catch (err) {
         console.error('Error fetching project:', err);
@@ -2490,8 +2561,12 @@ app.patch('/api/projects/:id/phases', authenticateToken, async (req, res) => {
             }
 
             const column = `${phase}_completed`;
+
+            // If marking execution as completed, also mark project status as Completed
+            const projectStatusUpdate = (phase === 'execution' && completed) ? ", status = 'Completed'" : "";
+
             const result = await client.query(
-                `UPDATE projects SET ${column} = $1, updated_at = CURRENT_TIMESTAMP WHERE project_id = $2 RETURNING *`,
+                `UPDATE projects SET ${column} = $1, updated_at = CURRENT_TIMESTAMP ${projectStatusUpdate} WHERE project_id = $2 RETURNING *`,
                 [completed, id]
             );
 
@@ -2505,8 +2580,12 @@ app.patch('/api/projects/:id/phases', authenticateToken, async (req, res) => {
             const project = enrichProjectWithProgress(result.rows[0], [], tasksRes.rows);
 
             // Log Activity
-            const userId = req['user'] ? (req['user'].user_id || req['user'].id) : null;
-            await logActivity(userId, id, 'Phase Updated', `${phase.charAt(0).toUpperCase() + phase.slice(1)} phase ${completed ? 'completed' : 'reopened'}`);
+            const loggingUserId = req.user.id;
+            await logActivity(loggingUserId, id, 'Phase Updated', `${phase.charAt(0).toUpperCase() + phase.slice(1)} phase ${completed ? 'completed' : 'reopened'}`);
+
+            if (phase === 'execution' && completed) {
+                await logActivity(loggingUserId, id, 'Project Completed', `Final execution phase finished. Project is now marked as Completed.`);
+            }
 
             await client.query('COMMIT');
             res.json(project);
@@ -2519,6 +2598,36 @@ app.patch('/api/projects/:id/phases', authenticateToken, async (req, res) => {
     } catch (err) {
         console.error('Error updating project phase:', err);
         res.status(500).json({ error: 'Failed to update phase' });
+    }
+});
+
+// Submit Project Ratings
+app.post('/api/projects/:projectId/rate', authenticateToken, async (req, res) => {
+    const { projectId } = req.params;
+    const { rater_id, ratings } = req.body; // ratings: [{ rated_user_id: string, rating: number }]
+
+    if (!ratings || !Array.isArray(ratings)) return res.status(400).json({ error: 'Ratings are required' });
+
+    const client = await pool.connect();
+    try {
+        await client.query('BEGIN');
+        for (const r of ratings) {
+            await client.query(
+                `INSERT INTO ratings (project_id, rater_id, rated_user_id, rating) 
+                 VALUES ($1, $2, $3, $4) 
+                 ON CONFLICT (project_id, rater_id, rated_user_id) 
+                 DO UPDATE SET rating = EXCLUDED.rating, created_at = CURRENT_TIMESTAMP`,
+                [projectId, rater_id, r.rated_user_id, r.rating]
+            );
+        }
+        await client.query('COMMIT');
+        res.json({ message: 'Ratings submitted successfully' });
+    } catch (err) {
+        await client.query('ROLLBACK');
+        console.error('Rating submission error:', err);
+        res.status(500).json({ error: 'Failed to submit ratings' });
+    } finally {
+        client.release();
     }
 });
 
@@ -3038,7 +3147,7 @@ app.get('/api/tasks/assigned-by/:userId', authenticateToken, async (req, res) =>
     const { userId } = req.params;
     try {
         const result = await pool.query(`
-            SELECT 
+            SELECT DISTINCT
                 t.*, 
                 p.name AS project_name, 
                 l.location AS location,
@@ -3047,7 +3156,8 @@ app.get('/api/tasks/assigned-by/:userId', authenticateToken, async (req, res) =>
             LEFT JOIN projects p ON t.project_id = p.project_id
             LEFT JOIN lands l ON p.land_id = l.land_id
             LEFT JOIN users u ON t.assigned_to = u.user_id
-            WHERE t.assigned_by = $1 OR p.land_owner_id = $1
+            LEFT JOIN projectassignments pa ON pa.project_id = t.project_id AND pa.assigned_role = 'contractor' AND pa.status = 'Accepted'
+            WHERE t.assigned_by = $1 OR p.land_owner_id = $1 OR pa.user_id = $1
             ORDER BY t.created_at DESC
         `, [userId]);
         res.json(result.rows);
@@ -3177,7 +3287,9 @@ app.put('/api/tasks/:taskId/review', authenticateToken, async (req, res) => {
             }
 
             const { assigned_by, land_owner_id, is_contractor } = authCheck.rows[0];
-            if (reviewer_id !== assigned_by && reviewer_id !== land_owner_id && !is_contractor) {
+            const isManager = String(reviewer_id) === String(assigned_by) || String(reviewer_id) === String(land_owner_id) || !!is_contractor;
+
+            if (!isManager) {
                 await client.query('ROLLBACK');
                 return res.status(403).json({ error: 'Unauthorized: Only project managers can review this task.' });
             }
@@ -3577,12 +3689,15 @@ app.get('/api/admin/users', async (req, res) => {
     try {
         const usersQuery = `
             SELECT user_id, name, email, category, sub_category, status, profile_completed, 
-                   rejection_reason, resume_path, degree_path, created_at 
+                   rejection_reason, resume_path, degree_path, personal_id_document_path, created_at,
+                   appeal_reason, appeal_document_path
             FROM users
         `;
         const pendingQuery = `
             SELECT id as user_id, name, email, category, sub_category, status, 
-                   FALSE as profile_completed, rejection_reason, resume_path, degree_path, created_at 
+                   FALSE as profile_completed, rejection_reason, resume_path, degree_path, 
+                   personal_id_document_path, created_at,
+                   NULL as appeal_reason, NULL as appeal_document_path
             FROM PendingProfessionals
         `;
 
@@ -3648,11 +3763,15 @@ app.put('/api/admin/user/:id/:action', async (req, res) => {
     const { id, action } = req.params;
     const { reason } = req.body;
     const status = action === 'disable' ? 'Disabled' : 'Approved';
+    const isEnable = action === 'enable';
 
     try {
         const result = await pool.query(
-            'UPDATE users SET status = $1, rejection_reason = $2 WHERE user_id = $3 RETURNING name, email',
-            [status, action === 'disable' ? reason : null, id]
+            `UPDATE users SET status = $1, rejection_reason = $2, 
+             appeal_reason = CASE WHEN $3 = true THEN NULL ELSE appeal_reason END,
+             appeal_document_path = CASE WHEN $3 = true THEN NULL ELSE appeal_document_path END
+             WHERE user_id = $4 RETURNING name, email`,
+            [status, action === 'disable' ? reason : null, isEnable, id]
         );
 
         if (result.rows.length > 0) {

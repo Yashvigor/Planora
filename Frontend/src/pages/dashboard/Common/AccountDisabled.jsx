@@ -11,7 +11,7 @@ export default function AccountDisabled() {
     const [appealText, setAppealText] = useState('');
     const [appealFile, setAppealFile] = useState(null);
     const [isSubmitting, setIsSubmitting] = useState(false);
-    const [appealSent, setAppealSent] = useState(false);
+    const [appealSent, setAppealSent] = useState(currentUser?.status?.toLowerCase() === 'pending');
 
     // Listen for real-time account status changes (e.g. if Admin enables while user is on this page)
     useEffect(() => {
@@ -106,7 +106,7 @@ export default function AccountDisabled() {
                     </div>
 
                     <AnimatePresence mode="wait">
-                        {!appealSent ? (
+                        {!appealSent && currentUser?.status?.toLowerCase() !== 'pending' ? (
                             <motion.form 
                                 initial={{ opacity: 0 }}
                                 animate={{ opacity: 1 }}

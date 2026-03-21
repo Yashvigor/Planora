@@ -1,4 +1,5 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
+import socket from '../utils/socket';
 
 /**
  * 📦 Mock App Context
@@ -87,6 +88,25 @@ export const MockAppProvider = ({ children }) => {
                 .then(res => res.json())
                 .then(data => setProjects(data))
                 .catch(err => console.error("Error fetching projects:", err));
+
+            // Socket connection for real-time updates
+            socket.connect();
+            socket.emit('join', `user_${uid}`);
+
+            const handleStatusChange = (data) => {
+                setCurrentUser(prev => ({ 
+                    ...prev, 
+                    status: data.status, 
+                    rejection_reason: data.reason || prev.rejection_reason 
+                }));
+            };
+
+            socket.on('account_status_changed', handleStatusChange);
+
+            return () => {
+                socket.off('account_status_changed', handleStatusChange);
+                socket.disconnect();
+            };
         }
     }, [currentUser]);
 
@@ -343,7 +363,8 @@ export const MockAppProvider = ({ children }) => {
         uploadDocument,
         verifyDocument,
         deleteDocument,
-        addSiteProgress
+        addSiteProgress,
+        socket
     };
 
     return (

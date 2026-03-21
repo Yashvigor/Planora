@@ -332,12 +332,10 @@ const ExpertMap = ({ currentProjectId, category, subCategory, onAssign, onClose 
                                         <MapPin size={12} className="text-[#C06842]" />
                                         <span className="truncate max-w-[150px]">{pro.address || 'Location Verified'}</span>
                                     </div>
-                                    {pro.experience_years && (
-                                        <div className="flex items-center gap-2 text-[10px] text-[#6E5E56]">
-                                            <Star size={12} className="text-yellow-500" />
-                                            <span>{pro.experience_years} Years Experience</span>
-                                        </div>
-                                    )}
+                                    <div className="flex items-center gap-2 text-[10px] text-[#6E5E56]">
+                                        <Star size={12} className={pro.avg_rating > 0 ? "text-amber-500 fill-amber-500" : "text-yellow-500"} />
+                                        <span>{pro.avg_rating > 0 ? `${pro.avg_rating} / 5.0 (${pro.total_ratings})` : `${pro.experience_years || '5+'} Years Experience`}</span>
+                                    </div>
                                 </div>
                                 <div className="flex gap-2">
                                     <button
@@ -397,7 +395,13 @@ const ExpertMap = ({ currentProjectId, category, subCategory, onAssign, onClose 
                             <button onClick={() => setIsProfileOpen(false)} className="text-[#8C7B70] hover:text-[#3E2B26]"><X size={20} /></button>
                         </div>
                         <div className="flex-1 overflow-y-auto p-6 space-y-8 custom-scrollbar">
-                            <div className="text-center">
+                            <div className="text-center relative">
+                                {selectedPro.avg_rating > 0 && (
+                                    <div className="absolute top-0 right-0 bg-amber-50 text-amber-600 px-3 py-1 rounded-full border border-amber-200 flex items-center gap-1 shadow-sm">
+                                        <Star size={12} fill="currentColor" />
+                                        <span className="text-[10px] font-black">{selectedPro.avg_rating}</span>
+                                    </div>
+                                )}
                                 <div className="w-20 h-20 mx-auto rounded-3xl bg-[#F9F7F2] border-2 border-[#E3DACD] flex items-center justify-center text-[#A65D3B] shadow-inner mb-4">
                                     <User size={40} />
                                 </div>
@@ -417,12 +421,14 @@ const ExpertMap = ({ currentProjectId, category, subCategory, onAssign, onClose 
                                         <span className="text-[9px] font-black text-[#8C7B70] uppercase">Experience</span>
                                     </div>
                                     <div className="p-3 bg-[#F9F7F2] rounded-xl border border-[#E3DACD]/50 text-center">
-                                        <span className="block text-xl font-bold text-[#3E2B26] truncate" title={selectedPro.specialization || 'General'}>{selectedPro.specialization || 'Expert'}</span>
-                                        <span className="text-[9px] font-black text-[#8C7B70] uppercase">Specialty</span>
+                                        <div className="flex items-center justify-center gap-1">
+                                            <Star size={14} className={selectedPro.avg_rating > 0 ? "text-amber-500 fill-amber-500" : "text-[#8C7B70]"} />
+                                            <span className="block text-xl font-bold text-[#3E2B26]">{selectedPro.avg_rating || 'N/A'}</span>
+                                        </div>
+                                        <span className="text-[9px] font-black text-[#8C7B70] uppercase">Reputation</span>
                                     </div>
                                 </div>
                             </div>
-
                             <div className="space-y-3">
                                 <label className="text-[10px] font-black text-[#8C7B70] uppercase tracking-widest block">Credentials</label>
                                 {selectedPro.resume_path ? (

@@ -40,6 +40,11 @@ const authenticateToken = async (req, res, next) => {
         }
 
         if (userCheck.rows[0].status === 'Disabled') {
+            // 🛡️ Strategic Exception: Allow users to submit appeals even if deactivated
+            if (req.path === '/user/appeal' || req.originalUrl === '/api/user/appeal') {
+                return next();
+            }
+
             return res.status(403).json({ 
                 error: 'ACCESS SUSPENDED. Your account has been deauthorized due to suspicious activity. Please submit an official appeal for reinstatement.',
                 isDeactivated: true
