@@ -599,11 +599,12 @@ app.post('/api/signup', async (req, res) => {
             token, // ?? Return token to client
             user: {
                 id: userId,
+                user_id: userId,
                 name: name,
                 email: email,
                 role: role, // UI Routing key
                 status: userStatus,
-                profile_completed: (category === 'Admin' || sub_category === 'Contractor' || sub_category === 'Land Owner')
+                profile_completed: (category === 'Admin' || sub_category === 'Land Owner' || sub_category === 'Contractor')
             }
         });
     } catch (err) {
@@ -832,6 +833,7 @@ app.post('/api/login', async (req, res) => {
             token, // ?? Return token to client
             user: {
                 id: user.user_id,
+                user_id: user.user_id,
                 name: user.name,
                 email: user.email,
                 category: user.category,
@@ -1586,7 +1588,11 @@ app.post('/api/auth/google', async (req, res) => {
                 status: 'incomplete',
                 message: 'Please complete your profile',
                 token: jwtToken,
-                user: insertResult.rows[0]
+                user: {
+                    ...insertResult.rows[0],
+                    id: userId,
+                    profile_completed: false
+                }
             });
         }
 
@@ -1613,14 +1619,15 @@ app.post('/api/auth/google', async (req, res) => {
                 message: isRejected ? 'Your application was rejected. Please resubmit your documents.' : 'Please complete your profile',
                 token: jwtToken,
                 user: {
+                    id: user.user_id,
                     user_id: user.user_id,
-                    id: user.user_id, // consistency
                     name: user.name,
                     email: user.email,
                     role: 'user',
                     status: user.status,
                     sub_category: user.sub_category,
-                    rejection_reason: user.rejection_reason
+                    rejection_reason: user.rejection_reason,
+                    profile_completed: user.profile_completed
                 }
             });
         }
@@ -1658,13 +1665,18 @@ app.post('/api/auth/google', async (req, res) => {
             message: 'Login successful',
             token: jwtToken,
             user: {
+                id: user.user_id,
                 user_id: user.user_id,
                 name: user.name,
                 email: user.email,
                 role: roleKey,
                 category: user.category,
                 sub_category: user.sub_category,
-                status: user.status
+                status: user.status,
+                profile_completed: user.profile_completed,
+                resume_path: user.resume_path,
+                degree_path: user.degree_path,
+                rejection_reason: user.rejection_reason
             }
         });
     } catch (err) {
@@ -1962,14 +1974,11 @@ app.put('/api/users/:userId/profile', async (req, res) => {
     const { name, phone, address, city, state, zip_code, birthdate, bio } = req.body;
 
     try {
-        let latitude = null;
-        let longitude = null;
+        let latitude = req.body.latitude !== undefined ? parseFloat(req.body.latitude) : null;
+        let longitude = req.body.longitude !== undefined ? parseFloat(req.body.longitude) : null;
 
-        // Auto-geocode if address is provided, unless lat/lon are explicitly provided
-        if (req.body.latitude && req.body.longitude) {
-            latitude = parseFloat(req.body.latitude);
-            longitude = parseFloat(req.body.longitude);
-        } else if (address) {
+        // Auto-geocode ONLY if address changed and no manual coordinates provided
+        if (latitude === null && address) {
             const fullAddress = `${address}, ${city || ''}, ${state || ''}, ${zip_code || ''}`.trim();
             const coords = await geocodeAddress(fullAddress);
             if (coords) {
@@ -2006,8 +2015,8 @@ app.put('/api/users/:userId/profile', async (req, res) => {
                     zip_code || null,
                     birthdate || null,
                     bio || null,
-                    latitude || null,
-                    longitude || null,
+                    latitude,
+                    longitude,
                     userId
                 ]
             );
@@ -2018,11 +2027,13 @@ app.put('/api/users/:userId/profile', async (req, res) => {
             }
 
             const updatedUser = result.rows[0];
-
-            // Note: role-specific tables were removed; name sync not needed.
-
-
             await client.query('COMMIT');
+
+            // Log move/update if it's a significant profile change (not just location)
+            if (name || address || bio) {
+                await logActivity(userId, null, 'Profile Update', 'User updated their profile information');
+            }
+
             res.json({ message: 'Profile updated successfully', user: updatedUser });
 
         } catch (innerErr) {
@@ -2033,11 +2044,10 @@ app.put('/api/users/:userId/profile', async (req, res) => {
         }
 
     } catch (err) {
-        console.error('[Profile Update] Error:', err);
+        console.error('[Profile Update Path] Internal Error:', err.message, err.stack);
         res.status(500).json({
             error: 'Failed to update profile',
-            message: err.message,
-            stack: err.stack
+            message: err.message
         });
     }
 });
@@ -2513,7 +2523,7 @@ app.get('/api/projects/:id', async (req, res) => {
 // Update Project Phases and Progress
 app.patch('/api/projects/:id/phases', authenticateToken, async (req, res) => {
     const { id } = req.params;
-    const { phase, completed } = req.body; // phase: 'planning', 'design', 'execution'
+    const { phase, completed } = req.body;
     const userId = req.user.id;
 
     if (!['planning', 'design', 'execution'].includes(phase)) {
@@ -2521,6 +2531,11 @@ app.patch('/api/projects/:id/phases', authenticateToken, async (req, res) => {
     }
 
     try {
+        const checkStatusRes = await pool.query('SELECT status FROM projects WHERE project_id = $1', [id]);
+        if (checkStatusRes.rows.length > 0 && checkStatusRes.rows[0].status === 'Completed') {
+            return res.status(403).json({ error: 'This project is marked as Completed and locked. No further phase updates are allowed.' });
+        }
+
         const client = await pool.connect();
         try {
             await client.query('BEGIN');
@@ -2890,6 +2905,10 @@ app.post('/api/site-progress', authenticateToken, upload.single('image'), async 
     const { project_id, updated_by, note, alert_type } = req.body;
 
     try {
+        const checkStatusRes = await pool.query('SELECT status FROM projects WHERE project_id = $1', [project_id]);
+        if (checkStatusRes.rows.length > 0 && checkStatusRes.rows[0].status === 'Completed') {
+            return res.status(403).json({ error: 'This project is finalized. No further site progress updates are permitted.' });
+        } s
         let image_path = null;
         if (req.file) {
             const category = req.body.category || 'SiteProgress';
@@ -3003,6 +3022,11 @@ app.post('/api/projects/:projectId/tasks', authenticateToken, async (req, res) =
     }
 
     try {
+        const checkStatusRes = await pool.query('SELECT status FROM projects WHERE project_id = $1', [projectId]);
+        if (checkStatusRes.rows.length > 0 && checkStatusRes.rows[0].status === 'Completed') {
+            return res.status(403).json({ error: 'This project is completed and locked. Task assignments are no longer permitted.' });
+        }
+
         const result = await pool.query(
             'INSERT INTO tasks (project_id, assigned_by, assigned_to, title, description, due_date, status) VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING *',
             [projectId, assigned_by, assigned_to, title, description || '', due_date || null, 'Pending']
@@ -3895,6 +3919,11 @@ app.put('/api/projects/:id/status', async (req, res) => {
     }
 
     try {
+        const checkStatusRes = await pool.query('SELECT status FROM projects WHERE project_id = $1', [id]);
+        if (checkStatusRes.rows.length > 0 && checkStatusRes.rows[0].status === 'Completed' && status !== 'Completed') {
+            return res.status(403).json({ error: 'Completed projects cannot be reopened once finalized.' });
+        }
+
         const result = await pool.query(
             'UPDATE projects SET status = $1, updated_at = CURRENT_TIMESTAMP WHERE project_id = $2 RETURNING *',
             [status, id]

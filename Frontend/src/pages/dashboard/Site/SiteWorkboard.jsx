@@ -1,22 +1,25 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import {
-    LayoutGrid, CheckCircle, Clock, ChevronRight,
-    FileText, Eye, MapPin, Calendar, ClipboardList,
-    TrendingUp, Star, Award, User
+    LayoutGrid, ChevronRight,
+    FileText, Eye, MapPin, Clock, 
+    TrendingUp, Award, User, Search, 
+    CheckCircle2, AlertCircle, XCircle,
+    Lock, RefreshCcw, Activity, ClipboardList
 } from 'lucide-react';
 
-const Card = ({ children, className = "" }) => (
-    <div className={`glass-card p-5 rounded-2xl border border-[#E3DACD]/40 shadow-sm transition-all hover:shadow-md ${className}`}>
-        {children}
-    </div>
-);
+// Shared Components
+import Card from '../../../components/Common/Card';
+import Button from '../../../components/Common/Button';
+import SectionHeader from '../../../components/Common/SectionHeader';
 
-const SiteWorkboard = ({ currentUser, projectId: propProjectId }) => {
+const SiteWorkboard = ({ currentUser, projectId: propProjectId, hideCompleted = false }) => {
     const [tasks, setTasks] = useState([]);
     const [loading, setLoading] = useState(true);
     const [selectedProject, setSelectedProject] = useState(null);
     const [isPreviewOpen, setIsPreviewOpen] = useState(false);
     const [previewFile, setPreviewFile] = useState(null);
+    const [searchQuery, setSearchQuery] = useState('');
+    const [statusFilter, setStatusFilter] = useState('All');
 
     const userId = currentUser?.user_id || currentUser?.id;
 
@@ -29,313 +32,253 @@ const SiteWorkboard = ({ currentUser, projectId: propProjectId }) => {
                 : `${import.meta.env.VITE_API_URL}/api/tasks/user/${userId}`;
                 
             const res = await fetch(url, {
-                headers: { 'Authorization': `Bearer ${localStorage.getItem('planora_token')}` }
+                headers: { 'Authorization': `Bearer ${localStorage.getItem('planora_token') || localStorage.getItem('token')}` }
             });
-            if (res.ok) {
-                setTasks(await res.json());
-            }
-        } catch (err) {
-            console.error('Error fetching tasks for workboard:', err);
-        } finally {
-            setLoading(false);
-        }
+            if (res.ok) setTasks(await res.json());
+        } catch (err) { console.error('Error fetching tasks:', err); }
+        finally { setLoading(false); }
     }, [userId, propProjectId]);
 
-    useEffect(() => {
-        fetchTasks();
-    }, [fetchTasks]);
+    useEffect(() => { fetchTasks(); }, [fetchTasks]);
 
-    // Group tasks by project
-    const projectsMap = tasks.reduce((acc, task) => {
-        const pid = task.project_id;
-        if (!acc[pid]) {
-            acc[pid] = {
-                id: pid,
-                name: task.project_name || 'Unnamed Project',
-                location: task.location || 'Site Location',
-                tasks: [],
-                allCompleted: true
-            };
-        }
-        acc[pid].tasks.push(task);
-        if (task.status !== 'Approved') {
-            acc[pid].allCompleted = false;
-        }
-        return acc;
-    }, {});
+    const projectsMap = useMemo(() => {
+        return tasks.reduce((acc, task) => {
+            const pid = task.project_id;
+            if (!acc[pid]) {
+                acc[pid] = {
+                    id: pid,
+                    name: task.project_name || 'Unnamed Project',
+                    location: task.location || 'Site Location',
+                    status: task.project_status || 'Pending',
+                    planning_completed: task.planning_completed,
+                    design_completed: task.design_completed,
+                    execution_completed: task.execution_completed,
+                    tasks: [],
+                    stats: { pending: 0, submitted: 0, approved: 0, rejected: 0 }
+                };
+            }
+            const s = (task.status || 'Pending').toLowerCase();
+            if (acc[pid].stats[s] !== undefined) acc[pid].stats[s]++;
+            if (hideCompleted && task.status === 'Approved') return acc;
+            acc[pid].tasks.push(task);
+            return acc;
+        }, {});
+    }, [tasks, hideCompleted]);
 
-    const projectList = Object.values(projectsMap);
-    const currentProjects = projectList.filter(p => !p.allCompleted);
-    const completedProjects = projectList.filter(p => p.allCompleted);
+    const projectList = useMemo(() => {
+        let list = Object.values(projectsMap);
+        if (searchQuery) list = list.filter(p => p.name.toLowerCase().includes(searchQuery.toLowerCase()) || p.location.toLowerCase().includes(searchQuery.toLowerCase()));
+        if (statusFilter !== 'All') list = list.filter(p => statusFilter === 'Active' ? p.status !== 'Completed' : p.status === 'Completed');
+        return list;
+    }, [projectsMap, searchQuery, statusFilter]);
+
+    const stats = useMemo(() => {
+        const total = tasks.length;
+        const approved = tasks.filter(t => t.status === 'Approved').length;
+        const active = tasks.filter(t => t.status !== 'Approved').length;
+        return { total, approved, active, percent: total > 0 ? Math.round((approved / total) * 100) : 0 };
+    }, [tasks]);
 
     const openPreview = (task) => {
-        if (task.image_path) {
-            setPreviewFile(`${import.meta.env.VITE_API_URL}/${task.image_path}`);
-            setIsPreviewOpen(true);
-        }
+        if (task.image_path) { setPreviewFile(`${import.meta.env.VITE_API_URL}/${task.image_path}`); setIsPreviewOpen(true); }
     };
 
     if (loading) return (
-        <div className="flex flex-col items-center justify-center py-20 animate-pulse">
-            <LayoutGrid className="w-12 h-12 text-[#C06842] mb-4 animate-spin-slow" />
-            <p className="text-xs font-bold uppercase tracking-widest text-[#8C7B70]">Syncing Workboard Data...</p>
+        <div className="flex flex-col items-center justify-center py-32 space-y-6">
+            <div className="w-16 h-16 border-4 border-[#C06842]/10 border-t-[#C06842] rounded-full animate-spin" />
+            <p className="text-[10px] font-black uppercase tracking-[0.4em] text-[#8C7B70] animate-pulse">Syncing Tasks...</p>
         </div>
     );
 
     return (
-        <div className="space-y-10 animate-fade-in">
-            {/* Summary Stats */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
-                <div className="glass-card p-8 rounded-[2rem] bg-gradient-to-br from-[#2A1F1D] to-[#4A342E] text-white border-0 shadow-xl relative overflow-hidden group">
-                    <div className="absolute -right-8 -bottom-8 w-32 h-32 bg-white/5 rounded-full blur-2xl group-hover:scale-150 transition-transform duration-700"></div>
-                    <div className="flex justify-between items-start relative z-10">
-                        <div>
-                            <p className="text-[10px] font-black uppercase tracking-[0.2em] text-[#B8AFA5] mb-2">Live Workload</p>
-                            <h3 className="text-4xl font-serif font-bold">{currentProjects.length}</h3>
-                            <p className="text-xs text-white/60 mt-2 font-medium">Active Commissions</p>
-                        </div>
-                        <div className="p-4 bg-white/10 backdrop-blur-md rounded-2xl border border-white/10 group-hover:rotate-12 transition-transform">
-                            <TrendingUp className="w-6 h-6 text-[#E68A2E]" />
-                        </div>
+        <div className="space-y-12 animate-fade-in pb-20">
+            {/* Header & Meta */}
+            {!propProjectId && (
+                <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-8">
+                    <SectionHeader title="Workboard" subtitle={`Manage tasks for ${projectList.length} projects`} />
+                    <div className="relative group w-full lg:w-96">
+                        <Search className="absolute left-5 top-1/2 -translate-y-1/2 w-5 h-5 text-[#8C7B70] group-focus-within:text-[#C06842] transition-colors" />
+                        <input type="text" placeholder="Search projects..." value={searchQuery} onChange={e => setSearchQuery(e.target.value)} className="w-full pl-14 pr-6 py-4 bg-white/80 border-2 border-[#E3DACD]/50 rounded-2xl text-xs font-bold outline-none focus:border-[#C06842] transition-all" />
                     </div>
                 </div>
+            )}
 
-                <div className="glass-card p-8 rounded-[2rem] bg-white border border-[#E3DACD]/50 shadow-sm hover:shadow-xl transition-all group">
-                    <div className="flex justify-between items-start">
-                        <div>
-                            <p className="text-[10px] font-black uppercase tracking-[0.2em] text-[#8C7B70] mb-2">Portfolio</p>
-                            <h3 className="text-4xl font-serif font-bold text-[#2A1F1D]">{completedProjects.length}</h3>
-                            <p className="text-xs text-[#8C7B70] mt-2 font-medium">Delivered Sites</p>
-                        </div>
-                        <div className="p-4 bg-green-50 rounded-2xl border border-green-100 group-hover:bg-green-100 transition-colors">
-                            <Award className="w-6 h-6 text-green-600" />
-                        </div>
-                    </div>
+            {/* Performance Widgets */}
+            {!propProjectId && (
+                <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
+                    <StatMetric label="Total Tasks" val={stats.total} icon={ClipboardList} color="text-[#2A1F1D]" />
+                    <StatMetric label="In Progress" val={stats.active} icon={Clock} color="text-[#E68A2E]" />
+                    <StatMetric label="Completed" val={stats.approved} icon={CheckCircle2} color="text-green-600" />
+                    <StatMetric label="Efficiency" val={`${stats.percent}%`} icon={TrendingUp} color="text-[#C06842]" isProgress />
                 </div>
+            )}
 
-                <div className="glass-card p-8 rounded-[2rem] bg-white border border-[#E3DACD]/50 shadow-sm hover:shadow-xl transition-all group">
-                    <div className="flex justify-between items-start">
-                        <div>
-                            <p className="text-[10px] font-black uppercase tracking-[0.2em] text-[#8C7B70] mb-2">Milestones</p>
-                            <h3 className="text-4xl font-serif font-bold text-[#2A1F1D]">{tasks.filter(t => t.status === 'Approved').length}</h3>
-                            <p className="text-xs text-[#8C7B70] mt-2 font-medium">Approved Benchmarks</p>
-                        </div>
-                        <div className="p-4 bg-[#C06842]/10 rounded-2xl border border-[#C06842]/10 group-hover:bg-[#C06842]/20 transition-colors">
-                            <Star className="w-6 h-6 text-[#C06842]" />
-                        </div>
+            {/* Projects Registry */}
+            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-8">
+                {projectList.length === 0 ? (
+                    <div className="col-span-full py-40 text-center border-2 border-dashed border-[#E3DACD] rounded-[4rem] bg-[#F9F7F2]/20">
+                        <Search size={64} className="mx-auto text-[#E3DACD] mb-6" strokeWidth={0.5} />
+                        <h3 className="text-2xl font-serif font-black text-[#2A1F1D] mb-2">No Projects Found</h3>
+                        <p className="text-[#8C7B70] text-sm max-w-xs mx-auto">Try adjusting your search or filters to find what you're looking for.</p>
                     </div>
-                </div>
+                ) : (
+                    projectList.map(project => (
+                        <ProjectCard key={project.id} project={project} onSelect={() => setSelectedProject(project)} />
+                    ))
+                )}
             </div>
 
-            {/* Current Projects */}
-            <section>
-                <div className="flex items-center gap-3 mb-6">
-                    <div className="w-1 h-8 bg-[#C06842] rounded-full" />
-                    <h2 className="text-2xl font-bold font-serif text-[#2A1F1D]">Current Workload</h2>
-                </div>
-                {currentProjects.length === 0 ? (
-                    <div className="text-center py-10 glass-card rounded-3xl border-dashed border-2 border-[#E3DACD] bg-white/50">
-                        <Clock className="w-10 h-10 mx-auto text-[#B8AFA5] mb-2" />
-                        <p className="text-sm font-bold text-[#8C7B70]">No active projects at the moment</p>
-                    </div>
-                ) : (
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                        {currentProjects.map(project => (
-                            <ProjectCard
-                                key={project.id}
-                                project={project}
-                                onSelect={() => setSelectedProject(project)}
-                            />
-                        ))}
-                    </div>
-                )}
-            </section>
+            {selectedProject && <KanbanModal project={selectedProject} onClose={() => setSelectedProject(null)} openPreview={openPreview} />}
+            <ImageModal isOpen={isPreviewOpen} src={previewFile} onClose={() => setIsPreviewOpen(false)} />
+        </div>
+    );
+};
 
-            {/* Completed Projects */}
-            <section>
-                <div className="flex items-center gap-3 mb-6">
-                    <div className="w-1 h-8 bg-green-600 rounded-full" />
-                    <h2 className="text-2xl font-bold font-serif text-[#2A1F1D]">Project Portfolio</h2>
-                </div>
-                {completedProjects.length === 0 ? (
-                    <div className="text-center py-10 glass-card rounded-3xl border-dashed border-2 border-[#E3DACD] bg-white/50">
-                        <CheckCircle className="w-10 h-10 mx-auto text-[#B8AFA5] mb-2" />
-                        <p className="text-sm font-bold text-[#8C7B70]">Completed projects will appear here</p>
-                    </div>
-                ) : (
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6 opacity-85 hover:opacity-100 transition-opacity">
-                        {completedProjects.map(project => (
-                            <ProjectCard
-                                key={project.id}
-                                project={project}
-                                isCompleted
-                                onSelect={() => setSelectedProject(project)}
-                            />
-                        ))}
-                    </div>
-                )}
-            </section>
+const StatMetric = ({ label, val, icon: Icon, color, isProgress }) => (
+    <Card className="p-7 relative overflow-hidden group border-2 border-transparent hover:border-[#C06842]/20">
+        <div className="flex justify-between items-start">
+            <div>
+                <p className="text-[9px] font-black uppercase tracking-[0.2em] text-[#8C7B70] mb-3">{label}</p>
+                <h3 className={`text-3xl font-serif font-black ${color}`}>{val}</h3>
+            </div>
+            <div className={`p-4 rounded-xl bg-[#FDFCF8] ${color} group-hover:rotate-12 transition-transform shadow-sm`}><Icon size={20} /></div>
+        </div>
+        {isProgress && (
+            <div className="mt-6 w-full bg-[#E3DACD]/30 h-1.5 rounded-full overflow-hidden">
+                <div className="bg-[#C06842] h-full transition-all duration-1000" style={{ width: val }} />
+            </div>
+        )}
+    </Card>
+);
 
-            {/* Details Modal */}
-            {selectedProject && (
-                <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-[#2A1F1D]/60 backdrop-blur-md">
-                    <div className="bg-[#FDFCF8] rounded-[2.5rem] w-full max-w-2xl max-h-[85vh] overflow-hidden shadow-2xl border border-white flex flex-col animate-scale-up">
-                        {/* Modal Header */}
-                        <div className="p-8 pb-4 border-b border-[#E3DACD]/50 relative">
-                            <button
-                                onClick={() => setSelectedProject(null)}
-                                className="absolute top-6 right-8 p-2 hover:bg-white rounded-full transition-colors text-[#8C7B70] hover:text-[#2A1F1D]"
-                            >
-                                <ChevronRight className="rotate-90" />
-                            </button>
-                            <p className="text-[#C06842] text-[10px] font-black uppercase tracking-[0.2em] mb-2">Work Details</p>
-                            <h3 className="text-2xl font-bold font-serif text-[#2A1F1D] pr-12">{selectedProject.name}</h3>
-                            <div className="flex items-center gap-4 mt-2 text-xs text-[#8C7B70]">
-                                <span className="flex items-center gap-1"><MapPin size={14} /> {selectedProject.location}</span>
-                                <span className="flex items-center gap-1"><ClipboardList size={14} /> {selectedProject.tasks.length} Tasks Total</span>
-                            </div>
+const ProjectCard = ({ project, onSelect }) => {
+    const isCompleted = project.status === 'Completed';
+    const total = project.tasks.length;
+    const progress = total > 0 ? Math.round((project.stats.approved / total) * 100) : 0;
+    return (
+        <Card onClick={onSelect} className="p-0 overflow-hidden group flex flex-col h-full bg-white">
+            <div className={`h-24 p-8 flex justify-between items-start transition-colors duration-500 ${isCompleted ? 'bg-green-600' : 'bg-[#2A1F1D]'}`}>
+                <div className="relative z-10">
+                    <p className={`text-[9px] font-black uppercase tracking-widest px-3 py-1 rounded-full border mb-4 ${isCompleted ? 'bg-white/20 text-white' : 'bg-[#C06842] text-white'} border-transparent`}>{isCompleted ? 'Completed' : 'Active'}</p>
+                    <h3 className="text-xl font-serif font-bold text-white tracking-tight truncate w-full">{project.name}</h3>
+                </div>
+                <Award className="text-white opacity-20" size={32} />
+            </div>
+            <div className="p-8 flex-1 flex flex-col space-y-6 text-left">
+                <div className="flex items-center gap-2 text-[10px] font-black text-[#8C7B70] uppercase">
+                    <MapPin size={14} className="text-[#C06842]" /> <span className="truncate">{project.location}</span>
+                </div>
+                <div className="space-y-4">
+                    <div className="flex justify-between items-end">
+                        <div className="space-y-1">
+                            <p className="text-[9px] font-black text-[#8C7B70] uppercase tracking-widest">Progress</p>
+                            <h4 className="text-2xl font-serif font-black text-[#2A1F1D]">{progress}%</h4>
                         </div>
+                        <div className="flex gap-1">
+                            <PhaseTick active={project.planning_completed} label="P" />
+                            <PhaseTick active={project.design_completed} label="D" />
+                            <PhaseTick active={project.execution_completed} label="E" />
+                        </div>
+                    </div>
+                </div>
+                <div className="grid grid-cols-2 gap-3 pt-4 border-t border-[#E3DACD]/30">
+                    <div className="bg-[#F9F7F2] p-4 rounded-2xl border border-[#E3DACD]/40">
+                        <p className="text-[8px] font-black uppercase text-[#8C7B70] mb-1">Done</p>
+                        <p className="text-lg font-black text-green-700">{project.stats.approved}</p>
+                    </div>
+                    <div className="bg-[#F9F7F2] p-4 rounded-2xl border border-[#E3DACD]/40">
+                        <p className="text-[8px] font-black uppercase text-[#8C7B70] mb-1">Todo</p>
+                        <p className="text-lg font-black text-[#C06842]">{project.stats.pending + project.stats.submitted}</p>
+                    </div>
+                </div>
+                <Button variant="ghost" icon={ChevronRight} className="w-full">View Tasks</Button>
+            </div>
+        </Card>
+    );
+};
 
-                        {/* Modal Body */}
-                        <div className="p-6 md:p-8 overflow-y-auto space-y-4">
-                            {selectedProject.tasks
-                                .sort((a, b) => new Date(b.created_at) - new Date(a.created_at))
-                                .map(task => (
-                                    <div key={task.task_id} className="p-4 rounded-2xl bg-white border border-[#E3DACD]/40 shadow-sm flex flex-col md:flex-row justify-between gap-4">
-                                        <div className="flex-1">
-                                            <div className="flex items-center gap-2 mb-1">
-                                                <h4 className="font-bold text-[#2A1F1D] text-sm">{task.title}</h4>
-                                                <StatusBadge status={task.status} />
-                                            </div>
-                                            {task.description && <p className="text-xs text-[#5D4037] mb-2 leading-relaxed">{task.description}</p>}
-                                            <div className="flex items-center gap-3 text-[10px] text-[#8C7B70] font-bold">
-                                                <span className="flex items-center gap-1 uppercase tracking-wider"><Calendar size={12} /> {new Date(task.created_at).toLocaleDateString()}</span>
-                                                {task.image_path && <span className="text-[#C06842] flex items-center gap-1 uppercase tracking-wider">● Submission Attached</span>}
-                                            </div>
-                                        </div>
-                                        {task.image_path && (
-                                            <div className="flex flex-col gap-3 shrink-0">
-                                                <div className="w-full md:w-48 h-32 rounded-2xl overflow-hidden border border-[#E3DACD]/50 bg-[#F9F7F2] shadow-inner group/img cursor-zoom-in" onClick={() => openPreview(task)}>
-                                                    <img
-                                                        src={`${import.meta.env.VITE_API_URL}/${task.image_path}`}
-                                                        alt="Submission"
-                                                        className="w-full h-full object-cover transition-transform duration-500 group-hover/img:scale-110"
-                                                    />
-                                                    <div className="absolute inset-0 bg-[#2A1F1D]/20 opacity-0 group-hover/img:opacity-100 transition-opacity flex items-center justify-center">
-                                                        <Eye className="text-white w-8 h-8 drop-shadow-lg" />
-                                                    </div>
-                                                </div>
-                                                <button
-                                                    onClick={() => openPreview(task)}
-                                                    className="flex items-center justify-center gap-2 px-4 py-2 bg-white border border-[#E3DACD] rounded-xl text-[10px] font-black uppercase tracking-widest text-[#2A1F1D] hover:bg-[#C06842] hover:text-white transition-all shadow-sm"
-                                                >
-                                                    Full Resolution
-                                                </button>
-                                            </div>
-                                        )}
+const PhaseTick = ({ active, label }) => (
+    <div className={`w-6 h-6 rounded-md border flex items-center justify-center text-[10px] font-black transition-all ${active ? 'bg-green-600 text-white border-green-700 shadow-sm' : 'bg-white text-[#B8AFA5] border-[#E3DACD]/50'}`}>
+        {label}
+    </div>
+);
+
+const KanbanModal = ({ project, onClose, openPreview }) => {
+    const columns = [
+        { id: 'pending', title: 'Todo', icon: ClipboardList, color: 'text-[#8C7B70]', bg: 'bg-[#F9F7F2]' },
+        { id: 'submitted', title: 'Review', icon: RefreshCcw, color: 'text-blue-600', bg: 'bg-blue-50' },
+        { id: 'approved', title: 'Done', icon: CheckCircle2, color: 'text-green-600', bg: 'bg-green-50' },
+        { id: 'rejected', title: 'Rejected', icon: AlertCircle, color: 'text-red-600', bg: 'bg-red-50' }
+    ];
+    return (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-6 bg-[#2A1F1D]/80 backdrop-blur-xl">
+            <div className="bg-[#FDFCF8] rounded-[4rem] w-full max-w-[95vw] h-[90vh] overflow-hidden flex flex-col border border-white/20 shadow-3xl">
+                <header className="p-10 border-b border-[#E3DACD]/40 flex justify-between items-center bg-white/50 relative overflow-hidden">
+                    <div className="absolute top-0 right-0 w-64 h-64 bg-[#C06842]/5 blur-3xl rounded-full translate-x-1/2 -translate-y-1/2" />
+                    <div className="relative z-10">
+                        <SectionHeader title={project.name} subtitle={project.location} />
+                    </div>
+                    <button onClick={onClose} className="p-4 rounded-full bg-[#F9F7F2] text-[#8C7B70] hover:text-[#C06842] transition-colors"><XCircle size={32} /></button>
+                </header>
+                <div className="flex-1 overflow-x-auto p-10 bg-[#F9F7F2]/30">
+                    <div className="flex gap-10 h-full min-w-[1400px]">
+                        {columns.map(col => {
+                            const Icon = col.icon;
+                            return (
+                                <div key={col.id} className="flex-1 flex flex-col min-w-[320px]">
+                                    <div className={`p-5 rounded-3xl ${col.bg} border-2 border-white mb-8 flex items-center gap-4 ${col.color} shadow-sm`}>
+                                        <Icon size={20} />
+                                        <span className="text-[11px] font-black uppercase tracking-[0.2em]">{col.title}</span>
+                                        <span className="ml-auto bg-white/60 px-2 py-1 rounded-lg text-[10px] font-black">{project.tasks.filter(t => t.status.toLowerCase() === col.id).length}</span>
                                     </div>
-                                ))}
-                        </div>
+                                    <div className="flex-1 overflow-y-auto pr-3 space-y-6 scroll-smooth">
+                                        {project.tasks.filter(t => t.status.toLowerCase() === col.id).map(task => (
+                                            <TaskCard key={task.task_id} task={task} onPreview={() => openPreview(task)} />
+                                        ))}
+                                    </div>
+                                </div>
+                            );
+                        })}
                     </div>
-                </div>
-            )}
-
-            {/* Image Preview Modal */}
-            {isPreviewOpen && (
-                <div
-                    className="fixed inset-0 z-[200] flex items-center justify-center p-4 bg-[#2A1F1D]/90 animate-fade-in"
-                    onClick={() => setIsPreviewOpen(false)}
-                >
-                    <div className="relative max-w-4xl w-full flex flex-col items-center">
-                        <button className="absolute -top-12 right-0 text-white flex items-center gap-2 font-bold uppercase tracking-widest text-xs">
-                            Click anywhere to close
-                        </button>
-                        <img
-                            src={previewFile}
-                            alt="Submission detail"
-                            className="max-h-[85vh] w-auto rounded-xl shadow-2xl border-2 border-white object-contain"
-                            onClick={(e) => e.stopPropagation()}
-                        />
-                    </div>
-                </div>
-            )}
-        </div>
-    );
-};
-
-const ProjectCard = ({ project, onSelect, isCompleted = false }) => {
-    const approvedCount = project.tasks.filter(t => t.status === 'Approved').length;
-    const progress = Math.round((approvedCount / project.tasks.length) * 100);
-
-    return (
-        <div
-            className="glass-card flex flex-col h-full bg-white group cursor-pointer rounded-3xl p-6 border border-[#E3DACD]/40 hover:shadow-2xl hover:border-[#C06842]/30 transition-all duration-500 overflow-hidden relative"
-            onClick={onSelect}
-        >
-            <div className="absolute top-0 right-0 w-32 h-32 bg-[#C06842]/5 rounded-full blur-2xl -mr-16 -mt-16 group-hover:bg-[#C06842]/10 transition-colors"></div>
-
-            <div className="flex justify-between items-start mb-6 relative z-10">
-                <div className="flex-1">
-                    <h3 className="font-bold text-xl font-serif text-[#2A1F1D] group-hover:text-[#C06842] transition-colors leading-tight mb-2">
-                        {project.name}
-                    </h3>
-                    <div className="flex items-center gap-3">
-                        <p className="text-[10px] font-black uppercase tracking-widest text-[#8C7B70] flex items-center gap-1.5">
-                            <MapPin size={12} className="text-[#C06842]" /> {project.location}
-                        </p>
-                    </div>
-                </div>
-                <div className={`p-4 rounded-2xl transition-all duration-500 ${isCompleted ? 'bg-green-50 text-green-600' : 'bg-[#C06842]/10 text-[#C06842]'} group-hover:scale-110 shadow-sm border border-black/5`}>
-                    {isCompleted ? <Award size={22} /> : <Clock size={22} />}
-                </div>
-            </div>
-
-            <div className="mt-auto space-y-4 relative z-10">
-                <div className="space-y-2">
-                    <div className="flex justify-between text-[10px] uppercase tracking-[0.2em] font-black">
-                        <span className="text-[#8C7B70]">Site Execution Progress</span>
-                        <span className={isCompleted ? 'text-green-600' : 'text-[#C06842]'}>{progress}%</span>
-                    </div>
-                    <div className="h-2.5 bg-[#F9F7F2] rounded-full overflow-hidden border border-[#E3DACD]/30 shadow-inner p-0.5">
-                        <div
-                            className={`h-full rounded-full transition-all duration-1000 ease-out shadow-[0_0_10px_rgba(192,104,66,0.2)] ${isCompleted ? 'bg-gradient-to-r from-green-500 to-emerald-600' : 'bg-gradient-to-r from-[#D98B6C] to-[#C06842]'}`}
-                            style={{ width: `${progress}%` }}
-                        />
-                    </div>
-                </div>
-
-                <div className="flex justify-between items-center pt-4 border-t border-[#E3DACD]/20">
-                    <div className="flex items-center gap-2">
-                        <div className="flex -space-x-2">
-                            <div className="w-6 h-6 rounded-full border-2 border-white bg-[#F9F7F2] flex items-center justify-center">
-                                <User size={10} className="text-[#C06842]" />
-                            </div>
-                        </div>
-                        <span className="text-[9px] text-[#B8AFA5] font-black uppercase tracking-widest">
-                            {approvedCount}/{project.tasks.length} Verified
-                        </span>
-                    </div>
-                    <button className="flex items-center gap-2 text-[10px] font-black uppercase tracking-widest text-[#2A1F1D] group-hover:text-[#C06842] transition-colors">
-                        Inspect <ChevronRight size={14} className="group-hover:translate-x-1 transition-transform" />
-                    </button>
                 </div>
             </div>
         </div>
     );
 };
 
-const StatusBadge = ({ status }) => {
-    const colors = {
-        'Approved': 'bg-green-50 text-green-700 border-green-200',
-        'Submitted': 'bg-blue-50 text-blue-700 border-blue-200',
-        'Rejected': 'bg-red-50 text-red-700 border-red-200',
-        'Pending': 'bg-amber-50 text-amber-700 border-amber-200'
-    };
+const TaskCard = ({ task, onPreview }) => (
+    <Card variant="flat" className="p-6 border-transparent hover:border-[#C06842]/20 shadow-md">
+        <div className="flex justify-between items-start mb-4">
+            <h4 className="font-serif font-black text-[#2A1F1D] text-lg leading-tight text-left">{task.title}</h4>
+            <span className="text-[8px] font-black uppercase tracking-widest text-[#8C7B70] bg-[#F9F7F2] px-2 py-1 rounded-lg border border-[#E3DACD]/50">{new Date(task.created_at).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}</span>
+        </div>
+        {task.description && <p className="text-[11px] text-[#5D4037] leading-relaxed mb-6 font-medium text-left">{task.description}</p>}
+        {task.image_path && (
+            <div onClick={onPreview} className="relative mb-6 rounded-2xl overflow-hidden cursor-zoom-in aspect-video group">
+                <img src={`${import.meta.env.VITE_API_URL}/${task.image_path}`} alt="Detail" className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-110" />
+                <div className="absolute inset-0 bg-[#2A1F1D]/40 opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity"><Eye className="text-white" size={24} /></div>
+            </div>
+        )}
+        <div className="pt-4 border-t border-[#E3DACD]/30 flex justify-between items-center text-left">
+            <div className="flex items-center gap-3">
+                <div className="w-8 h-8 rounded-xl bg-[#2A1F1D] text-white flex items-center justify-center text-[10px] font-black shadow-md">{task.assigned_to_name?.[0]}</div>
+                <p className="text-[9px] font-black uppercase tracking-[0.1em] text-[#8C7B70]">{task.assigned_to_name?.split(' ')[0]}</p>
+            </div>
+            {task.due_date && <p className="text-[9px] font-black text-[#C06842] flex items-center gap-1.5"><Clock size={12} /> {new Date(task.due_date).toLocaleDateString()}</p>}
+        </div>
+    </Card>
+);
 
+const ImageModal = ({ isOpen, src, onClose }) => {
+    if (!isOpen) return null;
     return (
-        <span className={`px-2 py-0.5 rounded-lg text-[9px] font-black uppercase tracking-tighter border ${colors[status] || colors.Pending}`}>
-            {status}
-        </span>
+        <div className="fixed inset-0 z-[200] flex items-center justify-center p-8 bg-[#2A1F1D]/90 backdrop-blur-xl animate-fade-in" onClick={onClose}>
+            <div className="relative max-w-5xl w-full h-full flex flex-col items-center justify-center gap-6">
+                <XCircle size={48} className="absolute top-0 right-0 p-2 text-white/40 hover:text-white cursor-pointer transition-all" />
+                <img src={src} alt="Evidence" className="max-h-[85vh] w-auto rounded-[2rem] shadow-3xl border-4 border-white/20 object-contain shadow-black" onClick={e => e.stopPropagation()} />
+                <p className="text-white/40 text-[10px] font-black uppercase tracking-[0.4em]">Task Image</p>
+            </div>
+        </div>
     );
 };
 

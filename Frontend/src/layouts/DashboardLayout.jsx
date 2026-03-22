@@ -1,190 +1,150 @@
 import React, { useState, useEffect } from 'react';
 import { Outlet, useNavigate } from 'react-router-dom';
 import { useMockApp } from '../hooks/useMockApp';
-import { useToast } from '../context/ToastContext';
-import { Menu, Bell, ShieldCheck, AlertCircle } from 'lucide-react';
+import { Menu, Bell, ShieldCheck, AlertCircle, X, Search, User } from 'lucide-react';
 import Sidebar from '../components/Layout/Sidebar';
-import { motion } from 'framer-motion';
+import { motion, AnimatePresence } from 'framer-motion';
 import Onboarding from '../components/dashboard/Common/Onboarding';
 import AccountDisabled from '../pages/dashboard/Common/AccountDisabled';
 
 const DashboardLayout = () => {
     const { currentUser } = useMockApp();
     const navigate = useNavigate();
-    const [isSidebarOpen, setSidebarOpen] = useState(true);
+    const [isSidebarOpen, setSidebarOpen] = useState(window.innerWidth > 1024);
     const [isOnboardingOpen, setOnboardingOpen] = useState(false);
 
     // Live Location Update
     useEffect(() => {
         const updateLocation = async () => {
             if (!currentUser || !navigator.geolocation) return;
-
             navigator.geolocation.getCurrentPosition(async (position) => {
                 const { latitude, longitude } = position.coords;
                 const uid = currentUser.user_id || currentUser.id;
-
                 try {
-                    const response = await fetch(`${import.meta.env.VITE_API_URL}/api/users/${uid}/profile`, {
+                    await fetch(`${import.meta.env.VITE_API_URL}/api/users/${uid}/profile`, {
                         method: 'PUT',
                         headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify({ latitude, longitude })
                     });
-                    if (!response.ok) {
-                        const errorData = await response.json();
-                        console.error('[Dashboard] Location update failed:', errorData);
-                    }
-                } catch (err) {
-                    console.error('[Dashboard] Failed to update live location:', err);
-                }
-            }, (err) => {
-                console.warn('[Dashboard] Location access denied:', err.message);
-            }, { enableHighAccuracy: true });
+                } catch (err) { console.error('[Dashboard] Location update failed:', err); }
+            }, null, { enableHighAccuracy: true });
         };
-
         updateLocation();
     }, [currentUser]);
 
+    // Handle Resize for sidebar responsiveness
+    useEffect(() => {
+        const handleResize = () => {
+            if (window.innerWidth < 1024) setSidebarOpen(false);
+            else setSidebarOpen(true);
+        };
+        window.addEventListener('resize', handleResize);
+        return () => window.removeEventListener('resize', handleResize);
+    }, []);
+
     if (!currentUser) return null;
 
-    // 🔒 Gating Logic: Professionals must be 'Approved' to access the dashboard.
-    // Exceptions: Land Owners and Admins are approved by default.
-    // Normalize role for consistent status enforcement across the suite
-    const cat = (currentUser?.category || '').toLowerCase();
-    const subCat = (currentUser?.sub_category || '').toLowerCase();
-    const rawRole = currentUser?.role ? currentUser.role.toLowerCase().replace(/ /g, '_') : '';
-    const effectiveRole = rawRole || (subCat ? subCat.replace(/ /g, '_') : (cat ? cat.replace(/ /g, '_') : ''));
-
-    const isAdmin = effectiveRole === 'admin';
-    const isLandOwner = effectiveRole === 'land_owner';
-    const isContractor = effectiveRole === 'contractor';
-    
+    const role = (currentUser?.role || '').toLowerCase();
     const status = (currentUser.status || '').toLowerCase();
+    
+    // Authorization & Status Gating
+    const isExempt = ['admin', 'land_owner', 'contractor'].includes(role);
     const isPending = status === 'pending';
     const isRejected = status === 'rejected';
     const isDisabled = status === 'disabled';
-    const isExempt = isAdmin || isLandOwner || isContractor;
     const isAppealing = currentUser.appeal_reason || currentUser.rejection_reason?.startsWith('[APPEAL SUBMITTED]');
 
-    // 🔒 RESTRICTION GATE: 
-    // ONLY block established accounts if they are explicitly 'Disabled', 
-    // or if they have an active appeal pending review.
-    if (isDisabled || (isAppealing && isExempt)) {
-        return <AccountDisabled />;
-    }
+    if (isDisabled || (isAppealing && isExempt)) return <AccountDisabled />;
 
-    // 🛡️ VERIFICATION GATE:
-    // Block new professionals (non-exempt) who are Pending or Rejected.
     if ((isPending || isRejected) && !isExempt) {
         return (
-            <div className="flex items-center justify-center min-h-screen bg-[#FDFCF8] p-8">
-                <motion.div
-                    initial={{ opacity: 0, y: 20 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    transition={{ duration: 0.6, ease: "easeOut" }}
-                    className="max-w-xl w-full text-center space-y-10"
-                >
+            <div className="flex items-center justify-center min-vh-screen bg-[#FDFCF8] p-8">
+                <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="max-w-xl w-full text-center space-y-10">
                     <div className="relative mx-auto w-24 h-24">
-                        <motion.div
-                            animate={{ scale: [1, 1.1, 1] }}
-                            transition={{ repeat: Infinity, duration: 3 }}
-                            className={`w-24 h-24 rounded-3xl flex items-center justify-center shadow-2xl ${isPending ? 'bg-[#3E2B26] text-white' : 'bg-red-50 text-red-600'}`}
-                        >
+                        <div className={`w-24 h-24 rounded-3xl flex items-center justify-center shadow-2xl ${isPending ? 'bg-[#2A1F1D] text-white' : 'bg-red-50 text-red-600'}`}>
                             {isPending ? <ShieldCheck size={48} /> : <AlertCircle size={48} />}
-                        </motion.div>
-                        {isPending && (
-                            <motion.div
-                                animate={{ rotate: 360 }}
-                                transition={{ repeat: Infinity, duration: 8, ease: "linear" }}
-                                className="absolute -top-2 -right-2 w-8 h-8 bg-[#A65D3B] rounded-full border-4 border-white flex items-center justify-center"
-                            >
-                                <div className="w-1 h-3 bg-white/50 rounded-full animate-pulse" />
-                            </motion.div>
-                        )}
+                        </div>
                     </div>
-
                     <div className="space-y-4">
-                        <h1 className="text-4xl font-serif font-bold text-[#3E2B26] tracking-tight">
-                            {isPending ? 'Verification in Progress' : 'Verification Rejected'}
-                        </h1>
-                        <div className="h-1 w-20 bg-[#A65D3B]/20 mx-auto rounded-full" />
-                        <p className="text-lg text-[#8C7B70] leading-relaxed max-w-md mx-auto">
-                            {isPending
-                                ? "Our admin team is currently reviewing your professional credentials. You'll gain full access to the dashboard as soon as your expertise is verified."
-                                : `Your professional verification was not successful. Review the feedback below and update your documents.`
-                            }
+                        <h1 className="text-4xl font-serif font-black text-[#2A1F1D] tracking-tight">{isPending ? 'Verification Protocol' : 'Identity Verification Rejected'}</h1>
+                        <p className="text-lg text-[#8C7B70] leading-relaxed max-w-sm mx-auto font-medium">
+                            {isPending ? "Your credentials are currently undergoing operational review. Full dashboard access awaits verification." : "Your professional identity could not be verified. Please update your documentation."}
                         </p>
                     </div>
-
-                    {isRejected && (
-                        <div className="bg-red-50/50 border border-red-100 p-6 rounded-[2rem] text-left">
-                            <span className="text-[10px] font-black uppercase tracking-widest text-red-400 mb-2 block">Admin Feedback</span>
-                            <p className="text-sm text-red-700 font-medium italic">
-                                "{currentUser.rejection_reason || 'Documents were unclear or insufficient. Please ensure your Degree and Resume are high-quality PDF/Images.'}"
-                            </p>
-                        </div>
-                    )}
-
+                    {isRejected && <div className="bg-red-50/50 p-6 rounded-3xl border border-red-100 text-sm text-red-700 italic font-semibold italic text-left">"{currentUser.rejection_reason || 'Incomplete or unclear documentation.'}"</div>}
                     <div className="flex flex-col gap-4">
-                        <button
-                            onClick={() => setOnboardingOpen(true)}
-                            className="w-full py-5 bg-[#3E2B26] text-white rounded-2xl font-black text-xs uppercase tracking-widest shadow-xl shadow-[#3E2B26]/20 transition-all hover:scale-[1.02] active:scale-95"
-                        >
-                            {isPending ? 'Check Status Again' : 'Update & Re-submit'}
-                        </button>
-
-                        {isOnboardingOpen && (
-                            <Onboarding 
-                                isOpen={isOnboardingOpen} 
-                                onClose={() => setOnboardingOpen(false)} 
-                                user={currentUser}
-                                onComplete={() => window.location.reload()}
-                            />
-                        )}
-
-                        <button
-                            onClick={() => navigate('/')}
-                            className="py-3 text-[10px] font-black uppercase tracking-[0.2em] text-[#8C7B70]/60 hover:text-[#3E2B26] transition-colors"
-                        >
-                            Back to Home
-                        </button>
+                        <button onClick={() => setOnboardingOpen(true)} className="w-full py-5 bg-[#2A1F1D] text-white rounded-2xl font-black text-[10px] uppercase tracking-widest shadow-xl">Update Operational Profile</button>
+                        <button onClick={() => navigate('/')} className="text-[10px] font-black uppercase text-[#8C7B70] tracking-[0.2em]">Exit Portal</button>
                     </div>
                 </motion.div>
+                {isOnboardingOpen && <Onboarding isOpen={isOnboardingOpen} onClose={() => setOnboardingOpen(false)} user={currentUser} onComplete={() => window.location.reload()} />}
             </div>
         );
     }
 
     return (
-        <div className="flex h-screen bg-enola-beige/20 overflow-hidden relative font-sans text-enola-dark-brown">
+        <div className="flex h-screen bg-[#FDFCF8] font-sans text-[#2A1F1D] overflow-hidden">
+            {/* Sidebar Backdrop for Mobile */}
+            <AnimatePresence>
+                {isSidebarOpen && window.innerWidth < 1024 && (
+                    <motion.div 
+                        initial={{ opacity: 0 }} 
+                        animate={{ opacity: 1 }} 
+                        exit={{ opacity: 0 }}
+                        onClick={() => setSidebarOpen(false)}
+                        className="fixed inset-0 bg-[#2A1F1D]/40 backdrop-blur-sm z-30 lg:hidden"
+                    />
+                )}
+            </AnimatePresence>
 
-            {/* Sidebar */}
-            <Sidebar isOpen={isSidebarOpen} onClose={() => setSidebarOpen(false)} />
+            {/* Sidebar Component */}
+            <div className={`fixed inset-y-0 left-0 z-40 lg:relative lg:block transform transition-transform duration-500 ease-in-out ${isSidebarOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'} ${isSidebarOpen ? 'lg:w-72' : 'lg:w-24'}`}>
+                <Sidebar isOpen={isSidebarOpen} onClose={() => setSidebarOpen(false)} />
+            </div>
 
-            {/* Main Content */}
-            <div className="flex-1 flex flex-col overflow-hidden">
-                {/* Header */}
-                <header className="h-20 bg-enola-cream/80 backdrop-blur-sm shadow-sm flex items-center justify-between px-8 z-10 border-b border-enola-sand/20">
-                    <button
-                        onClick={() => setSidebarOpen(!isSidebarOpen)}
-                        className="p-2 rounded-xl hover:bg-enola-brown/10 text-enola-brown transition-colors"
-                    >
-                        <Menu className="w-6 h-6" />
-                    </button>
-
-                    <div className="flex items-center space-x-6">
-                        <div className="hidden md:block">
-                            <h2 className="font-serif font-bold text-xl text-enola-dark-brown/80">
-                                Welcome back, {currentUser.name.split(' ')[0]}
-                            </h2>
-                        </div>
-                        <button className="p-2 relative rounded-full hover:bg-enola-brown/10 text-enola-taupe transition-colors">
-                            <Bell className="w-6 h-6" />
+            {/* Main Application Area */}
+            <div className="flex-1 flex flex-col min-w-0 h-screen overflow-hidden">
+                {/* Modern Unified Header */}
+                <header className="h-20 shrink-0 bg-white/80 backdrop-blur-xl border-b border-[#E3DACD]/40 flex items-center justify-between px-6 lg:px-12 z-20">
+                    <div className="flex items-center gap-6">
+                        <button onClick={() => setSidebarOpen(!isSidebarOpen)} className="p-3 rounded-2xl bg-[#F9F7F2] text-[#2A1F1D] hover:bg-[#C06842] hover:text-white transition-all duration-300 active:scale-95 shadow-sm">
+                            {isSidebarOpen && window.innerWidth < 1024 ? <X size={20} /> : <Menu size={20} />}
                         </button>
+                        <div className="hidden sm:block">
+                            <p className="text-[10px] font-black uppercase tracking-[0.2em] text-[#C06842] mb-0.5">Global Navigation</p>
+                            <h2 className="font-serif font-black text-xl text-[#2A1F1D] tracking-tight truncate">Welcome Back, {currentUser.name.split(' ')[0]}</h2>
+                        </div>
+                    </div>
+
+                    <div className="flex items-center gap-3 lg:gap-6">
+                        <div className="hidden md:flex items-center bg-[#F9F7F2] px-5 py-2.5 rounded-2xl border border-[#E3DACD]/50 w-64 focus-within:border-[#C06842] group transition-all">
+                            <Search size={16} className="text-[#8C7B70] group-focus-within:text-[#C06842]" />
+                            <input type="text" placeholder="Strategic search..." className="bg-transparent border-none outline-none text-xs font-bold w-full ml-3 placeholder:text-[#8C7B70]/60" />
+                        </div>
+                        <div className="flex items-center gap-2">
+                            <button onClick={() => navigate('/dashboard/notifications')} className="p-3 relative rounded-2xl bg-[#F9F7F2] hover:bg-white text-[#8C7B70] hover:text-[#C06842] border border-[#E3DACD]/20 transition-all shadow-sm group">
+                                <Bell size={20} className="group-hover:rotate-12 transition-transform" />
+                                <div className="absolute top-3 right-3 w-2 h-2 bg-[#C06842] rounded-full ring-2 ring-white animate-pulse" />
+                            </button>
+                            <button onClick={() => navigate('/dashboard/settings')} className="flex items-center gap-3 p-1.5 pr-5 bg-[#F9F7F2] rounded-2xl border border-[#E3DACD]/20 hover:shadow-lg transition-all group">
+                                <div className="w-9 h-9 rounded-xl bg-[#2A1F1D] flex items-center justify-center text-white text-xs font-black shadow-lg">
+                                    {currentUser.name?.[0]}
+                                </div>
+                                <span className="hidden lg:block text-[10px] font-black uppercase tracking-widest text-[#2A1F1D] group-hover:text-[#C06842]">Profile Hub</span>
+                            </button>
+                        </div>
                     </div>
                 </header>
 
-                {/* Page Content */}
-                <main className="flex-1 overflow-x-hidden overflow-y-auto bg-enola-beige/30 p-4 lg:p-8 custom-scrollbar">
-                    <Outlet />
+                {/* Primary Content Scrollable Area */}
+                <main className="flex-1 overflow-x-hidden overflow-y-auto custom-scrollbar bg-[#FDFCF8] relative selection:bg-[#C06842]/20">
+                    <div className="p-6 lg:p-12 min-h-full">
+                        <Outlet />
+                    </div>
+                    {/* Background Subtle Aesthetics */}
+                    <div className="fixed top-0 left-0 w-full h-full pointer-events-none -z-10 bg-[#FDFCF8]">
+                        <div className="absolute top-0 right-0 w-full h-full opacity-[0.03] pointer-events-none" style={{ backgroundImage: 'radial-gradient(#C06842 1px, transparent 1px)', backgroundSize: '40px 40px' }} />
+                    </div>
                 </main>
             </div>
         </div>
@@ -192,4 +152,3 @@ const DashboardLayout = () => {
 };
 
 export default DashboardLayout;
-

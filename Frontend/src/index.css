@@ -1,40 +1,47 @@
 @import "tailwindcss";
 
 :root {
-  /* --- Premium Warm Construction Theme (Refined) --- */
+  /* --- Colors --- */
   --bg-color: #FDFCF8;
-  /* Lighter, cleaner cream */
-
-  /* Glass Surfaces */
   --surface-glass: rgba(255, 255, 255, 0.75);
   --surface-glass-hover: rgba(255, 255, 255, 0.95);
-  --border-glass: rgba(166, 93, 59, 0.15);
-  /* Subtle Terracotta tint */
-
-  /* Text Colors */
+  --border-glass: rgba(192, 104, 66, 0.1);
   --text-main: #2A1F1D;
-  /* Darker, sharper brown */
-  --text-muted: #6E5E56;
+  --text-muted: #8C7B70;
   --text-accent: #C06842;
-  /* Vibrant Terracotta */
-
-  /* Primary Colors */
-  --primary: #4A342E;
-  /* Deep Coffee */
-  --primary-glow: rgba(192, 104, 66, 0.25);
-
-  /* Secondary & Accents */
+  --primary: #2A1F1D;
   --secondary: #E3DACD;
-  /* Warm Beige */
   --accent-warm: #E68A2E;
-  /* Rich Amber */
-  --accent-gold: #C5A065;
-  /* Muted Gold for luxury feel */
+  --success: #10B981;
+  --warning: #F59E0B;
+  --error: #EF4444;
 
-  /* Layout */
-  --container-width: 1280px;
+  /* --- Spacing System (8px Based) --- */
+  --s-1: 0.25rem; /* 4px */
+  --s-2: 0.5rem;  /* 8px */
+  --s-3: 0.75rem; /* 12px */
+  --s-4: 1rem;    /* 16px */
+  --s-5: 1.5rem;  /* 24px */
+  --s-6: 2rem;    /* 32px */
+  --s-8: 3rem;    /* 48px */
+  --s-10: 4rem;   /* 64px */
 
-  font-family: 'Inter', system-ui, sans-serif;
+  /* --- Border Radius --- */
+  --r-sm: 0.5rem;   /* 8px */
+  --r-md: 0.75rem;  /* 12px */
+  --r-lg: 1rem;     /* 16px */
+  --r-xl: 1.5rem;   /* 24px */
+  --r-2xl: 2rem;    /* 32px */
+  --r-full: 9999px;
+
+  /* --- Shadows --- */
+  --shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
+  --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+  --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
+  --shadow-xl: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
+  --shadow-premium: 0 20px 40px rgba(192, 104, 66, 0.08);
+
+  font-family: 'Inter', system-ui, -apple-system, sans-serif;
 }
 
 body {

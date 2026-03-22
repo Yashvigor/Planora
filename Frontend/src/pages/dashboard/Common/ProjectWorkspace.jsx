@@ -64,6 +64,11 @@ const ProjectWorkspace = () => {
 
     const handleUpdatePhase = async (phase, completed) => {
         if (updating) return;
+
+        if (project?.status === 'Completed') {
+            showToast("This project is finalized and locked. No further modifications are allowed.", "info");
+            return;
+        }
         
         const canUpdate = currentUser?.role === 'land_owner' || currentUser?.role === 'contractor';
         if (!canUpdate) {
@@ -279,17 +284,17 @@ const ProjectWorkspace = () => {
                                                     </div>
 
                                                     <button
-                                                        disabled={updating || isLocked}
+                                                        disabled={updating || isLocked || project.status === 'Completed'}
                                                         onClick={() => handleUpdatePhase(phase.id, !phase.completed)}
                                                         className={`w-full py-4 rounded-2xl text-[10px] font-black uppercase tracking-[0.3em] transition-all border ${
                                                             phase.completed
                                                             ? 'bg-white text-green-700 border-green-100 hover:bg-green-100/50'
-                                                            : isLocked
+                                                            : isLocked || project.status === 'Completed'
                                                                 ? 'bg-transparent text-[#B8AFA5] border-[#E3DACD] cursor-not-allowed'
                                                                 : 'bg-[#2A1F1D] text-white hover:bg-[#C06842] border-transparent hover:scale-[0.98] active:scale-95 shadow-xl'
                                                         }`}
                                                     >
-                                                        {phase.completed ? 'Reopen Milestone' : isLocked ? 'Locked' : 'Initialize Completion'}
+                                                        {phase.completed ? 'Reopen Milestone' : (isLocked || project.status === 'Completed') ? 'Locked' : 'Initialize Completion'}
                                                     </button>
                                                 </div>
                                             </div>

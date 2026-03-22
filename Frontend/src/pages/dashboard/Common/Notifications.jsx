@@ -1,80 +1,123 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { useMockApp } from '../../../hooks/useMockApp';
 import {
-    Bell, Check, CheckCheck, Trash2, Clock, Upload, XCircle, FileText,
-    ExternalLink, AlertCircle, Info, CheckCircle2
+    Bell, CheckCheck, Clock, Upload, XCircle, 
+    ExternalLink, Info, CheckCircle2, ChevronRight
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useNavigate } from 'react-router-dom';
-
 import socket from '../../../utils/socket';
+import { format, isToday, isYesterday } from 'date-fns';
+
+// Shared Components
+import Card from '../../../components/Common/Card';
+import Button from '../../../components/Common/Button';
+import SectionHeader from '../../../components/Common/SectionHeader';
+
+const NotificationCardItem = ({ n, onRead, onResponse, onNavigate }) => {
+    const getIcon = (type) => {
+        const iconBaseStyle = "w-14 h-14 rounded-2xl flex items-center justify-center transition-all duration-300 shadow-sm border-2";
+        switch (type) {
+            case 'invitation': return <div className={`${iconBaseStyle} bg-blue-50 border-blue-100 text-blue-600`}><Bell size={22} /></div>;
+            case 'invitation_response': return <div className={`${iconBaseStyle} bg-indigo-50 border-indigo-100 text-indigo-600`}><CheckCheck size={22} /></div>;
+            case 'task_assignment': return <div className={`${iconBaseStyle} bg-amber-50 border-amber-100 text-amber-600`}><Clock size={22} /></div>;
+            case 'task_completion': return <div className={`${iconBaseStyle} bg-emerald-50 border-emerald-100 text-emerald-600`}><Upload size={22} /></div>;
+            case 'task_approval': return <div className={`${iconBaseStyle} bg-green-50 border-green-100 text-green-600`}><CheckCircle2 size={22} /></div>;
+            case 'task_rejection': return <div className={`${iconBaseStyle} bg-rose-50 border-rose-100 text-rose-600`}><XCircle size={22} /></div>;
+            default: return <div className={`${iconBaseStyle} bg-[#FDFCF8] border-[#E3DACD] text-[#C06842]`}><Info size={22} /></div>;
+        }
+    };
+
+    return (
+        <motion.div
+            layout
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, scale: 0.95 }}
+            className="w-full"
+        >
+            <Card variant={n.is_read ? 'flat' : 'glass'} className={`group relative flex gap-8 p-6 lg:p-10 transition-all duration-500 border-2 ${n.is_read ? 'opacity-70 grayscale-[0.5] border-transparent' : 'border-[#C06842]/10 ring-4 ring-[#C06842]/5'}`}>
+                <div className="shrink-0">{getIcon(n.type)}</div>
+                
+                <div className="flex-1 min-w-0 text-left">
+                    <div className="flex justify-between items-start mb-3">
+                        <span className="text-[10px] font-black uppercase tracking-[0.2em] text-[#C06842]">
+                            {format(new Date(n.created_at), 'p')} • {n.type?.replace(/_/g, ' ')}
+                        </span>
+                        {!n.is_read && <div className="w-2.5 h-2.5 bg-[#C06842] rounded-full animate-pulse shadow-lg" />}
+                    </div>
+
+                    <p className={`text-xl leading-tight mb-6 ${n.is_read ? 'text-[#8C7B70]' : 'font-serif font-black text-[#2A1F1D] tracking-tight'}`}>
+                        {n.message}
+                    </p>
+
+                    {n.type === 'invitation' && n.related_id && !n.is_read && (
+                        <div className="mb-6 p-6 bg-[#FDFCF8] rounded-3xl border border-[#E3DACD]/50 shadow-inner">
+                            <h4 className="font-serif font-bold text-lg text-[#2A1F1D]">{n.project_name || 'Project Invitation'}</h4>
+                            <p className="text-[11px] text-[#8C7B70] mt-2 font-medium leading-relaxed italic">You have been invited to join this project.</p>
+                            <div className="flex flex-wrap gap-4 mt-6">
+                                <Button size="sm" onClick={() => onResponse(n.id, n.related_id, 'Accepted')}>Accept Invitation</Button>
+                                <Button size="sm" variant="ghost" className="text-rose-600" onClick={() => onResponse(n.id, n.related_id, 'Rejected')}>Decline</Button>
+                            </div>
+                        </div>
+                    )}
+
+                    <div className="flex items-center gap-6">
+                        {n.link && (
+                            <button onClick={() => onNavigate(n.link)} className="flex items-center gap-2 text-[10px] font-black uppercase tracking-[0.3em] text-[#C06842] hover:text-[#2A1F1D] transition-colors group/link">
+                                View Project <ChevronRight size={14} className="group-hover/link:translate-x-1 transition-transform" />
+                            </button>
+                        )}
+                        {!n.is_read && (
+                            <button onClick={() => onRead(n.id)} className="text-[10px] font-black uppercase tracking-[0.3em] text-[#8C7B70] hover:text-[#2A1F1D] ml-auto">Mark as Read</button>
+                        )}
+                    </div>
+                </div>
+            </Card>
+        </motion.div>
+    );
+};
 
 const Notifications = () => {
     const { currentUser: ctxUser } = useMockApp();
-    const currentUser = ctxUser || (() => {
-        try {
-            const raw = localStorage.getItem('planora_current_user') || localStorage.getItem('user');
-            return raw ? JSON.parse(raw) : null;
-        } catch { return null; }
-    })();
-
-    const getToken = () => localStorage.getItem('planora_token') || localStorage.getItem('token') || '';
+    const currentUser = ctxUser;
     const [notifications, setNotifications] = useState([]);
     const [loading, setLoading] = useState(true);
     const navigate = useNavigate();
 
-    const fetchNotifications = async () => {
+    const fetchNotifications = useCallback(async () => {
         if (!currentUser) return;
+        setLoading(true);
         try {
             const uid = currentUser.user_id || currentUser.id;
             const res = await fetch(`${import.meta.env.VITE_API_URL}/api/notifications/${uid}`, {
-                headers: { 'Authorization': `Bearer ${getToken()}` }
+                headers: { 'Authorization': `Bearer ${localStorage.getItem('planora_token') || localStorage.getItem('token')}` }
             });
-            if (res.ok) {
-                setNotifications(await res.json());
-            }
-        } catch (err) {
-            console.error("Failed to fetch notifications:", err);
-        } finally {
-            setLoading(false);
-        }
-    };
+            if (res.ok) setNotifications(await res.json());
+        } catch (err) { console.error("Failed notification hydration:", err); }
+        finally { setLoading(false); }
+    }, [currentUser]);
 
     useEffect(() => {
         fetchNotifications();
-
         if (currentUser) {
             const uid = currentUser.user_id || currentUser.id;
-            socket.on('connect', () => {
-                socket.emit('join', uid);
-            });
-            if (!socket.connected) socket.connect();
-            else socket.emit('join', uid);
-
-            socket.on('new_notification', (noti) => {
-                // Add new notification to the top of the list
-                setNotifications(prev => [noti, ...prev]);
-            });
-
-            return () => {
-                socket.off('new_notification');
-            };
+            socket.on('new_notification', (noti) => setNotifications(prev => [noti, ...prev]));
+            return () => socket.off('new_notification');
         }
-    }, [currentUser]);
+    }, [currentUser, fetchNotifications]);
 
     const markAsRead = async (id) => {
         try {
             const res = await fetch(`${import.meta.env.VITE_API_URL}/api/notifications/${id}/read`, {
                 method: 'PUT',
-                headers: { 'Authorization': `Bearer ${getToken()}` }
+                headers: { 'Authorization': `Bearer ${localStorage.getItem('planora_token') || localStorage.getItem('token')}` }
             });
             if (res.ok) {
                 setNotifications(prev => prev.map(n => n.id === id ? { ...n, is_read: true } : n));
                 window.dispatchEvent(new CustomEvent('planora_notification_read'));
             }
-        } catch (err) {
-            console.error("Failed to mark as read:", err);
-        }
+        } catch (err) { console.error(err); }
     };
 
     const markAllRead = async () => {
@@ -82,15 +125,13 @@ const Notifications = () => {
             const uid = currentUser.user_id || currentUser.id;
             const res = await fetch(`${import.meta.env.VITE_API_URL}/api/notifications/user/${uid}/read-all`, {
                 method: 'PUT',
-                headers: { 'Authorization': `Bearer ${getToken()}` }
+                headers: { 'Authorization': `Bearer ${localStorage.getItem('planora_token') || localStorage.getItem('token')}` }
             });
             if (res.ok) {
                 setNotifications(prev => prev.map(n => ({ ...n, is_read: true })));
                 window.dispatchEvent(new CustomEvent('planora_notification_read'));
             }
-        } catch (err) {
-            console.error("Failed to mark all as read:", err);
-        }
+        } catch (err) { console.error(err); }
     };
 
     const handleInvitationResponse = async (notificationId, projectId, status) => {
@@ -98,245 +139,80 @@ const Notifications = () => {
             const uid = currentUser.user_id || currentUser.id;
             const res = await fetch(`${import.meta.env.VITE_API_URL}/api/projects/${projectId}/assign/${uid}/status`, {
                 method: 'PUT',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'Authorization': `Bearer ${getToken()}`
-                },
+                headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${localStorage.getItem('planora_token') || localStorage.getItem('token')}` },
                 body: JSON.stringify({ status })
             });
-
-            if (res.ok) {
-                await markAsRead(notificationId);
-                fetchNotifications();
-            } else {
-                alert(`Failed to ${status.toLowerCase()} invitation.`);
-            }
-        } catch (err) {
-            console.error("Error responding to invite:", err);
-        }
+            if (res.ok) { await markAsRead(notificationId); fetchNotifications(); }
+        } catch (err) { console.error(err); }
     };
 
-    const getIcon = (type) => {
-        const iconBaseStyle = "p-3 rounded-2xl transition-all duration-300 shadow-sm ring-1 ring-inset";
-        switch (type) {
-            case 'invitation': 
-                return (
-                    <div className={`${iconBaseStyle} bg-blue-50 ring-blue-100 text-blue-600`}>
-                        <Bell size={22} strokeWidth={2.5} />
-                    </div>
-                );
-            case 'invitation_response': 
-                return (
-                    <div className={`${iconBaseStyle} bg-indigo-50 ring-indigo-100 text-indigo-600`}>
-                        <CheckCheck size={22} strokeWidth={2.5} />
-                    </div>
-                );
-            case 'task_assignment': 
-                return (
-                    <div className={`${iconBaseStyle} bg-amber-50 ring-amber-100 text-amber-600`}>
-                        <Clock size={22} strokeWidth={2.5} />
-                    </div>
-                );
-            case 'task_completion': 
-                return (
-                    <div className={`${iconBaseStyle} bg-indigo-50 ring-indigo-100 text-indigo-600`}>
-                        <Upload size={22} strokeWidth={2.5} />
-                    </div>
-                );
-            case 'task_approval': 
-                return (
-                    <div className={`${iconBaseStyle} bg-green-50 ring-green-100 text-green-600`}>
-                        <CheckCircle2 size={22} strokeWidth={2.5} />
-                    </div>
-                );
-            case 'task_rejection': 
-                return (
-                    <div className={`${iconBaseStyle} bg-rose-50 ring-rose-100 text-rose-600`}>
-                        <XCircle size={22} strokeWidth={2.5} />
-                    </div>
-                );
-            case 'quotation_review':
-                return (
-                    <div className={`${iconBaseStyle} bg-rose-50 ring-rose-100 text-rose-600`}>
-                        <FileText size={22} strokeWidth={2.5} />
-                    </div>
-                )
-            default: 
-                return (
-                    <div className={`${iconBaseStyle} bg-[#F9F7F2] ring-[#E3DACD] text-[#C06842]`}>
-                        <Info size={22} strokeWidth={2.5} />
-                    </div>
-                );
-        }
-    };
+    const grouped = useMemo(() => {
+        const groups = { Today: [], Yesterday: [], Earlier: [] };
+        notifications.forEach(n => {
+            const d = new Date(n.created_at);
+            if (isToday(d)) groups.Today.push(n);
+            else if (isYesterday(d)) groups.Yesterday.push(n);
+            else groups.Earlier.push(n);
+        });
+        return groups;
+    }, [notifications]);
 
-    const formatTime = (dateStr) => {
-        const date = new Date(dateStr);
-        return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) + ' · ' + date.toLocaleDateString();
-    };
+    if (loading) return (
+        <div className="flex flex-col items-center justify-center min-vh-screen space-y-6 bg-[#FDFCF8]">
+            <div className="w-16 h-16 border-4 border-[#C06842]/10 border-t-[#C06842] rounded-full animate-spin" />
+            <p className="text-[10px] font-black uppercase tracking-[0.4em] text-[#8C7B70] animate-pulse">Loading Notifications...</p>
+        </div>
+    );
 
     return (
-        <div className="p-4 md:p-12 bg-[#FDFCF8] min-h-screen font-sans text-[#2A1F1D] selection:bg-[#C06842]/20">
-            <div className="max-w-4xl mx-auto space-y-12">
-                {/* Header Section */}
-                <div className="flex flex-col md:flex-row justify-between items-end gap-6 border-b border-[#E3DACD]/40 pb-10">
-                    <div className="space-y-4">
-                        <motion.div 
-                            initial={{ opacity: 0, x: -20 }}
-                            animate={{ opacity: 1, x: 0 }}
-                            className="flex items-center gap-3 text-[#C06842]"
-                        >
-                            <span className="h-[2px] w-8 bg-[#C06842]/30" />
-                            <span className="text-[10px] font-black uppercase tracking-[0.2em] font-sans">Intelligence Center</span>
-                        </motion.div>
-                        <h1 className="text-5xl font-serif font-black tracking-tight text-[#2A1F1D]">Notifications</h1>
-                        <p className="text-[#8C7B70] text-lg font-medium max-w-lg leading-relaxed">
-                            Stay synchronized with your team and capture every milestone of your project's progression.
-                        </p>
+        <div className="max-w-5xl mx-auto space-y-24 py-16">
+            {/* Intelligence Header */}
+            <div className="flex flex-col md:flex-row justify-between items-end gap-12 text-left">
+                <div className="space-y-4">
+                    <div className="flex items-center gap-4 text-[#C06842]">
+                        <span className="h-[1px] w-10 bg-[#C06842]" />
+                        <span className="text-[10px] font-black uppercase tracking-[0.4em]">Alerts</span>
                     </div>
-
-                    {notifications.some(n => !n.is_read) && (
-                        <motion.button
-                            initial={{ opacity: 0, scale: 0.9 }}
-                            animate={{ opacity: 1, scale: 1 }}
-                            whileHover={{ y: -2 }}
-                            whileTap={{ scale: 0.98 }}
-                            onClick={markAllRead}
-                            className="px-6 py-3 bg-[#2A1F1D] text-white rounded-2xl text-xs font-bold uppercase tracking-widest hover:bg-[#C06842] transition-all shadow-xl shadow-[#2A1F1D]/10 hover:shadow-[#C06842]/20"
-                        >
-                            Mark All As Read
-                        </motion.button>
-                    )}
+                    <h1 className="text-7xl font-serif font-black tracking-tighter text-[#2A1F1D] leading-none">Notifications</h1>
+                    <p className="text-lg text-[#8C7B70] font-medium leading-relaxed max-w-sm">
+                        Stay updated with your latest project activities and alerts.
+                    </p>
                 </div>
-
-                {loading ? (
-                    <div className="flex flex-col items-center justify-center py-32 space-y-4">
-                        <div className="w-12 h-12 border-[3px] border-[#C06842]/10 border-t-[#C06842] rounded-full animate-spin" />
-                        <span className="text-xs font-bold text-[#8C7B70] uppercase tracking-widest">Hydrating data...</span>
-                    </div>
-                ) : notifications.length === 0 ? (
-                    <motion.div 
-                        initial={{ opacity: 0, y: 20 }}
-                        animate={{ opacity: 1, y: 0 }}
-                        className="text-center py-32 bg-white rounded-[3rem] border border-[#E3DACD]/50 shadow-sm relative overflow-hidden group"
-                    >
-                        <div className="absolute top-0 right-0 w-64 h-64 bg-[#F9F7F2] rounded-full blur-[100px] -mr-32 -mt-32 opacity-50" />
-                        <Bell size={64} className="mx-auto mb-6 text-[#E3DACD] group-hover:scale-110 transition-transform duration-500" strokeWidth={1} />
-                        <h3 className="font-serif text-3xl font-bold text-[#2A1F1D] mb-2">Absolute Tranquility</h3>
-                        <p className="text-[#8C7B70] font-medium">You're caught up with everything. There are no pending updates.</p>
-                    </motion.div>
-                ) : (
-                    <div className="space-y-4">
-                        <AnimatePresence mode="popLayout">
-                            {notifications.map((n) => (
-                                <motion.div
-                                    layout
-                                    initial={{ opacity: 0, y: 20, scale: 0.98 }}
-                                    animate={{ opacity: 1, y: 0, scale: 1 }}
-                                    exit={{ opacity: 0, x: -20 }}
-                                    key={n.id}
-                                    className={`group relative flex flex-col md:flex-row items-start gap-6 p-8 rounded-[2rem] border transition-all duration-500 ${n.is_read
-                                        ? 'bg-white/40 border-[#E3DACD]/30 opacity-70 hover:opacity-100 hover:bg-white'
-                                        : 'bg-white border-[#C06842]/20 shadow-xl shadow-[#C06842]/5 ring-1 ring-[#C06842]/5'
-                                        }`}
-                                >
-                                    {/* Unread Indicator Dot */}
-                                    {!n.is_read && (
-                                        <div className="absolute top-8 right-8 w-2 h-2 bg-[#C06842] rounded-full animate-pulse shadow-lg shadow-[#C06842]/50" />
-                                    )}
-
-                                    <div className="shrink-0">
-                                        {getIcon(n.type)}
-                                    </div>
-
-                                    <div className="flex-1 min-w-0 space-y-4">
-                                        <div className="space-y-2">
-                                            <div className="flex items-center gap-3 text-[10px] font-black text-[#8C7B70] uppercase tracking-widest">
-                                                <span className="flex items-center gap-1.5"><Clock size={12} /> {formatTime(n.created_at)}</span>
-                                                <span className="w-1 h-1 bg-[#E3DACD] rounded-full" />
-                                                <span className={`${n.is_read ? 'text-[#B8AFA5]' : 'text-[#C06842]'}`}>
-                                                    {n.type?.replace('_', ' ')}
-                                                </span>
-                                            </div>
-                                            <p className={`text-[17px] leading-relaxed tracking-tight ${n.is_read ? 'text-[#5D4037]' : 'font-bold text-[#2A1F1D] font-serif'}`}>
-                                                {n.message}
-                                            </p>
-                                        </div>
-
-                                        {n.type === 'invitation' && n.related_id && !n.is_read && (
-                                            <motion.div 
-                                                initial={{ opacity: 0, y: 10 }}
-                                                animate={{ opacity: 1, y: 0 }}
-                                                className="pt-4 space-y-4"
-                                            >
-                                                {n.project_name && (
-                                                    <div className="p-6 bg-[#F9F7F2]/50 rounded-2xl border border-[#E3DACD]/50 backdrop-blur-sm">
-                                                        <h3 className="font-serif text-xl font-bold text-[#2A1F1D]">{n.project_name}</h3>
-                                                        <p className="text-sm text-[#8C7B70] mt-2 leading-relaxed italic">
-                                                            {n.project_description || "Detailed collaborative project environment."}
-                                                        </p>
-                                                        <div className="flex flex-wrap gap-3 mt-4">
-                                                            {n.assigned_role && (
-                                                                <span className="text-[9px] uppercase font-black tracking-tighter text-[#C06842] bg-[#C06842]/5 px-3 py-1 rounded-full border border-[#C06842]/10">
-                                                                    Role: {n.assigned_role}
-                                                                </span>
-                                                            )}
-                                                            {n.project_location && (
-                                                                <span className="text-[9px] uppercase font-black tracking-tighter text-[#8C7B70] bg-white/80 px-3 py-1 rounded-full border border-[#E3DACD]/50">
-                                                                    Location: {n.project_location}
-                                                                </span>
-                                                            )}
-                                                        </div>
-                                                    </div>
-                                                )}
-                                                <div className="flex gap-3">
-                                                    <button
-                                                        onClick={() => handleInvitationResponse(n.id, n.related_id, 'Accepted')}
-                                                        className="px-8 py-3 bg-[#2A1F1D] text-white rounded-xl text-xs font-bold uppercase tracking-widest hover:bg-[#C06842] transition-all shadow-lg hover:shadow-[#C06842]/20 flex items-center gap-2"
-                                                    >
-                                                        Confirm Participation
-                                                    </button>
-                                                    <button
-                                                        onClick={() => handleInvitationResponse(n.id, n.related_id, 'Rejected')}
-                                                        className="px-8 py-3 bg-white text-red-600 border border-red-100 rounded-xl text-xs font-bold uppercase tracking-widest hover:bg-red-50 transition-all"
-                                                    >
-                                                        Decline
-                                                    </button>
-                                                </div>
-                                            </motion.div>
-                                        )}
-
-                                        <div className="flex items-center gap-4 pt-4">
-                                            {n.link && (
-                                                <button
-                                                    onClick={() => navigate(n.link)}
-                                                    className="flex items-center gap-2 text-xs font-bold text-[#C06842] hover:text-[#2A1F1D] transition-colors group/link uppercase tracking-tighter"
-                                                >
-                                                    {n.type?.includes('task') ? 'Manage Tasks Hub' : 'Access Project Portal'} <ExternalLink size={14} className="group-hover/link:translate-x-1 group-hover/link:-translate-y-1 transition-transform" />
-                                                </button>
-                                            )}
-                                            
-                                            {!n.is_read && (
-                                                <button
-                                                    onClick={() => markAsRead(n.id)}
-                                                    className="text-xs font-bold text-[#8C7B70] hover:text-[#2A1F1D] transition-colors ml-auto uppercase tracking-tighter"
-                                                >
-                                                    Dismiss
-                                                </button>
-                                            )}
-                                        </div>
-                                    </div>
-                                </motion.div>
-                            ))}
-                        </AnimatePresence>
-                    </div>
+                {notifications.some(n => !n.is_read) && (
+                    <Button variant="primary" size="lg" icon={CheckCircle2} onClick={markAllRead}>Mark All Read</Button>
                 )}
             </div>
 
-            {/* Aesthetic Background Elements */}
-            <div className="fixed top-0 left-0 w-full h-full pointer-events-none -z-10 overflow-hidden">
-                <div className="absolute top-[-10%] left-[-10%] w-[40%] h-[40%] bg-[#E68A2E]/5 rounded-full blur-[120px]" />
-                <div className="absolute bottom-[-10%] right-[-10%] w-[30%] h-[30%] bg-[#C06842]/5 rounded-full blur-[100px]" />
+            {/* Notification Groups */}
+            <div className="space-y-32">
+                {notifications.length === 0 ? (
+                    <div className="text-center py-48 bg-white/40 rounded-[5rem] border border-dashed border-[#E3DACD] group">
+                        <Bell size={80} className="mx-auto mb-8 text-[#E3DACD] opacity-40 group-hover:scale-110 transition-transform duration-1000" strokeWidth={0.5} />
+                        <h3 className="font-serif text-4xl font-black text-[#2A1F1D] mb-4">All Caught Up</h3>
+                        <p className="text-[#8C7B70] font-medium max-w-xs mx-auto text-lg leading-relaxed">You have no new notifications at the moment.</p>
+                    </div>
+                ) : (
+                    <div className="space-y-24">
+                        {Object.entries(grouped).map(([title, items]) => items.length > 0 && (
+                            <div key={title} className="space-y-10">
+                                <SectionHeader title={title} className="mb-0" />
+                                <div className="space-y-6">
+                                    <AnimatePresence mode="popLayout">
+                                        {items.map(n => (
+                                            <NotificationCardItem 
+                                                key={n.id} 
+                                                n={n} 
+                                                onRead={markAsRead} 
+                                                onResponse={handleInvitationResponse} 
+                                                onNavigate={(link) => navigate(link)} 
+                                            />
+                                        ))}
+                                    </AnimatePresence>
+                                </div>
+                            </div>
+                        ))}
+                    </div>
+                )}
             </div>
         </div>
     );
