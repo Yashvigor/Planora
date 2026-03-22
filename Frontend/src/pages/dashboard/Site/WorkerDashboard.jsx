@@ -5,7 +5,7 @@ import {
     MapPin, User, Phone, Star, Briefcase, Calendar,
     Activity, Shield, Construction,
     Home, Bell, ArrowRight, Wrench, AlertOctagon, ClipboardList,
-    Upload, CheckCircle, XCircle, ChevronRight, LayoutGrid, ExternalLink, FileText, Download
+    Upload, CheckCircle, XCircle, ChevronRight, LayoutGrid, ExternalLink, FileText, Download, PencilRuler
 } from 'lucide-react';
 
 // --- Utility Components ---
@@ -209,7 +209,8 @@ const statusStyle = {
     Rejected: 'bg-red-50 text-red-700 border-red-200',
 };
 
-const WorkerHome = ({ currentUser }) => {
+const WorkerHome = ({ currentUser, roleType }) => {
+    const isArchitectural = ['architect', 'civil_engineer', 'interior_designer'].includes(roleType?.toLowerCase());
     const [invitations, setInvitations] = useState([]);
     const [tasks, setTasks] = useState([]);
     const [searchQuery, setSearchQuery] = useState('');
@@ -318,42 +319,48 @@ const WorkerHome = ({ currentUser }) => {
 
             {/* Header Banner */}
             <div className="glass-panel p-6 rounded-[2rem] shadow-xl relative overflow-hidden text-white">
-                <div className="absolute inset-0 bg-gradient-to-br from-[#2A1F1D] to-[#4A342E] z-0" />
-                <div className="absolute top-0 right-0 w-48 h-48 bg-[#C06842]/20 rounded-full blur-3xl -mr-10 -mt-10 pointer-events-none" />
+                <div className={`absolute inset-0 ${isArchitectural ? 'bg-gradient-to-br from-[#1A1A1A] to-[#2A2A2A]' : 'bg-gradient-to-br from-[#2A1F1D] to-[#4A342E]'} z-0`} />
+                <div className={`absolute top-0 right-0 w-48 h-48 ${isArchitectural ? 'bg-blue-500/10' : 'bg-[#C06842]/20'} rounded-full blur-3xl -mr-10 -mt-10 pointer-events-none`} />
             {/* Project Invitations Section */}
             {invitations.length > 0 && (
-                <div className="bg-amber-50/50 border border-amber-100 rounded-[1.5rem] p-6 animate-slide-up">
-                    <div className="flex items-center gap-3 mb-4">
-                        <div className="bg-amber-100 p-2 rounded-lg text-amber-600">
-                            <Bell size={20} />
+                <div className={`rounded-[2rem] p-8 animate-slide-up ${isArchitectural ? 'bg-[#FDFCF8] border-2 border-[#E3DACD]/50 shadow-lg' : 'bg-amber-50/50 border border-amber-100'}`}>
+                    <div className="flex items-center justify-between mb-6">
+                        <div className="flex items-center gap-4">
+                            <div className={`${isArchitectural ? 'bg-[#2A1F1D] text-white' : 'bg-amber-100 text-amber-600'} p-3 rounded-2xl shadow-md`}>
+                                <Briefcase size={22} />
+                            </div>
+                            <div>
+                                <h3 className="font-bold text-[#2A1F1D] text-lg font-serif">{isArchitectural ? 'Design Proposals' : 'Project Invitations'}</h3>
+                                <p className={`text-[10px] uppercase font-black tracking-widest ${isArchitectural ? 'text-[#C06842]' : 'text-amber-600'}`}>New requests to join engineering team</p>
+                            </div>
                         </div>
-                        <div>
-                            <h3 className="font-bold text-[#2A1F1D]">Project Invitations</h3>
-                            <p className="text-xs text-amber-600 font-medium">Invitation to join from Contractor</p>
-                        </div>
+                        <span className="px-3 py-1 bg-white border border-[#E3DACD] rounded-full text-[10px] font-black uppercase text-[#8C7B70] tracking-widest">{invitations.length} Pending</span>
                     </div>
-                    <div className="grid gap-3">
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                         {invitations.map(inv => (
-                            <div key={inv.project_id} className="bg-white p-4 rounded-xl border border-amber-100 shadow-sm flex flex-col gap-3">
-                                <div className="flex justify-between items-start">
+                            <div key={inv.project_id} className={`p-5 rounded-2xl border transition-all duration-300 group hover:shadow-xl ${isArchitectural ? 'bg-[#F9F7F2]/50 border-[#E3DACD] hover:border-[#C06842]/30' : 'bg-white border-amber-100'}`}>
+                                <div className="flex justify-between items-start mb-4">
                                     <div>
-                                        <h4 className="font-bold text-[#2A1F1D] text-sm">{inv.name}</h4>
-                                        <p className="text-[10px] text-[#8C7B70] font-bold uppercase tracking-widest">{inv.location} • {inv.assigned_role}</p>
+                                        <h4 className="font-bold text-[#2A1F1D] text-base group-hover:text-[#C06842] transition-colors">{inv.name}</h4>
+                                        <div className="flex items-center gap-2 mt-1">
+                                            <MapPin size={10} className="text-[#8C7B70]" />
+                                            <p className="text-[10px] text-[#8C7B70] font-bold uppercase tracking-widest">{inv.location || 'Site Location'}</p>
+                                        </div>
                                     </div>
-                                    <div className="text-[10px] bg-amber-100 text-amber-700 px-2 py-0.5 rounded-full font-bold">NEW</div>
+                                    <div className="text-[8px] bg-red-50 text-red-600 px-2.5 py-1 rounded-lg font-black uppercase tracking-tighter border border-red-100">Action Required</div>
                                 </div>
-                                <div className="flex gap-2">
+                                <div className="flex gap-3">
                                     <button
                                         onClick={() => handleInvitation(inv.project_id, 'Rejected')}
-                                        className="flex-1 py-2 text-xs font-bold text-red-600 hover:bg-red-50 rounded-lg transition-colors border border-red-100"
+                                        className="flex-1 py-3 text-[10px] font-black uppercase tracking-widest text-red-600 hover:bg-red-50 rounded-xl transition-all border border-red-100"
                                     >
                                         Decline
                                     </button>
                                     <button
                                         onClick={() => handleInvitation(inv.project_id, 'Accepted')}
-                                        className="flex-1 py-2 text-xs font-bold bg-[#C06842] text-white rounded-lg hover:bg-[#A65D3B] transition-all shadow-md"
+                                        className={`flex-1 py-3 text-[10px] font-black uppercase tracking-widest rounded-xl transition-all shadow-md active:scale-95 ${isArchitectural ? 'bg-[#2A1F1D] text-white hover:bg-[#C06842]' : 'bg-[#C06842] text-white hover:bg-[#A65D3B]'}`}
                                     >
-                                        Accept
+                                        Accept Proposal
                                     </button>
                                 </div>
                             </div>
@@ -362,28 +369,29 @@ const WorkerHome = ({ currentUser }) => {
                 </div>
             )}
                 <div className="relative z-10">
-                    <p className="text-[#E68A2E] text-xs font-bold uppercase tracking-widest mb-2">{currentUser?.role?.replace('_', ' ')}</p>
-                    <h1 className="text-3xl font-bold font-serif text-[#FDFCF8]">Hello, {currentUser?.name}</h1>
-                    <div className="mt-3 flex gap-4 text-xs font-medium text-[#B8AFA5]">
-                        <span className="flex items-center gap-1"><Clock size={12} /> Work Mode: Project Based</span>
-                        <span className="flex items-center gap-1"><Calendar size={12} /> {new Date().toLocaleDateString()}</span>
+                    <p className={`${isArchitectural ? 'text-blue-400' : 'text-[#E68A2E]'} text-[10px] font-black uppercase tracking-[0.2em] mb-2`}>{currentUser?.role?.replace(/_/g, ' ') || roleType?.replace(/_/g, ' ')}</p>
+                    <h1 className="text-3xl font-bold font-serif text-[#FDFCF8]">{isArchitectural ? 'Design Studio' : 'Hello'}, {currentUser?.name?.split(' ')[0]}</h1>
+                    <div className="mt-3 flex gap-4 text-[10px] font-black uppercase tracking-widest text-white/40">
+                        <span className="flex items-center gap-1.5"><Clock size={12} /> {isArchitectural ? 'Creative Mode' : 'On-Site Mode'}</span>
+                        <span className="flex items-center gap-1.5"><Calendar size={12} /> {new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}</span>
                     </div>
                 </div>
             </div>
 
             {/* Quick Stats */}
             <div className="grid grid-cols-3 gap-4">
-                <div className="glass-card p-5 rounded-2xl border border-[#E3DACD]/40 shadow-sm text-center">
-                    <p className="text-[10px] font-bold uppercase text-[#8C7B70] tracking-widest mb-1">My Tasks</p>
-                    <p className="text-3xl font-bold text-[#2A1F1D] font-serif">{tasks.length}</p>
+                <div className="glass-card p-5 rounded-2xl border border-[#E3DACD]/40 shadow-sm text-center group cursor-default">
+                    <p className="text-[10px] font-bold uppercase text-[#8C7B70] tracking-widest mb-1">{isArchitectural ? 'Studio Portfolio' : 'My Tasks'}</p>
+                    <p className="text-3xl font-bold text-[#2A1F1D] font-serif transition-transform group-hover:scale-110">{isArchitectural ? '12' : tasks.length}</p>
+                    {isArchitectural && <p className="text-[8px] font-black text-green-600 mt-1 uppercase tracking-tighter">98% Success score</p>}
                 </div>
-                <div className="glass-card p-5 rounded-2xl border border-[#E3DACD]/40 shadow-sm text-center">
-                    <p className="text-[10px] font-bold uppercase text-[#8C7B70] tracking-widest mb-1">Pending</p>
-                    <p className="text-3xl font-bold text-amber-600 font-serif">{pendingTasks.length}</p>
+                <div className="glass-card p-5 rounded-2xl border border-[#E3DACD]/40 shadow-sm text-center group cursor-default">
+                    <p className="text-[10px] font-bold uppercase text-[#8C7B70] tracking-widest mb-1">{isArchitectural ? 'Pending Briefs' : 'Queue'}</p>
+                    <p className={`text-3xl font-bold ${isArchitectural ? 'text-[#2A1F1D]' : 'text-amber-600'} font-serif transition-transform group-hover:scale-110`}>{pendingTasks.length}</p>
                 </div>
-                <div className="glass-card p-5 rounded-2xl border border-[#E3DACD]/40 shadow-sm text-center">
-                    <p className="text-[10px] font-bold uppercase text-[#8C7B70] tracking-widest mb-1">Approved</p>
-                    <p className="text-3xl font-bold text-green-600 font-serif">{completedTasks.length}</p>
+                <div className="glass-card p-5 rounded-2xl border border-[#E3DACD]/40 shadow-sm text-center group cursor-default">
+                    <p className="text-[10px] font-bold uppercase text-[#8C7B70] tracking-widest mb-1">{isArchitectural ? 'Active Designs' : 'Done'}</p>
+                    <p className="text-3xl font-bold text-green-600 font-serif transition-transform group-hover:scale-110">{isArchitectural ? projects.length : completedTasks.length}</p>
                 </div>
             </div>
 
@@ -521,21 +529,9 @@ const WorkerDashboard = ({ roleType }) => {
 
     return (
         <div className="max-w-md mx-auto md:max-w-4xl font-sans pb-24 min-h-screen bg-[#FDFCF8]">
-            {/* Top Bar for Desktop/Tablet */}
-            <div className="hidden md:flex justify-between items-center p-6 bg-[#FDFCF8] border-b border-[#E3DACD] mb-6 sticky top-0 z-30 backdrop-blur-sm bg-[#FDFCF8]/90">
-                <h2 className="font-bold text-xl text-[#2A1F1D] font-serif flex items-center gap-2">
-                    <Construction className="text-[#C06842]" /> Planora Site Connect
-                </h2>
-                <div className="flex items-center gap-4">
-                    <button className="p-2 hover:bg-[#F9F7F2] rounded-full text-[#5D4037] transition-colors"><Bell size={20} /></button>
-                    <div className="w-9 h-9 bg-[#2A1F1D] text-white rounded-full flex items-center justify-center text-sm font-bold shadow-md border-2 border-white">
-                        {currentUser?.name?.[0]}
-                    </div>
-                </div>
-            </div>
 
             <div className="p-4 md:p-6 animate-fade-in">
-                {activeTab === 'home' && <WorkerHome currentUser={currentUser} />}
+                {activeTab === 'home' && <WorkerHome currentUser={currentUser} roleType={roleType} />}
                 {activeTab === 'workboard' && (
                     roleType === 'architect' 
                     ? <ArchitectWorkboard currentUser={currentUser} /> 

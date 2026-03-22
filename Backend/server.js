@@ -992,12 +992,17 @@ app.put('/api/user/:id', authenticateToken, upload.single('aadhar_card'), async 
 // Profile Sync for non-file updates (used by Settings)
 app.put('/api/users/:userId/profile', authenticateToken, async (req, res) => {
     const { userId } = req.params;
-    const { phone, address, city, state, zip_code, birthdate, bio } = req.body;
+    const { phone, address, city, state, zip_code, birthdate, bio, latitude, longitude } = req.body;
 
     try {
-        //Privileged roles (Land Owner, Contractor, Admin) should always remain Approved
-        const userCheck = await pool.query('SELECT category, sub_category FROM users WHERE user_id = $1', [userId]);
+        // Privileged roles (Land Owner, Contractor, Admin) should always remain Approved
+        const userCheck = await pool.query('SELECT category, sub_category, status FROM users WHERE user_id = $1', [userId]);
+        if (userCheck.rows.length === 0) return res.status(404).json({ error: 'User not found in records' });
+
         const user = userCheck.rows[0];
+        const role = (user.sub_category || '').toLowerCase();
+        const isExempt = ['admin', 'land_owner', 'contractor'].includes(role) || user.category === 'Admin';
+
         // Preserve Approved status if already granted
         const currentStatus = (user.status || '').toLowerCase();
         const newStatus = (isExempt || currentStatus === 'approved') ? 'Approved' : 'Pending';
@@ -1012,10 +1017,12 @@ app.put('/api/users/:userId/profile', authenticateToken, async (req, res) => {
                  birthdate = COALESCE($6, birthdate),
                  bio = COALESCE($7, bio),
                  status = $8,
+                 latitude = COALESCE($9, latitude),
+                 longitude = COALESCE($10, longitude),
                  rejection_reason = NULL,
                  updated_at = CURRENT_TIMESTAMP
-             WHERE user_id = $9 RETURNING *`,
-            [phone, address, city, state, zip_code, birthdate, bio, newStatus, userId]
+             WHERE user_id = $11 RETURNING *`,
+            [phone, address, city, state, zip_code, birthdate, bio, newStatus, latitude, longitude, userId]
         );
 
         if (result.rows.length === 0) {

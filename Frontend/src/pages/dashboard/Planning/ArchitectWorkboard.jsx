@@ -3,7 +3,7 @@ import {
     LayoutGrid, CheckCircle, Clock, ChevronRight,
     FileText, Eye, MapPin, Calendar, ClipboardList,
     TrendingUp, Star, Award, User, Users, Upload, 
-    Plus, X, Image as ImageIcon, Briefcase, Camera
+    Plus, X, Image as ImageIcon, Briefcase, Camera, PencilRuler
 } from 'lucide-react';
 
 const Card = ({ children, className = "" }) => (
@@ -285,18 +285,25 @@ const ArchitectWorkboard = ({ currentUser }) => {
 
             {/* Upload Modal */}
             {isUploadModalOpen && (
-                <div className="fixed inset-0 z-[200] flex items-center justify-center p-4 bg-[#2A1F1D]/80 backdrop-blur-md animate-fade-in">
-                    <div className="bg-white rounded-[2.5rem] w-full max-w-lg overflow-hidden shadow-2xl animate-scale-up">
-                        <div className="p-8 border-b border-[#E3DACD]/30 flex justify-between items-center bg-[#FDFCF8]">
-                            <div>
-                                <h3 className="text-xl font-bold font-serif text-[#2A1F1D]">Upload Architectural Asset</h3>
-                                <p className="text-xs text-[#8C7B70] font-medium mt-0.5">Publish to project team or personal vault.</p>
+                <div className="fixed inset-0 z-[300] flex items-center justify-center p-4 lg:p-10 bg-[#2A1F1D]/70 backdrop-blur-xl animate-fade-in">
+                    <div className="bg-white rounded-[3rem] w-full max-w-xl overflow-hidden shadow-[0_40px_100px_-20px_rgba(42,31,29,0.3)] border-4 border-white animate-scale-up flex flex-col max-h-[90vh]">
+                        {/* Modal Header */}
+                        <div className="shrink-0 p-8 border-b border-[#E3DACD]/30 flex justify-between items-center bg-[#FDFCF8]">
+                            <div className="flex items-center gap-5">
+                                <div className="p-4 bg-[#2A1F1D] text-white rounded-[1.5rem] shadow-xl">
+                                    <PencilRuler size={24} />
+                                </div>
+                                <div>
+                                    <h3 className="text-2xl font-bold font-serif text-[#2A1F1D]">Upload Architectural Asset</h3>
+                                    <p className="text-[10px] text-[#C06842] font-black uppercase tracking-widest mt-1">Publish to project team vault</p>
+                                </div>
                             </div>
-                            <button onClick={() => setIsUploadModalOpen(false)} className="p-2 hover:bg-[#F9F7F2] rounded-full transition-colors text-[#8C7B70]">
+                            <button onClick={() => setIsUploadModalOpen(false)} className="p-3 hover:bg-red-50 text-[#8C7B70] hover:text-red-600 rounded-full transition-all">
                                 <X size={24} />
                             </button>
                         </div>
-                        <form onSubmit={handleUpload} className="p-8 space-y-6">
+                        
+                        <form onSubmit={handleUpload} className="flex-1 overflow-y-auto custom-scrollbar p-8 space-y-8">
                             <div className="space-y-4">
                                 <div className="space-y-1">
                                     <label className="text-[10px] font-black uppercase tracking-widest text-[#8C7B70] ml-1">Asset Title</label>
@@ -338,9 +345,9 @@ const ArchitectWorkboard = ({ currentUser }) => {
                                     </div>
                                 </div>
 
-                                <div className="space-y-1">
-                                    <label className="text-[10px] font-black uppercase tracking-widest text-[#8C7B70] ml-1">Drawing File</label>
-                                    <div className="relative group/upload">
+                                <div className="space-y-2">
+                                    <label className="text-[10px] font-black uppercase tracking-widest text-[#8C7B70] ml-1">Drawing File (PDF or Image)</label>
+                                    <div className="relative group/upload h-48">
                                         <input 
                                             required
                                             type="file" 
@@ -348,11 +355,15 @@ const ArchitectWorkboard = ({ currentUser }) => {
                                             className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10"
                                             onChange={(e) => setUploadFile(e.target.files[0])}
                                         />
-                                        <div className="w-full py-10 border-2 border-dashed border-[#E3DACD] rounded-[2rem] flex flex-col items-center justify-center text-[#B8AFA5] group-hover/upload:border-[#C06842] group-hover/upload:text-[#C06842] group-hover/upload:bg-[#C06842]/5 transition-all">
-                                            <Camera size={40} className="mb-2 transition-transform group-hover/upload:scale-110" />
-                                            <span className="text-xs font-bold uppercase tracking-widest">
+                                        <div className="w-full h-full border-4 border-dashed border-[#E3DACD] rounded-[2rem] flex flex-col items-center justify-center bg-[#F9F7F2] relative overflow-hidden group-hover/upload:border-[#C06842] group-hover/upload:bg-[#C06842]/5 transition-all">
+                                            {/* Blueprint-inspired background detail */}
+                                            <div className="absolute inset-0 opacity-[0.03] pointer-events-none" style={{ backgroundImage: 'linear-gradient(rgba(192, 104, 66, 0.5) 1px, transparent 1px), linear-gradient(90deg, rgba(192, 104, 66, 0.5) 1px, transparent 1px)', backgroundSize: '15px 15px' }} />
+                                            
+                                            <Camera size={48} className="text-[#C06842] mb-3 transition-transform group-hover/upload:scale-110" />
+                                            <span className="text-xs font-black uppercase tracking-widest text-[#2A1F1D]">
                                                 {uploadFile ? uploadFile.name : 'Photo or Blueprint Plan'}
                                             </span>
+                                            <p className="text-[9px] text-[#8C7B70] font-bold mt-2">Maximum file size: 25MB</p>
                                         </div>
                                     </div>
                                 </div>
@@ -373,12 +384,15 @@ const ArchitectWorkboard = ({ currentUser }) => {
                                 </div>
                             </div>
 
-                            <button 
-                                type="submit"
-                                className="w-full py-5 bg-[#C06842] text-white rounded-[1.5rem] font-bold text-sm uppercase tracking-[0.2em] flex items-center justify-center gap-2 hover:bg-[#A65D3B] transition-all shadow-xl shadow-[#C06842]/20 active:scale-[0.98]"
-                            >
-                                <Upload size={18} /> Confirm Upload
-                            </button>
+                            <div className="shrink-0 group relative overflow-hidden rounded-[1.5rem]">
+                                <div className="absolute inset-0 bg-gradient-to-r from-[#C06842] to-[#A65D3B] group-hover:scale-105 transition-transform duration-500" />
+                                <button 
+                                    type="submit"
+                                    className="relative w-full py-5 text-white font-black text-xs uppercase tracking-[0.3em] flex items-center justify-center gap-3 transition-all"
+                                >
+                                    <Upload size={18} /> Confirm Upload
+                                </button>
+                            </div>
                         </form>
                     </div>
                 </div>

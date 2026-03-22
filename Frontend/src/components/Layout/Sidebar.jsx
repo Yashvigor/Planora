@@ -77,7 +77,9 @@ const Sidebar = ({ isOpen, onClose }) => {
             case 'civil_engineer': return [...base, ...shared, { icon: PencilRuler, label: 'Drawings', path: '/dashboard/drawings' }, { icon: Package, label: 'Materials', path: '/dashboard/materials' }];
             case 'contractor':
             case 'interior_designer': return [...base, ...shared, { icon: Camera, label: 'Reports', path: '/dashboard/reports' }, { icon: FileText, label: 'Quotations', path: '/dashboard/quotations' }, { icon: Users, label: 'Find Professionals', path: '/dashboard/find-pros' }];
-            default: return base;
+            default: 
+                const isProfessional = ['planning', 'sitework', 'design_and_finish'].includes(currentUser?.category?.toLowerCase()?.replace(/ /g, '_'));
+                return isProfessional ? [...base, ...shared] : base;
         }
     };
 

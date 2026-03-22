@@ -111,7 +111,13 @@ const DashboardLayout = () => {
                             {isSidebarOpen && window.innerWidth < 1024 ? <X size={18} /> : <Menu size={18} />}
                         </button>
                         <div className="hidden sm:block">
-                            <p className="text-[9px] font-black uppercase tracking-[0.2em] text-[#C06842] mb-0">Global Navigation</p>
+                            <p className="text-[9px] font-black uppercase tracking-[0.2em] text-[#C06842] mb-0">
+                                {['architect', 'civil_engineer', 'interior_designer'].includes(currentUser?.sub_category?.toLowerCase()) || ['architect', 'civil_engineer', 'interior_designer'].includes(currentUser?.role?.toLowerCase()) 
+                                    ? 'Planora Design Studio' 
+                                    : (currentUser?.sub_category === 'Contractor' || currentUser?.role === 'contractor') 
+                                        ? 'Operational Command' 
+                                        : 'Global Navigation'}
+                            </p>
                             <h2 className="font-serif font-black text-lg text-[#2A1F1D] tracking-tight truncate">Welcome Back, {currentUser.name.split(' ')[0]}</h2>
                         </div>
                     </div>
@@ -153,7 +159,7 @@ const DashboardLayout = () => {
                 </header>
 
                 {/* Primary Content Scrollable Area */}
-                <main className="flex-1 overflow-x-hidden overflow-y-auto custom-scrollbar bg-[#FDFCF8] relative selection:bg-[#C06842]/20">
+                <main className="flex-1 overflow-x-hidden overflow-y-auto custom-scrollbar bg-[#FDFCF8] relative selection:bg-[#C06842]/20 z-10">
                     <div className="p-4 lg:p-10 min-h-full">
                         <Outlet />
                     </div>
