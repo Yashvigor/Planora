@@ -92,7 +92,7 @@ const WorkerProfile = ({ currentUser }) => {
                 <div className="flex items-center gap-1 text-[#E68A2E] mt-3 bg-[#E68A2E]/10 px-4 py-1.5 rounded-full border border-[#E68A2E]/20">
                     <Star size={16} fill="currentColor" />
                     <span className="font-bold text-sm">
-                        {profileData.avg_rating > 0 ? `${profileData.avg_rating} Rating` : 'Active Professional'}
+                        {profileData.avg_rating > 0 ? `${profileData.avg_rating} Avg Rating` : 'Not Rated'}
                     </span>
                 </div>
             </Card>
@@ -212,6 +212,7 @@ const statusStyle = {
 const WorkerHome = ({ currentUser }) => {
     const [invitations, setInvitations] = useState([]);
     const [tasks, setTasks] = useState([]);
+    const [searchQuery, setSearchQuery] = useState('');
     const [submittingTaskId, setSubmittingTaskId] = useState(null);
     const [previewTask, setPreviewTask] = useState(null);
     const fileInputRef = useRef(null);
@@ -270,6 +271,14 @@ const WorkerHome = ({ currentUser }) => {
     useEffect(() => {
         fetchInvitations();
         fetchTasks();
+
+        const handleGlobalSearch = (e) => {
+            setSearchQuery(e.detail);
+        };
+        window.addEventListener('planora_search', handleGlobalSearch);
+        return () => {
+            window.removeEventListener('planora_search', handleGlobalSearch);
+        };
     }, [fetchInvitations, fetchTasks]);
 
 
@@ -399,7 +408,7 @@ const WorkerHome = ({ currentUser }) => {
                     </div>
                 ) : (
                     <div className="space-y-4">
-                        {tasks.map(task => (
+                        {tasks.filter(t => !searchQuery || t.title?.toLowerCase().includes(searchQuery.toLowerCase()) || t.project_name?.toLowerCase().includes(searchQuery.toLowerCase())).map(task => (
                             <div key={task.task_id} className={`rounded-2xl border p-4 transition-all ${task.status === 'Rejected' ? 'bg-red-50/40 border-red-200' : task.status === 'Approved' ? 'bg-green-50/40 border-green-200' : task.status === 'Submitted' ? 'bg-blue-50/40 border-blue-200' : 'bg-[#FDFCF8] border-[#E3DACD]/50'}`}>
                                 <div className="flex justify-between items-start mb-3">
                                     <div className="flex-1">

@@ -82,20 +82,20 @@ const Sidebar = ({ isOpen, onClose }) => {
     };
 
     return (
-        <aside className={`h-full bg-white border-r border-[#E3DACD]/50 shadow-[20px_0_60px_-15px_rgba(42,31,29,0.04)] flex flex-col transition-all duration-500 ease-in-out font-sans ${isOpen ? 'w-72' : 'w-24'}`}>
+        <aside className={`h-full bg-white border-r border-[#E3DACD]/50 shadow-[20px_0_60px_-15px_rgba(42,31,29,0.04)] flex flex-col transition-all duration-500 ease-in-out font-sans ${isOpen ? 'w-64' : 'w-20'}`}>
             {/* Logo Section */}
-            <div className={`shrink-0 h-20 flex items-center ${isOpen ? 'justify-start px-8' : 'justify-center'} border-b border-[#E3DACD]/20 overflow-hidden`}>
-                <PlanoraLogo className={isOpen ? "w-10 h-10" : "w-12 h-12"} iconOnly={!isOpen} />
+            <div className={`shrink-0 h-16 flex items-center ${isOpen ? 'justify-start px-8' : 'justify-center'} border-b border-[#E3DACD]/20 overflow-hidden`}>
+                <PlanoraLogo className={isOpen ? "w-8 h-8" : "w-10 h-10"} iconOnly={!isOpen} />
                 {isOpen && (
                     <div className="ml-4 truncate">
-                        <span className="font-serif font-black text-2xl tracking-tighter block text-[#2A1F1D]">Plan<span className="text-[#C06842]">ora</span></span>
-                        <span className="text-[10px] font-black uppercase text-[#8C7B70] tracking-[0.3em] block">Workspace</span>
+                        <span className="font-serif font-black text-xl tracking-tighter block text-[#2A1F1D]">Plan<span className="text-[#C06842]">ora</span></span>
+                        <span className="text-[9px] font-black uppercase text-[#8C7B70] tracking-[0.3em] block">Workspace</span>
                     </div>
                 )}
             </div>
 
             {/* Nav Menu */}
-            <nav className="flex-1 py-10 px-5 space-y-2 overflow-y-auto custom-scrollbar no-scrollbar text-left">
+            <nav className="flex-1 py-6 px-4 space-y-1.5 overflow-y-auto custom-scrollbar no-scrollbar text-left">
                 {getMenuItems().map((item) => (
                     <NavLink
                         key={item.path}
@@ -103,8 +103,8 @@ const Sidebar = ({ isOpen, onClose }) => {
                         end={item.path === '/dashboard'}
                         onClick={() => window.innerWidth < 1024 && onClose()}
                         className={({ isActive }) =>
-                            `flex items-center px-4 py-4 rounded-2xl transition-all duration-500 relative group truncate ${isActive
-                                ? 'bg-[#2A1F1D] text-white shadow-2xl shadow-[#2A1F1D]/20'
+                            `flex items-center px-4 py-3.5 rounded-xl transition-all duration-500 relative group truncate ${isActive
+                                ? 'bg-[#2A1F1D] text-white shadow-xl shadow-[#2A1F1D]/20'
                                 : 'text-[#8C7B70] hover:bg-[#F9F7F2] hover:text-[#2A1F1D]'
                             }`
                         }
@@ -116,9 +116,9 @@ const Sidebar = ({ isOpen, onClose }) => {
                                     {!isOpen && item.badge > 0 && <div className="absolute -top-1.5 -right-1.5 w-4 h-4 bg-[#C06842] rounded-full ring-2 ring-white animate-pulse" />}
                                 </div>
                                 {isOpen && (
-                                    <div className="flex-1 flex justify-between items-center ml-5 overflow-hidden animate-fade-in text-left">
-                                        <span className={`text-[12px] font-black uppercase tracking-widest ${isActive ? 'translate-x-1' : ''} transition-transform duration-500`}>{item.label}</span>
-                                        {item.badge > 0 && <span className="text-[10px] font-black bg-[#C06842] text-white px-2 py-0.5 rounded-full shadow-lg">{item.badge}</span>}
+                                    <div className="flex-1 flex justify-between items-center ml-4 overflow-hidden animate-fade-in text-left">
+                                        <span className={`text-[11px] font-black uppercase tracking-widest ${isActive ? 'translate-x-1' : ''} transition-transform duration-500`}>{item.label}</span>
+                                        {item.badge > 0 && <span className="text-[9px] font-black bg-[#C06842] text-white px-2 py-0.5 rounded-full shadow-lg">{item.badge}</span>}
                                     </div>
                                 )}
                                 {isActive && isOpen && <motion.div layoutId="activeBar" className="absolute left-0 w-1 h-6 bg-[#C06842] rounded-r-full" />}
@@ -130,22 +130,22 @@ const Sidebar = ({ isOpen, onClose }) => {
 
             {/* User Profile Base */}
             <div className="shrink-0 p-5 border-t border-[#E3DACD]/20 space-y-4 bg-[#FDFCF8]/50 text-left">
-                <NavLink to="/dashboard/settings" onClick={() => window.innerWidth < 1024 && onClose()} className="flex items-center justify-between p-4 rounded-2xl bg-white border border-[#E3DACD]/40 text-[#8C7B70] hover:text-[#2A1F1D] hover:border-[#C06842] transition-all group">
+                <NavLink to="/dashboard/settings" onClick={() => window.innerWidth < 1024 && onClose()} className="flex items-center justify-between p-3.5 rounded-xl bg-white border border-[#E3DACD]/40 text-[#8C7B70] hover:text-[#2A1F1D] hover:border-[#C06842] transition-all group">
                     <div className="flex items-center gap-3">
-                        <Settings size={20} className="group-hover:rotate-45 transition-transform duration-500" />
+                        <Settings size={18} className="group-hover:rotate-45 transition-transform duration-500" />
                         {isOpen && <span className="text-xs font-black uppercase tracking-widest">Controls</span>}
                     </div>
                     {isOpen && <ChevronRight size={14} className="opacity-0 group-hover:opacity-100 -translate-x-2 group-hover:translate-x-0 transition-all" />}
                 </NavLink>
 
-                <div className={`p-3 rounded-2.5xl bg-white border border-[#E3DACD]/40 shadow-sm flex items-center ${isOpen ? 'gap-3' : 'justify-center'}`}>
-                    <div className="w-10 h-10 shrink-0 rounded-xl bg-gradient-to-br from-[#2A1F1D] to-[#4A342E] flex items-center justify-center text-white font-serif font-black shadow-lg">
+                <div className={`p-2.5 rounded-2xl bg-white border border-[#E3DACD]/40 shadow-sm flex items-center ${isOpen ? 'gap-3' : 'justify-center'}`}>
+                    <div className="w-9 h-9 shrink-0 rounded-xl bg-gradient-to-br from-[#2A1F1D] to-[#4A342E] flex items-center justify-center text-white font-serif font-black shadow-lg">
                         {currentUser?.name?.[0]}
                     </div>
                     {isOpen && (
                         <div className="flex-1 min-w-0 pointer-events-none">
-                            <p className="text-[11px] font-black text-[#2A1F1D] tracking-tight truncate uppercase">{currentUser?.name}</p>
-                            <p className="text-[9px] text-[#C06842] font-black uppercase tracking-[0.2em] truncate">{currentUser?.role?.replace('_', ' ')}</p>
+                            <p className="text-[10px] font-black text-[#2A1F1D] tracking-tight truncate uppercase">{currentUser?.name}</p>
+                            <p className="text-[8px] text-[#C06842] font-black uppercase tracking-[0.2em] truncate">{currentUser?.role?.replace('_', ' ')}</p>
                         </div>
                     )}
                     {isOpen && (

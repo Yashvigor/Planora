@@ -59,6 +59,10 @@ const Quotations = () => {
         }
     };
 
+    const handlePrint = () => {
+        window.print();
+    };
+
     const handleDownload = () => {
         const element = document.getElementById('quotation-print-area');
         if (!element) return;

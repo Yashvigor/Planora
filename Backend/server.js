@@ -336,19 +336,22 @@ pool.connect()
     })
     .catch(err => console.error('Database Connection error', err.stack));
 
-// Helper to compute project progress based on phases
+// Helper to compute project progress based on phases (30-30-40 ratio)
 const enrichProjectWithProgress = (project, team = [], tasks = []) => {
-    let phaseProgress = 0;
-    if (project.planning_completed) phaseProgress = 30;
-    if (project.design_completed) phaseProgress = 60;
-    if (project.execution_completed) phaseProgress = 100;
-
-    const completedTasks = tasks.filter(t => t.status === 'Approved' || t.status === 'Completed').length;
+    let percentage = 0;
+    if (project.planning_completed) percentage = 30;
+    if (project.design_completed) percentage = 60; // 30 + 30
+    if (project.execution_completed) percentage = 100; // 60 + 40
 
     return {
         ...project,
         team: team,
-        progress: phaseProgress
+        progress: {
+            percentage,
+            planning: !!project.planning_completed,
+            design: !!project.design_completed,
+            execution: !!project.execution_completed
+        }
     };
 };
 
@@ -1977,13 +1980,17 @@ app.put('/api/users/:userId/profile', async (req, res) => {
         let latitude = req.body.latitude !== undefined ? parseFloat(req.body.latitude) : null;
         let longitude = req.body.longitude !== undefined ? parseFloat(req.body.longitude) : null;
 
-        // Auto-geocode ONLY if address changed and no manual coordinates provided
+        // Auto-geocode ONLY if address changed and no manual coordinates provided (Made non-breaking)
         if (latitude === null && address) {
-            const fullAddress = `${address}, ${city || ''}, ${state || ''}, ${zip_code || ''}`.trim();
-            const coords = await geocodeAddress(fullAddress);
-            if (coords) {
-                latitude = coords.lat;
-                longitude = coords.lon;
+            try {
+                const fullAddress = `${address}, ${city || ''}, ${state || ''}, ${zip_code || ''}`.trim();
+                const coords = await geocodeAddress(fullAddress);
+                if (coords) {
+                    latitude = coords.lat;
+                    longitude = coords.lon;
+                }
+            } catch (geoErr) {
+                console.warn('[Profile Update] Geocoding skipped:', geoErr.message);
             }
         }
 
@@ -2031,13 +2038,16 @@ app.put('/api/users/:userId/profile', async (req, res) => {
 
             // Log move/update if it's a significant profile change (not just location)
             if (name || address || bio) {
-                await logActivity(userId, null, 'Profile Update', 'User updated their profile information');
+                try {
+                    await logActivity(userId, null, 'Profile Update', 'User updated their profile information');
+                } catch (e) { console.error('Log activity error:', e); }
             }
 
             res.json({ message: 'Profile updated successfully', user: updatedUser });
 
         } catch (innerErr) {
             await client.query('ROLLBACK');
+            console.error('Inner profile update error:', innerErr);
             throw innerErr;
         } finally {
             client.release();
@@ -2358,10 +2368,10 @@ app.get('/api/professionals/:userId/projects', authenticateToken, async (req, re
                 pa.assigned_role,
                 pa.status as assignment_status,
                 pa.assigned_at
-            FROM projectassignments pa
-            JOIN projects p ON pa.project_id = p.project_id
-            WHERE pa.user_id = $1
-            ORDER BY pa.assigned_at DESC
+            FROM projects p
+            LEFT JOIN projectassignments pa ON p.project_id = pa.project_id AND pa.user_id = $1
+            WHERE pa.user_id = $1 OR p.land_owner_id = $1
+            ORDER BY COALESCE(pa.assigned_at, p.created_at) DESC
         `, [userId]);
 
         const projects = result.rows;
@@ -2374,10 +2384,39 @@ app.get('/api/professionals/:userId/projects', authenticateToken, async (req, re
             tasks = tasksRes.rows;
         }
 
-        const enriched = projects.map(p => {
-            const pTasks = tasks.filter(t => t.project_id === p.project_id);
-            return enrichProjectWithProgress(p, [], pTasks);
-        });
+        // Fetch team and check if rated
+        const enriched = await Promise.all(projects.map(async (p) => {
+            try {
+                const pTasks = tasks.filter(t => t.project_id === p.project_id);
+                const enrichedP = enrichProjectWithProgress(p, [], pTasks);
+
+                // Fetch fully resolved team for this project
+                const teamRes = await pool.query(`
+                    SELECT u.user_id, u.name, u.email, u.category, u.sub_category, pa.assigned_role, pa.status
+                    FROM projectassignments pa
+                    JOIN users u ON pa.user_id = u.user_id
+                    WHERE pa.project_id = $1 AND pa.status = 'Accepted'
+                `, [p.project_id]);
+                enrichedP.team = teamRes.rows;
+
+                // Check if current user (rater) has submitted any ratings for this project
+                try {
+                    const ratingCheck = await pool.query(
+                        "SELECT EXISTS(SELECT 1 FROM ratings WHERE project_id = $1 AND rater_id = $2) as has_rated",
+                        [p.project_id, userId]
+                    );
+                    enrichedP.has_rated = ratingCheck.rows[0].has_rated;
+                } catch (e) {
+                    console.error('Rating check error:', e);
+                    enrichedP.has_rated = false;
+                }
+
+                return enrichedP;
+            } catch (err) {
+                console.error(`Error enriching project ${p.project_id}:`, err);
+                return p; // Return base project if enrichment fails
+            }
+        }));
 
         res.json(enriched);
 
@@ -2660,10 +2699,29 @@ app.get('/api/projects/user/:userId', async (req, res) => {
             tasks = tasksRes.rows;
         }
 
-        const enriched = projects.map(p => {
+        // Fetch team and check if rated
+        const enriched = await Promise.all(projects.map(async (p) => {
             const pTasks = tasks.filter(t => t.project_id === p.project_id);
-            return enrichProjectWithProgress(p, [], pTasks);
-        });
+            const enrichedP = enrichProjectWithProgress(p, [], pTasks);
+
+            // Fetch team
+            const teamRes = await pool.query(`
+                SELECT u.user_id, u.name, u.email, u.category, u.sub_category, pa.assigned_role, pa.status
+                FROM projectassignments pa
+                JOIN users u ON pa.user_id = u.user_id
+                WHERE pa.project_id = $1 AND pa.status = 'Accepted'
+            `, [p.project_id]);
+            enrichedP.team = teamRes.rows;
+
+            // Check if current user (rater) has submitted any ratings for this project
+            const ratingCheck = await pool.query(
+                "SELECT EXISTS(SELECT 1 FROM ratings WHERE project_id = $1 AND rater_id = $2) as has_rated",
+                [p.project_id, userId]
+            );
+            enrichedP.has_rated = ratingCheck.rows[0].has_rated;
+
+            return enrichedP;
+        }));
 
         res.json(enriched);
     } catch (err) {

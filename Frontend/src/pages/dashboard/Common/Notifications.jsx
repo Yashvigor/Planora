@@ -16,15 +16,15 @@ import SectionHeader from '../../../components/Common/SectionHeader';
 
 const NotificationCardItem = ({ n, onRead, onResponse, onNavigate }) => {
     const getIcon = (type) => {
-        const iconBaseStyle = "w-14 h-14 rounded-2xl flex items-center justify-center transition-all duration-300 shadow-sm border-2";
+        const iconBaseStyle = "w-12 h-12 rounded-xl flex items-center justify-center transition-all duration-300 shadow-sm border-2";
         switch (type) {
-            case 'invitation': return <div className={`${iconBaseStyle} bg-blue-50 border-blue-100 text-blue-600`}><Bell size={22} /></div>;
-            case 'invitation_response': return <div className={`${iconBaseStyle} bg-indigo-50 border-indigo-100 text-indigo-600`}><CheckCheck size={22} /></div>;
-            case 'task_assignment': return <div className={`${iconBaseStyle} bg-amber-50 border-amber-100 text-amber-600`}><Clock size={22} /></div>;
-            case 'task_completion': return <div className={`${iconBaseStyle} bg-emerald-50 border-emerald-100 text-emerald-600`}><Upload size={22} /></div>;
-            case 'task_approval': return <div className={`${iconBaseStyle} bg-green-50 border-green-100 text-green-600`}><CheckCircle2 size={22} /></div>;
-            case 'task_rejection': return <div className={`${iconBaseStyle} bg-rose-50 border-rose-100 text-rose-600`}><XCircle size={22} /></div>;
-            default: return <div className={`${iconBaseStyle} bg-[#FDFCF8] border-[#E3DACD] text-[#C06842]`}><Info size={22} /></div>;
+            case 'invitation': return <div className={`${iconBaseStyle} bg-blue-50 border-blue-100 text-blue-600`}><Bell size={20} /></div>;
+            case 'invitation_response': return <div className={`${iconBaseStyle} bg-indigo-50 border-indigo-100 text-indigo-600`}><CheckCheck size={20} /></div>;
+            case 'task_assignment': return <div className={`${iconBaseStyle} bg-amber-50 border-amber-100 text-amber-600`}><Clock size={20} /></div>;
+            case 'task_completion': return <div className={`${iconBaseStyle} bg-emerald-50 border-emerald-100 text-emerald-600`}><Upload size={20} /></div>;
+            case 'task_approval': return <div className={`${iconBaseStyle} bg-green-50 border-green-100 text-green-600`}><CheckCircle2 size={20} /></div>;
+            case 'task_rejection': return <div className={`${iconBaseStyle} bg-rose-50 border-rose-100 text-rose-600`}><XCircle size={20} /></div>;
+            default: return <div className={`${iconBaseStyle} bg-[#FDFCF8] border-[#E3DACD] text-[#C06842]`}><Info size={20} /></div>;
         }
     };
 
@@ -36,7 +36,7 @@ const NotificationCardItem = ({ n, onRead, onResponse, onNavigate }) => {
             exit={{ opacity: 0, scale: 0.95 }}
             className="w-full"
         >
-            <Card variant={n.is_read ? 'flat' : 'glass'} className={`group relative flex gap-8 p-6 lg:p-10 transition-all duration-500 border-2 ${n.is_read ? 'opacity-70 grayscale-[0.5] border-transparent' : 'border-[#C06842]/10 ring-4 ring-[#C06842]/5'}`}>
+            <Card variant={n.is_read ? 'flat' : 'glass'} className={`group relative flex gap-6 p-5 lg:p-7 transition-all duration-500 border-2 ${n.is_read ? 'opacity-70 grayscale-[0.5] border-transparent' : 'border-[#C06842]/10 ring-4 ring-[#C06842]/5'}`}>
                 <div className="shrink-0">{getIcon(n.type)}</div>
                 
                 <div className="flex-1 min-w-0 text-left">
@@ -47,15 +47,15 @@ const NotificationCardItem = ({ n, onRead, onResponse, onNavigate }) => {
                         {!n.is_read && <div className="w-2.5 h-2.5 bg-[#C06842] rounded-full animate-pulse shadow-lg" />}
                     </div>
 
-                    <p className={`text-xl leading-tight mb-6 ${n.is_read ? 'text-[#8C7B70]' : 'font-serif font-black text-[#2A1F1D] tracking-tight'}`}>
+                    <p className={`text-lg leading-tight mb-4 ${n.is_read ? 'text-[#8C7B70]' : 'font-serif font-black text-[#2A1F1D] tracking-tight'}`}>
                         {n.message}
                     </p>
 
                     {n.type === 'invitation' && n.related_id && !n.is_read && (
-                        <div className="mb-6 p-6 bg-[#FDFCF8] rounded-3xl border border-[#E3DACD]/50 shadow-inner">
-                            <h4 className="font-serif font-bold text-lg text-[#2A1F1D]">{n.project_name || 'Project Invitation'}</h4>
-                            <p className="text-[11px] text-[#8C7B70] mt-2 font-medium leading-relaxed italic">You have been invited to join this project.</p>
-                            <div className="flex flex-wrap gap-4 mt-6">
+                        <div className="mb-6 p-5 bg-[#FDFCF8] rounded-2xl border border-[#E3DACD]/50 shadow-inner">
+                            <h4 className="font-serif font-bold text-base text-[#2A1F1D]">{n.project_name || 'Project Invitation'}</h4>
+                            <p className="text-[10px] text-[#8C7B70] mt-2 font-medium leading-relaxed italic">You have been invited to join this project.</p>
+                            <div className="flex flex-wrap gap-4 mt-5">
                                 <Button size="sm" onClick={() => onResponse(n.id, n.related_id, 'Accepted')}>Accept Invitation</Button>
                                 <Button size="sm" variant="ghost" className="text-rose-600" onClick={() => onResponse(n.id, n.related_id, 'Rejected')}>Decline</Button>
                             </div>
@@ -165,16 +165,16 @@ const Notifications = () => {
     );
 
     return (
-        <div className="max-w-5xl mx-auto space-y-24 py-16">
+        <div className="max-w-5xl mx-auto space-y-16 py-10">
             {/* Intelligence Header */}
-            <div className="flex flex-col md:flex-row justify-between items-end gap-12 text-left">
-                <div className="space-y-4">
+            <div className="flex flex-col md:flex-row justify-between items-end gap-10 text-left">
+                <div className="space-y-3">
                     <div className="flex items-center gap-4 text-[#C06842]">
-                        <span className="h-[1px] w-10 bg-[#C06842]" />
-                        <span className="text-[10px] font-black uppercase tracking-[0.4em]">Alerts</span>
+                        <span className="h-[1px] w-8 bg-[#C06842]" />
+                        <span className="text-[9px] font-black uppercase tracking-[0.4em]">Alerts</span>
                     </div>
-                    <h1 className="text-7xl font-serif font-black tracking-tighter text-[#2A1F1D] leading-none">Notifications</h1>
-                    <p className="text-lg text-[#8C7B70] font-medium leading-relaxed max-w-sm">
+                    <h1 className="text-5xl font-serif font-black tracking-tighter text-[#2A1F1D] leading-none">Notifications</h1>
+                    <p className="text-base text-[#8C7B70] font-medium leading-relaxed max-w-sm">
                         Stay updated with your latest project activities and alerts.
                     </p>
                 </div>
@@ -184,19 +184,19 @@ const Notifications = () => {
             </div>
 
             {/* Notification Groups */}
-            <div className="space-y-32">
+            <div className="space-y-24">
                 {notifications.length === 0 ? (
-                    <div className="text-center py-48 bg-white/40 rounded-[5rem] border border-dashed border-[#E3DACD] group">
-                        <Bell size={80} className="mx-auto mb-8 text-[#E3DACD] opacity-40 group-hover:scale-110 transition-transform duration-1000" strokeWidth={0.5} />
-                        <h3 className="font-serif text-4xl font-black text-[#2A1F1D] mb-4">All Caught Up</h3>
-                        <p className="text-[#8C7B70] font-medium max-w-xs mx-auto text-lg leading-relaxed">You have no new notifications at the moment.</p>
+                    <div className="text-center py-24 bg-white/40 rounded-[3rem] border border-dashed border-[#E3DACD] group">
+                        <Bell size={64} className="mx-auto mb-6 text-[#E3DACD] opacity-40 group-hover:scale-110 transition-transform duration-1000" strokeWidth={0.5} />
+                        <h3 className="font-serif text-2xl font-black text-[#2A1F1D] mb-4">All Caught Up</h3>
+                        <p className="text-[#8C7B70] font-medium max-w-xs mx-auto text-base leading-relaxed">You have no new notifications at the moment.</p>
                     </div>
                 ) : (
-                    <div className="space-y-24">
+                    <div className="space-y-16">
                         {Object.entries(grouped).map(([title, items]) => items.length > 0 && (
-                            <div key={title} className="space-y-10">
+                            <div key={title} className="space-y-8">
                                 <SectionHeader title={title} className="mb-0" />
-                                <div className="space-y-6">
+                                <div className="space-y-4">
                                     <AnimatePresence mode="popLayout">
                                         {items.map(n => (
                                             <NotificationCardItem 

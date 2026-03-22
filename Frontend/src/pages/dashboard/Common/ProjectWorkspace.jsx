@@ -195,12 +195,12 @@ const ProjectWorkspace = () => {
                     <div className="w-full md:w-80 space-y-3">
                         <div className="flex justify-between items-end">
                             <p className="text-[10px] font-black uppercase tracking-[0.3em] text-[#8C7B70]">Development Velocity</p>
-                            <span className="text-2xl font-serif font-black text-[#C06842]">{project.progress || 0}%</span>
+                            <span className="text-2xl font-serif font-black text-[#C06842]">{(typeof project.progress === 'object' ? project.progress.percentage : project.progress) || 0}%</span>
                         </div>
                         <div className="w-full h-3 bg-[#F9F7F2] rounded-full overflow-hidden border border-[#E3DACD] shadow-inner p-[2px]">
                             <motion.div 
                                 initial={{ width: 0 }}
-                                animate={{ width: `${project.progress || 0}%` }}
+                                animate={{ width: `${(typeof project.progress === 'object' ? project.progress.percentage : project.progress) || 0}%` }}
                                 transition={{ duration: 1.5, ease: "easeOut" }}
                                 className="h-full bg-gradient-to-r from-[#2A1F1D] via-[#A65D4D] to-[#C06842] rounded-full shadow-lg"
                             ></motion.div>

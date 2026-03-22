@@ -10,7 +10,7 @@ const Card = ({ children, className = "", variant = 'glass', onClick }) => {
     return (
         <div 
             onClick={onClick}
-            className={`rounded-[2.5rem] p-8 transition-all duration-500 hover:shadow-xl hover:shadow-[#C06842]/5 ${styles[variant]} ${onClick ? 'cursor-pointer hover:border-[#C06842]/30 active:scale-[0.99]' : ''} ${className}`}
+            className={`rounded-[2rem] p-6 transition-all duration-500 hover:shadow-xl hover:shadow-[#C06842]/5 ${styles[variant]} ${onClick ? 'cursor-pointer hover:border-[#C06842]/30 active:scale-[0.99]' : ''} ${className}`}
         >
             {children}
         </div>

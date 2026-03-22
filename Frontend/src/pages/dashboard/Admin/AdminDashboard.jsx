@@ -109,7 +109,17 @@ const AdminDashboard = ({ initialSection = 'verify_land' }) => {
     useEffect(() => {
         fetchData();
         const poll = setInterval(() => fetchData(true), 30000);
-        return () => clearInterval(poll);
+
+        // Listen for global search events from the Navbar
+        const handleGlobalSearch = (e) => {
+            setSearchQuery(e.detail);
+        };
+        window.addEventListener('planora_search', handleGlobalSearch);
+
+        return () => {
+            clearInterval(poll);
+            window.removeEventListener('planora_search', handleGlobalSearch);
+        };
     }, [fetchData]);
 
     const executeVerifyUser = async (id, status, reason = '') => {
@@ -292,6 +302,16 @@ const AdminDashboard = ({ initialSection = 'verify_land' }) => {
 
 
     // Sub-components
+    const PhaseTick = ({ active, label }) => (
+        <div className={`flex items-center justify-center w-6 h-6 rounded-lg text-[10px] font-black transition-all ${
+            active 
+                ? 'bg-[#C06842] text-white shadow-sm border border-[#C06842]' 
+                : 'bg-[#F9F7F2] text-[#B8AFA5] border border-[#E3DACD]'
+        }`}>
+            {label}
+        </div>
+    );
+
     const StatCard = ({ label, value, icon: Icon, color }) => (
         <div className="bg-white p-5 rounded-2xl border border-[#E3DACD]/40 shadow-sm hover:shadow-md transition-all group overflow-hidden relative">
             <div className="flex justify-between items-start relative z-10">
@@ -829,9 +849,11 @@ const AdminDashboard = ({ initialSection = 'verify_land' }) => {
                                     </tr>
                                 </thead>
                                 <tbody className="divide-y divide-[#E3DACD]/20 text-[#5D4037]">
-                                    {projects.length === 0 ? (
-                                        <tr><td colSpan="5" className="px-8 py-24 text-center text-[#B8AFA5] italic font-serif text-xl border-none">No active project cycles detected.</td></tr>
-                                    ) : projects.map((project) => (
+                                    {projects.filter(p => !searchQuery || p.title?.toLowerCase().includes(searchQuery.toLowerCase()) || p.owner_name?.toLowerCase().includes(searchQuery.toLowerCase())).length === 0 ? (
+                                        <tr><td colSpan="5" className="px-8 py-24 text-center text-[#B8AFA5] italic font-serif text-xl border-none">No matching project cycles detected.</td></tr>
+                                    ) : projects
+                                        .filter(p => !searchQuery || p.title?.toLowerCase().includes(searchQuery.toLowerCase()) || p.owner_name?.toLowerCase().includes(searchQuery.toLowerCase()))
+                                        .map((project) => (
                                         <tr key={project.project_id} className="hover:bg-[#FDFCF8]/40 transition-all duration-300">
                                             <td className="px-6 py-4">
                                                 <div className="font-black text-lg text-[#2A1F1D] tracking-tight">{project.title}</div>
@@ -856,13 +878,18 @@ const AdminDashboard = ({ initialSection = 'verify_land' }) => {
                                                 )}
                                             </td>
                                             <td className="px-6 py-4">
-                                                <div className="flex flex-col gap-2.5 w-full max-w-[150px]">
-                                                    <div className="flex justify-between text-[11px] font-black uppercase tracking-widest">
-                                                        <span className="text-[#8C7B70]">Load: {project.progress?.percentage || 0}%</span>
+                                                <div className="flex flex-col gap-3 w-full max-w-[180px]">
+                                                    <div className="flex justify-between items-center text-[10px] font-black uppercase tracking-widest mb-1">
+                                                        <span className="text-[#8C7B70]">Site Progress: <span className="text-[#C06842]">{project.progress?.percentage || 0}%</span></span>
+                                                        <div className="flex gap-1">
+                                                            <PhaseTick active={project.progress?.planning} label="P" />
+                                                            <PhaseTick active={project.progress?.design} label="D" />
+                                                            <PhaseTick active={project.progress?.execution} label="E" />
+                                                        </div>
                                                     </div>
-                                                    <div className="w-full h-2.5 bg-[#F9F7F2] rounded-full overflow-hidden border border-[#E3DACD]/50 shadow-inner">
+                                                    <div className="w-full h-2 bg-[#F9F7F2] rounded-full overflow-hidden border border-[#E3DACD]/50 shadow-inner">
                                                         <div
-                                                            className="h-full bg-gradient-to-r from-[#D98B6C] to-[#C06842] rounded-full transition-all duration-1000 ease-out shadow-[0_0_10px_rgba(192,104,66,0.3)]"
+                                                            className="h-full bg-gradient-to-r from-[#D98B6C] via-[#C06842] to-[#8C4A32] rounded-full transition-all duration-1000 ease-out"
                                                             style={{ width: `${project.progress?.percentage || 0}%` }}
                                                         />
                                                     </div>
