@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Outlet, useNavigate } from 'react-router-dom';
+import { Outlet, useNavigate, NavLink } from 'react-router-dom';
 import { useMockApp } from '../hooks/useMockApp';
 import { Menu, Bell, ShieldCheck, AlertCircle, X, Search, User } from 'lucide-react';
 import Sidebar from '../components/Layout/Sidebar';
@@ -111,38 +111,11 @@ const DashboardLayout = () => {
                             {isSidebarOpen && window.innerWidth < 1024 ? <X size={18} /> : <Menu size={18} />}
                         </button>
                         <div className="hidden sm:block">
-                            <p className="text-[9px] font-black uppercase tracking-[0.2em] text-[#C06842] mb-0">
-                                {['architect', 'civil_engineer', 'interior_designer'].includes(currentUser?.sub_category?.toLowerCase()) || ['architect', 'civil_engineer', 'interior_designer'].includes(currentUser?.role?.toLowerCase()) 
-                                    ? 'Planora Design Studio' 
-                                    : (currentUser?.sub_category === 'Contractor' || currentUser?.role === 'contractor') 
-                                        ? 'Operational Command' 
-                                        : 'Global Navigation'}
-                            </p>
                             <h2 className="font-serif font-black text-lg text-[#2A1F1D] tracking-tight truncate">Welcome Back, {currentUser.name.split(' ')[0]}</h2>
                         </div>
                     </div>
 
                     <div className="flex items-center gap-3 lg:gap-5">
-                        <div className="hidden md:flex items-center bg-[#F9F7F2] px-4 py-2 rounded-xl border border-[#E3DACD]/50 w-56 focus-within:border-[#C06842] group transition-all">
-                            <Search size={14} className="text-[#8C7B70] group-focus-within:text-[#C06842]" />
-                            <input 
-                                type="text" 
-                                placeholder="Strategic search..." 
-                                className="bg-transparent border-none outline-none text-[11px] font-bold w-full ml-3 placeholder:text-[#8C7B70]/60" 
-                                value={searchQuery}
-                                onChange={(e) => setSearchQuery(e.target.value)}
-                                onKeyDown={(e) => {
-                                    if (e.key === 'Enter') {
-                                        // Update URL query param to trigger search in sub-pages
-                                        const url = new URL(window.location.href);
-                                        url.searchParams.set('search', searchQuery);
-                                        window.history.pushState({}, '', url.toString());
-                                        // Dispatch a custom event for components that don't listen to URL
-                                        window.dispatchEvent(new CustomEvent('planora_search', { detail: searchQuery }));
-                                    }
-                                }}
-                            />
-                        </div>
                         <div className="flex items-center gap-2">
                             <button onClick={() => navigate('/dashboard/notifications')} className="p-2.5 relative rounded-xl bg-[#F9F7F2] hover:bg-white text-[#8C7B70] hover:text-[#C06842] border border-[#E3DACD]/20 transition-all shadow-sm group">
                                 <Bell size={18} className="group-hover:rotate-12 transition-transform" />

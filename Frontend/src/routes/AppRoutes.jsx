@@ -44,7 +44,6 @@ import PendingApproval from '../pages/dashboard/Common/PendingApproval';
 import Materials from '../pages/dashboard/Design/Materials';
 import Designs from '../pages/dashboard/Design/Designs';
 import Quotations from '../pages/dashboard/Design/Quotations';
-import ArchitectDrawings from '../pages/dashboard/Planning/ArchitectDrawings';
 
 const AppRoutes = () => {
     const { currentUser } = useMockApp();
@@ -130,7 +129,6 @@ const AppRoutes = () => {
                 )}
 
                 {/* Placeholders for Future Modules */}
-                <Route path="drawings" element={<ArchitectDrawings currentUser={currentUser} />} />
                 <Route path="design-status" element={<ComingSoon title="Design Status" />} />
                 <Route path="approvals" element={<ComingSoon title="Regulatory Approvals" />} />
                 <Route path="materials" element={<Materials />} />

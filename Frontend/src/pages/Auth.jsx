@@ -187,9 +187,9 @@ const Auth = () => {
         if (forgotMode === 'reset') {
             if (!formData.otp) return "OTP is required.";
             if (!formData.newPassword) return "New password is required.";
-            const passwordRegex = /^(?=.*[A-Z])(?=.*\d.*\d)(?=.*[!@#$%^&*])(?=.{6,})/;
+            const passwordRegex = /^(?=.*[A-Z])(?=.*[a-z])(?=.*\d)(?=.*[!@#$%^&*])(?=.{6,})/;
             if (!passwordRegex.test(formData.newPassword)) {
-                return "Password must be at least 6 characters, contain 1 uppercase letter, 2 numbers, and 1 special character.";
+                return "Password must be at least 6 characters, contain 1 uppercase letter, 1 lowercase letter, 1 number, and 1 special character.";
             }
             return null;
         }
@@ -202,9 +202,9 @@ const Auth = () => {
         if (!formData.email || !formData.password) return "Email and password are required.";
 
         if (!isLogin) {
-            const passwordRegex = /^(?=.*[A-Z])(?=.*\d.*\d)(?=.*[!@#$%^&*])(?=.{6,})/;
+            const passwordRegex = /^(?=.*[A-Z])(?=.*[a-z])(?=.*\d)(?=.*[!@#$%^&*])(?=.{6,})/;
             if (!passwordRegex.test(formData.password)) {
-                return "Password must be at least 6 characters, contain 1 uppercase letter, 2 numbers, and 1 special character.";
+                return "Password must be at least 6 characters, contain 1 uppercase letter, 1 lowercase letter, 1 number, and 1 special character.";
             }
             if (!formData.name) return "Name is required for signup.";
             if (!selectedCategory) return "Please select your role category.";

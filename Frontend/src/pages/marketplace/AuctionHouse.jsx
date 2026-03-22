@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { 
-    Gavel, Timer, TrendingUp, MapPin, Layers, 
+import {
+    Gavel, Timer, TrendingUp, MapPin, Layers,
     ArrowUpRight, Users, History, AlertCircle,
     BadgeCheck, Wallet, Flame, Activity, ShieldCheck
 } from 'lucide-react';
@@ -76,8 +76,8 @@ const AuctionHouse = () => {
             // Update the specific auction card with the new highest bid
             setAuctions(prev => prev.map(a =>
                 a.auction_id === update.auction_id
-                ? { ...a, current_highest_bid: update.highest_bid, bidders: (parseInt(a.bidders || 0) + 1) }
-                : a
+                    ? { ...a, current_highest_bid: update.highest_bid, bidders: (parseInt(a.bidders || 0) + 1) }
+                    : a
             ));
 
             // Build activity item using the bidder_name sent from server
@@ -196,12 +196,12 @@ const AuctionHouse = () => {
                                 </div>
                             ) : (
                                 auctions.map((auction, index) => (
-                                    <AuctionCard 
-                                        key={auction.auction_id} 
-                                        auction={auction} 
-                                        index={index} 
-                                        formatCurrency={formatCurrency} 
-                                        getTimeRemaining={getTimeRemaining} 
+                                    <AuctionCard
+                                        key={auction.auction_id}
+                                        auction={auction}
+                                        index={index}
+                                        formatCurrency={formatCurrency}
+                                        getTimeRemaining={getTimeRemaining}
                                         onPlaceBid={() => handlePlaceBid(auction.auction_id, auction.current_highest_bid)}
                                     />
                                 ))
@@ -280,20 +280,19 @@ const AuctionCard = ({ auction, index, formatCurrency, getTimeRemaining, onPlace
         >
             {/* Image Section */}
             <div className="relative h-56 overflow-hidden">
-                <img 
-                    src={auction.images || 'https://images.unsplash.com/photo-1500382017468-9049fee74aed?auto=format&fit=crop&q=80&w=800'} 
-                    alt={auction.land_title} 
+                <img
+                    src={auction.images || 'https://images.unsplash.com/photo-1500382017468-9049fee74aed?auto=format&fit=crop&q=80&w=800'}
+                    alt={auction.land_title}
                     className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-700"
                 />
                 <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent opacity-60" />
-                
+
                 {/* Status Badge */}
                 <div className="absolute top-4 left-4 flex gap-2">
-                    <span className={`px-4 py-1.5 rounded-full text-[10px] font-black uppercase tracking-wider backdrop-blur-md border ${
-                        auction.status === 'Hot' ? 'bg-orange-500/80 border-orange-400 text-white' :
+                    <span className={`px-4 py-1.5 rounded-full text-[10px] font-black uppercase tracking-wider backdrop-blur-md border ${auction.status === 'Hot' ? 'bg-orange-500/80 border-orange-400 text-white' :
                         auction.status === 'Ending Soon' ? 'bg-red-500/80 border-red-400 text-white' :
-                        'bg-white/80 border-[#E3DACD] text-[#2A1F1D]'
-                    }`}>
+                            'bg-white/80 border-[#E3DACD] text-[#2A1F1D]'
+                        }`}>
                         {auction.status}
                     </span>
                 </div>
@@ -365,14 +364,13 @@ const AuctionCard = ({ auction, index, formatCurrency, getTimeRemaining, onPlace
                                 </div>
                             )}
                         </div>
-                        <button 
+                        <button
                             disabled={timeLeft.total <= 0 || auction.status === 'completed'}
                             onClick={onPlaceBid}
-                            className={`px-6 py-3 rounded-xl font-black text-[10px] uppercase tracking-widest transition-all ${
-                                timeLeft.total > 0 && auction.status !== 'completed'
+                            className={`px-6 py-3 rounded-xl font-black text-[10px] uppercase tracking-widest transition-all ${timeLeft.total > 0 && auction.status !== 'completed'
                                 ? 'bg-[#2A1F1D] text-white shadow-lg shadow-[#2A1F1D]/20 hover:bg-[#C06842] hover:-translate-y-1'
                                 : 'bg-gray-100 text-gray-400 cursor-not-allowed border border-gray-200'
-                            }`}
+                                }`}
                         >
                             {auction.status === 'completed' ? 'Sold' : timeLeft.total <= 0 ? 'Closed' : 'Place Bid'}
                         </button>
@@ -390,7 +388,7 @@ const ActivityItem = ({ user, action, amount, target, time }) => (
         </div>
         <div className="flex-1">
             <p className="text-xs text-[#2A1F1D] leading-tight">
-                <span className="font-black">{user}</span> {action} 
+                <span className="font-black">{user}</span> {action}
                 {amount && <span className="text-[#A65D4D] font-bold ml-1">{amount}</span>}
                 {target && <span className="text-[#2A1F1D] font-bold ml-1">{target}</span>}
             </p>

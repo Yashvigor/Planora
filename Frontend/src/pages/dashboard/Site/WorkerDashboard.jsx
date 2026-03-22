@@ -216,6 +216,7 @@ const WorkerHome = ({ currentUser, roleType }) => {
     const [searchQuery, setSearchQuery] = useState('');
     const [submittingTaskId, setSubmittingTaskId] = useState(null);
     const [previewTask, setPreviewTask] = useState(null);
+    const [hasCompletedSafetyCheck, setHasCompletedSafetyCheck] = useState(localStorage.getItem('safety_check_done') === new Date().toDateString());
     const fileInputRef = useRef(null);
 
     const uid = currentUser?.user_id || currentUser?.id;
@@ -420,7 +421,12 @@ const WorkerHome = ({ currentUser, roleType }) => {
                             <div key={task.task_id} className={`rounded-2xl border p-4 transition-all ${task.status === 'Rejected' ? 'bg-red-50/40 border-red-200' : task.status === 'Approved' ? 'bg-green-50/40 border-green-200' : task.status === 'Submitted' ? 'bg-blue-50/40 border-blue-200' : 'bg-[#FDFCF8] border-[#E3DACD]/50'}`}>
                                 <div className="flex justify-between items-start mb-3">
                                     <div className="flex-1">
-                                        <h4 className="font-bold text-[#2A1F1D] text-sm">{task.title}</h4>
+                                        <div className="flex items-center gap-2 mb-1">
+                                            <h4 className="font-bold text-[#2A1F1D] text-sm">{task.title}</h4>
+                                            {(task.status === 'Pending' || task.status === 'Rejected') && (
+                                                <span className="flex items-center gap-1 text-[7px] font-black uppercase bg-[#C06842]/10 text-[#C06842] px-2 py-0.5 rounded-full border border-[#C06842]/20"><Camera size={8} /> Evidence Required</span>
+                                            )}
+                                        </div>
                                         <p className="text-[10px] text-[#C06842] font-bold uppercase tracking-widest mt-0.5">{task.project_name} • {task.location || 'Site'}</p>
                                         <p className="text-[10px] text-[#8C7B70] font-bold mt-1">Assigner: {task.assigner_name}</p>
                                         {task.description && <p className="text-xs text-[#6E5E56] mt-1.5 italic">"{task.description}"</p>}
@@ -437,9 +443,7 @@ const WorkerHome = ({ currentUser, roleType }) => {
                                 </div>
 
                                 {task.image_path && task.status !== 'Pending' && (
-                                    <div className="mt-3 rounded-xl overflow-hidden border border-[#E3DACD] shadow-sm mb-3 group/img cursor-pointer relative" onClick={() => {
-                                        // Trigger preview logic if we added it to WorkerHome, but for now just fix the UI
-                                    }}>
+                                    <div className="mt-3 rounded-xl overflow-hidden border border-[#E3DACD] shadow-sm mb-3 group/img cursor-pointer relative">
                                         <img src={`${import.meta.env.VITE_API_URL}/${task.image_path}`} alt="Submitted" className="w-full h-48 object-cover transition-transform group-hover/img:scale-105" />
                                         <div className="absolute bottom-0 left-0 right-0 bg-[#F9F7F2]/90 backdrop-blur-sm py-1.5 border-t border-[#E3DACD]">
                                             <p className="text-[10px] text-[#8C7B70] font-bold uppercase text-center tracking-widest">Site photo submitted</p>
@@ -450,11 +454,18 @@ const WorkerHome = ({ currentUser, roleType }) => {
                                 {/* Submit button - only for Pending or Rejected tasks */}
                                 {(task.status === 'Pending' || task.status === 'Rejected') && (
                                     <div>
+                                        {!hasCompletedSafetyCheck && (
+                                            <div className="mb-2 p-3 bg-red-50 text-red-600 rounded-xl border border-red-100 flex items-center gap-3 animate-pulse">
+                                                <AlertTriangle size={14} />
+                                                <span className="text-[9px] font-black uppercase tracking-tight text-left">Safety Check Required before submission</span>
+                                            </div>
+                                        )}
                                         <input
                                             type="file"
                                             accept="image/*,.pdf"
                                             className="hidden"
                                             id={`file-${task.task_id}`}
+                                            disabled={!hasCompletedSafetyCheck}
                                             onChange={(e) => {
                                                 if (e.target.files[0]) {
                                                     setPreviewTask({ task, file: e.target.files[0] });
@@ -463,7 +474,7 @@ const WorkerHome = ({ currentUser, roleType }) => {
                                         />
                                         <label
                                             htmlFor={`file-${task.task_id}`}
-                                            className="w-full mt-2 flex items-center justify-center gap-2 py-2.5 bg-[#2A1F1D] text-white text-xs font-bold uppercase tracking-wider rounded-xl hover:bg-[#C06842] transition-all cursor-pointer shadow-md"
+                                            className={`w-full mt-2 flex items-center justify-center gap-2 py-2.5 bg-[#2A1F1D] text-white text-xs font-bold uppercase tracking-wider rounded-xl hover:bg-[#C06842] transition-all cursor-pointer shadow-md ${!hasCompletedSafetyCheck ? 'opacity-50 grayscale cursor-not-allowed' : ''}`}
                                         >
                                             <Camera size={16} /> {task.status === 'Rejected' ? 'Resubmit with Photo' : 'Mark Complete + Upload Photo'}
                                         </label>
@@ -515,6 +526,49 @@ const WorkerHome = ({ currentUser, roleType }) => {
                             </button>
                         </div>
                     </div>
+                </div>
+            )}
+
+            {/* Safety Declaration Modal */}
+            {!hasCompletedSafetyCheck && (
+                <div className="fixed inset-0 z-[300] flex items-center justify-center p-6 bg-[#2A1F1D]/90 backdrop-blur-md">
+                    <motion.div 
+                        initial={{ y: 50, opacity: 0 }}
+                        animate={{ y: 0, opacity: 1 }}
+                        className="bg-white rounded-[4rem] w-full max-w-lg p-12 shadow-3xl text-center"
+                    >
+                        <div className="w-20 h-20 bg-red-100 text-red-600 rounded-3xl flex items-center justify-center mx-auto mb-8 animate-bounce">
+                            <Shield size={40} />
+                        </div>
+                        <h2 className="text-3xl font-serif font-black text-[#2A1F1D] mb-4 uppercase tracking-tighter">Daily Safety Protocol</h2>
+                        <p className="text-[#8C7B70] text-sm mb-8 leading-relaxed font-medium capitalize">
+                            Before proceeding to site tasks as a <span className="text-[#C06842] font-black">{currentUser?.sub_category || 'Professional'}</span>, please verify compliance:
+                        </p>
+                        <div className="space-y-4 mb-10">
+                            {[
+                                'I am equipped with mandatory trade-specific PPE.',
+                                'I have inspected tools and they are in safe working order.',
+                                'I am aware of today\'s site-specific hazards & fire exits.'
+                            ].map((item, idx) => (
+                                <div key={idx} className="flex items-center gap-4 bg-[#F9F7F2] p-5 rounded-2xl border border-[#E3DACD]/40 text-left">
+                                    <div className="w-6 h-6 rounded-full bg-[#C06842] flex items-center justify-center text-white shrink-0"><Check size={14} /></div>
+                                    <p className="text-[11px] font-black text-[#2A1F1D] uppercase tracking-wide leading-tight">{item}</p>
+                                </div>
+                            ))}
+                        </div>
+                        <Button 
+                            variant="primary" 
+                            size="lg" 
+                            className="w-full py-6 text-base" 
+                            onClick={() => {
+                                setHasCompletedSafetyCheck(true);
+                                localStorage.setItem('safety_check_done', new Date().toDateString());
+                            }}
+                        >
+                            Confirm & Access Workboard
+                        </Button>
+                        <p className="mt-6 text-[9px] text-[#8C7B70] font-black uppercase tracking-widest opacity-60">Compliance data is logged with headquarters.</p>
+                    </motion.div>
                 </div>
             )}
         </div>

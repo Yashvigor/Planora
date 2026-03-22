@@ -351,7 +351,8 @@ const enrichProjectWithProgress = (project, team = [], tasks = []) => {
             planning: !!project.planning_completed,
             design: !!project.design_completed,
             execution: !!project.execution_completed
-        }
+        },
+        tasks: tasks
     };
 };
 
@@ -502,6 +503,12 @@ app.post('/api/signup', async (req, res) => {
 
     if (!name || !email || !password || !role) {
         return res.status(400).json({ error: 'All fields are required' });
+    }
+
+    // ?? Complexity Protocol: Enforce case-sensitive requirements and specialized formatting
+    const passwordRegex = /^(?=.*[A-Z])(?=.*[a-z])(?=.*\d)(?=.*[!@#$%^&*])(?=.{6,})/;
+    if (!passwordRegex.test(password)) {
+        return res.status(400).json({ error: 'Password must be at least 6 characters, contain 1 uppercase letter, 1 lowercase letter, 1 number, and 1 special character.' });
     }
 
     let client;
@@ -678,7 +685,15 @@ app.post('/api/auth/forgot-password', async (req, res) => {
  */
 app.post('/api/auth/reset-password', async (req, res) => {
     const { email, otp, newPassword } = req.body;
-    if (!email || !otp || !newPassword) return res.status(400).json({ error: 'All fields are required' });
+    if (!email || !otp || !newPassword) {
+        return res.status(400).json({ error: 'All fields are required' });
+    }
+
+    // ?? Security Alignment: Validate new credentials against complexity requirements
+    const passwordRegex = /^(?=.*[A-Z])(?=.*[a-z])(?=.*\d)(?=.*[!@#$%^&*])(?=.{6,})/;
+    if (!passwordRegex.test(newPassword)) {
+        return res.status(400).json({ error: 'Password must be at least 6 characters, contain 1 uppercase letter, 1 lowercase letter, 1 number, and 1 special character.' });
+    }
 
     try {
         const result = await pool.query('SELECT * FROM users WHERE email = $1', [email]);
@@ -2387,7 +2402,7 @@ app.get('/api/professionals/:userId/projects', authenticateToken, async (req, re
         const projectIds = projects.map(p => p.project_id);
         let tasks = [];
         if (projectIds.length > 0) {
-            const tasksRes = await pool.query('SELECT project_id, status FROM tasks WHERE project_id = ANY($1)', [projectIds]);
+            const tasksRes = await pool.query('SELECT task_id, project_id, status, title, description, image_path, created_at FROM tasks WHERE project_id = ANY($1)', [projectIds]);
             tasks = tasksRes.rows;
         }
 
@@ -2397,12 +2412,19 @@ app.get('/api/professionals/:userId/projects', authenticateToken, async (req, re
                 const pTasks = tasks.filter(t => t.project_id === p.project_id);
                 const enrichedP = enrichProjectWithProgress(p, [], pTasks);
 
-                // Fetch fully resolved team for this project
+                // Fetch fully resolved team for this project (including pending ones)
                 const teamRes = await pool.query(`
-                    SELECT u.user_id, u.name, u.email, u.category, u.sub_category, pa.assigned_role, pa.status
+                    SELECT 
+                        COALESCE(u.user_id, pp.id) as user_id, 
+                        COALESCE(u.name, pp.name) as name, 
+                        COALESCE(u.email, pp.email) as email, 
+                        COALESCE(u.category, pp.category) as category, 
+                        COALESCE(u.sub_category, pp.sub_category) as sub_category,
+                        pa.assigned_role, pa.status
                     FROM projectassignments pa
-                    JOIN users u ON pa.user_id = u.user_id
-                    WHERE pa.project_id = $1 AND pa.status = 'Accepted'
+                    LEFT JOIN users u ON pa.user_id = u.user_id
+                    LEFT JOIN PendingProfessionals pp ON pa.user_id = pp.id
+                    WHERE pa.project_id = $1 AND (pa.status = 'Accepted' OR pa.status = 'Pending')
                 `, [p.project_id]);
                 enrichedP.team = teamRes.rows;
 
@@ -2702,7 +2724,7 @@ app.get('/api/projects/user/:userId', async (req, res) => {
 
         let tasks = [];
         if (projectIds.length > 0) {
-            const tasksRes = await pool.query('SELECT project_id, status FROM tasks WHERE project_id = ANY($1)', [projectIds]);
+            const tasksRes = await pool.query('SELECT task_id, project_id, status, title, description, image_path, created_at FROM tasks WHERE project_id = ANY($1)', [projectIds]);
             tasks = tasksRes.rows;
         }
 
@@ -2713,10 +2735,17 @@ app.get('/api/projects/user/:userId', async (req, res) => {
 
             // Fetch team
             const teamRes = await pool.query(`
-                SELECT u.user_id, u.name, u.email, u.category, u.sub_category, pa.assigned_role, pa.status
+                SELECT 
+                    COALESCE(u.user_id, pp.id) as user_id, 
+                    COALESCE(u.name, pp.name) as name, 
+                    COALESCE(u.email, pp.email) as email, 
+                    COALESCE(u.category, pp.category) as category, 
+                    COALESCE(u.sub_category, pp.sub_category) as sub_category,
+                    pa.assigned_role, pa.status
                 FROM projectassignments pa
-                JOIN users u ON pa.user_id = u.user_id
-                WHERE pa.project_id = $1 AND pa.status = 'Accepted'
+                LEFT JOIN users u ON pa.user_id = u.user_id
+                LEFT JOIN PendingProfessionals pp ON pa.user_id = pp.id
+                WHERE pa.project_id = $1 AND (pa.status = 'Accepted' OR pa.status = 'Pending')
             `, [p.project_id]);
             enrichedP.team = teamRes.rows;
 
@@ -2973,7 +3002,7 @@ app.post('/api/site-progress', authenticateToken, upload.single('image'), async 
         const checkStatusRes = await pool.query('SELECT status FROM projects WHERE project_id = $1', [project_id]);
         if (checkStatusRes.rows.length > 0 && checkStatusRes.rows[0].status === 'Completed') {
             return res.status(403).json({ error: 'This project is finalized. No further site progress updates are permitted.' });
-        } s
+        }
         let image_path = null;
         if (req.file) {
             const category = req.body.category || 'SiteProgress';
@@ -4385,53 +4414,42 @@ app.post('/api/quotations', async (req, res) => {
             newQuote.items.push(itemRes.rows[0]);
         }
 
-        // Workflow for Team Projects
+        // Workflow for Team Projects - Notify Landowner
         if (project_type === 'Team' && project_id) {
-            // Find the project name
-            const projRes = await client.query('SELECT name FROM projects WHERE project_id = $1', [project_id]);
-            const project_name = projRes.rows[0]?.name || 'Unknown Project';
+            // Find the project name and land owner
+            const projRes = await client.query('SELECT name, land_owner_id FROM projects WHERE project_id = $1', [project_id]);
+            const project = projRes.rows[0];
+            const project_name = project?.name || 'Unknown Project';
+            const land_owner_id = project?.land_owner_id;
 
-            // Find the contractor on that project
-            const contractorRes = await client.query(
-                `SELECT u.user_id, u.name
-                 FROM projectassignments pa
-                 JOIN users u ON u.user_id = pa.user_id
-                 WHERE pa.project_id = $1 AND pa.status = 'Accepted'
-                 AND u.category = 'contractor'
-                 LIMIT 1`,
-                [project_id]
-            );
+            if (land_owner_id) {
+                // Get the professional's name
+                const proRes = await client.query('SELECT name FROM users WHERE user_id = $1', [professional_id]);
+                const proName = proRes.rows[0]?.name || 'A professional';
 
-            if (contractorRes.rows.length > 0) {
-                const contractor = contractorRes.rows[0];
-
-                // Create a notification for the contractor
+                // Create a notification for the landowner
                 await client.query(
                     `INSERT INTO notifications (user_id, type, message, link, related_id)
                      VALUES ($1, $2, $3, $4, $5)`,
                     [
-                        contractor.user_id,
+                        land_owner_id,
                         'quotation_review',
-                        `New quotation "${title}" submitted for project "${project_name}" — awaiting your approval.`,
-                        '/dashboard/tasks',
+                        `${proName} submitted a new quotation "${title}" for project "${project_name}" — awaiting your approval.`,
+                        '/dashboard/quotations',
                         String(newQuote.id)
                     ]
                 );
 
-                // Get the professional's name
-                const designerRes = await client.query('SELECT name FROM users WHERE user_id = $1', [professional_id]);
-                const designerName = designerRes.rows[0]?.name || 'An interior designer';
-
-                // Create a Pending Review task for the contractor
+                // Create a Pending Review task for the landowner (Optional but helpful for visibility)
                 await client.query(
                     `INSERT INTO tasks (project_id, assigned_to, assigned_by, title, description, status)
                      VALUES ($1, $2, $3, $4, $5, $6)`,
                     [
                         project_id,
-                        contractor.user_id,
+                        land_owner_id,
                         professional_id,
                         `Review Quotation: ${title}`,
-                        `${designerName} submitted a new quotation "${title}" ($${total_amount.toFixed(2)}) for your review. Please approve or reject it.`,
+                        `${proName} submitted a new quotation "${title}" (INR ${total_amount.toLocaleString()}) for your review. Please approve or reject it.`,
                         'Pending'
                     ]
                 );
@@ -4470,6 +4488,72 @@ app.get('/api/quotations/view/:id', authenticateToken, async (req, res) => {
     } catch (err) {
         console.error('Error fetching quotation details:', err);
         res.status(500).json({ error: 'Failed to fetch quotation details' });
+    }
+});
+
+// Get Quotations received by a Land Owner (for review)
+app.get('/api/quotations/received/:landOwnerId', authenticateToken, async (req, res) => {
+    try {
+        const { landOwnerId } = req.params;
+        const result = await pool.query(
+            `SELECT q.*, p.name as project_name, u.name as professional_name
+             FROM professional_quotations q
+             JOIN projects p ON q.project_id = p.project_id
+             JOIN users u ON q.professional_id = u.user_id
+             WHERE p.land_owner_id = $1 AND q.status = 'pending_review'
+             ORDER BY q.created_at DESC`,
+            [landOwnerId]
+        );
+
+        const quotations = result.rows;
+        for (let quote of quotations) {
+            const itemsRes = await pool.query('SELECT * FROM quotation_items WHERE quotation_id = $1', [quote.id]);
+            quote.items = itemsRes.rows;
+        }
+
+        res.json(quotations);
+    } catch (err) {
+        console.error('Error fetching received quotations:', err);
+        res.status(500).json({ error: 'Failed to fetch received quotations' });
+    }
+});
+
+// Update Quotation Status (Approve/Reject)
+app.patch('/api/quotations/:id/status', authenticateToken, async (req, res) => {
+    try {
+        const { id } = req.params;
+        const { status, rejection_reason } = req.body; // status: 'accepted' or 'rejected'
+
+        if (!['accepted', 'rejected'].includes(status)) {
+            return res.status(400).json({ error: 'Status must be accepted or rejected' });
+        }
+
+        const result = await pool.query(
+            'UPDATE professional_quotations SET status=$1 WHERE id=$2 RETURNING *',
+            [status, id]
+        );
+        if (result.rows.length === 0) return res.status(404).json({ error: 'Quotation not found' });
+        const quote = result.rows[0];
+
+        // Find the landowner name for notification
+        const ownerRes = await pool.query('SELECT name FROM users WHERE user_id = $1', [req.user.id]);
+        const ownerName = ownerRes.rows[0]?.name || 'The client';
+
+        // Notify the professional of the decision
+        const notifMsg = status === 'accepted'
+            ? `${ownerName} has accepted your quotation "${quote.title}"! ✅`
+            : `${ownerName} rejected your quotation "${quote.title}". ${rejection_reason ? 'Reason: ' + rejection_reason : ''}`;
+
+        await pool.query(
+            `INSERT INTO notifications (user_id, type, message, link, related_id)
+             VALUES ($1, $2, $3, $4, $5)`,
+            [quote.professional_id, 'quotation_decision', notifMsg, '/dashboard/quotations', String(id)]
+        );
+
+        res.json(quote);
+    } catch (err) {
+        console.error('Error updating quotation status:', err);
+        res.status(500).json({ error: 'Failed to update quotation status' });
     }
 });
 
@@ -4594,10 +4678,10 @@ app.post('/api/auctions/:auctionId/bid', authenticateToken, async (req, res) => 
         }
 
         // Check bidder's wallet balance (Mock check for now)
-        const walletRes = await client.query('SELECT balance FROM wallets WHERE user_id = $1', [bidder_id]);
-        if (walletRes.rows.length > 0 && parseFloat(walletRes.rows[0].balance) < parseFloat(amount)) {
-            throw new Error('Insufficient wallet balance to place this bid');
-        }
+        // const walletRes = await client.query('SELECT balance FROM wallets WHERE user_id = $1', [bidder_id]);
+        // if (walletRes.rows.length > 0 && parseFloat(walletRes.rows[0].balance) < parseFloat(amount)) {
+        //     throw new Error('Insufficient wallet balance to place this bid');
+        // }
 
         // Record the bid
         const bidResult = await client.query(

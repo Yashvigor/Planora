@@ -4,7 +4,7 @@ import {
     FileText, Eye, MapPin, Clock, 
     TrendingUp, Award, User, Search, 
     CheckCircle2, AlertCircle, XCircle,
-    Lock, RefreshCcw, Activity, ClipboardList
+    Lock, RefreshCcw, Activity, ClipboardList, Users
 } from 'lucide-react';
 
 // Shared Components
@@ -20,6 +20,7 @@ const SiteWorkboard = ({ currentUser, projectId: propProjectId, hideCompleted = 
     const [previewFile, setPreviewFile] = useState(null);
     const [searchQuery, setSearchQuery] = useState('');
     const [statusFilter, setStatusFilter] = useState('All');
+    const [assignmentFilter, setAssignmentFilter] = useState('All'); // 'All' | 'Mine'
 
     const userId = currentUser?.user_id || currentUser?.id;
 
@@ -59,6 +60,10 @@ const SiteWorkboard = ({ currentUser, projectId: propProjectId, hideCompleted = 
             }
             const s = (task.status || 'Pending').toLowerCase();
             if (acc[pid].stats[s] !== undefined) acc[pid].stats[s]++;
+            
+            // Assignment Filter
+            if (assignmentFilter === 'Mine' && task.assigned_to !== userId) return acc;
+            
             if (hideCompleted && task.status === 'Approved') return acc;
             acc[pid].tasks.push(task);
             return acc;
@@ -96,9 +101,30 @@ const SiteWorkboard = ({ currentUser, projectId: propProjectId, hideCompleted = 
             {!propProjectId && (
                 <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-8">
                     <SectionHeader title="Workboard" subtitle={`Manage tasks for ${projectList.length} projects`} />
-                    <div className="relative group w-full lg:w-96">
-                        <Search className="absolute left-5 top-1/2 -translate-y-1/2 w-5 h-5 text-[#8C7B70] group-focus-within:text-[#C06842] transition-colors" />
-                        <input type="text" placeholder="Search projects..." value={searchQuery} onChange={e => setSearchQuery(e.target.value)} className="w-full pl-14 pr-6 py-4 bg-white/80 border-2 border-[#E3DACD]/50 rounded-2xl text-xs font-bold outline-none focus:border-[#C06842] transition-all" />
+                    <div className="flex flex-wrap items-center gap-4 w-full lg:w-auto">
+                        <div className="flex bg-[#F9F7F2] p-1.5 rounded-2xl border border-[#E3DACD]/50">
+                            {[
+                                { id: 'All', label: 'Team Tasks', icon: Users },
+                                { id: 'Mine', label: 'My Tasks', icon: User }
+                            ].map(opt => {
+                                const Icon = opt.icon;
+                                return (
+                                    <button
+                                        key={opt.id}
+                                        onClick={() => setAssignmentFilter(opt.id)}
+                                        className={`px-6 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all flex items-center gap-2 ${
+                                            assignmentFilter === opt.id ? 'bg-[#2A1F1D] text-white shadow-lg' : 'text-[#8C7B70] hover:text-[#C06842]'
+                                        }`}
+                                    >
+                                        <Icon size={12} /> {opt.label}
+                                    </button>
+                                );
+                            })}
+                        </div>
+                        <div className="relative group w-full lg:w-64">
+                            <Search className="absolute left-5 top-1/2 -translate-y-1/2 w-4 h-4 text-[#8C7B70] group-focus-within:text-[#C06842] transition-colors" />
+                            <input type="text" placeholder="Search projects..." value={searchQuery} onChange={e => setSearchQuery(e.target.value)} className="w-full pl-12 pr-6 py-3.5 bg-white/80 border-2 border-[#E3DACD]/50 rounded-2xl text-[10px] font-bold outline-none focus:border-[#C06842] transition-all" />
+                        </div>
                     </div>
                 </div>
             )}
@@ -113,18 +139,50 @@ const SiteWorkboard = ({ currentUser, projectId: propProjectId, hideCompleted = 
                 </div>
             )}
 
-            {/* Projects Registry */}
-            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
+            {/* Projects Registry / Integrated Kanban */}
+            <div className="w-full">
                 {projectList.length === 0 ? (
-                    <div className="col-span-full py-24 text-center border-2 border-dashed border-[#E3DACD] rounded-[3rem] bg-[#F9F7F2]/20">
+                    <div className="py-24 text-center border-2 border-dashed border-[#E3DACD] rounded-[3rem] bg-[#F9F7F2]/20">
                         <Search size={56} className="mx-auto text-[#E3DACD] mb-5" strokeWidth={0.5} />
-                        <h3 className="text-xl font-serif font-black text-[#2A1F1D] mb-1">No Projects Found</h3>
-                        <p className="text-[#8C7B70] text-[11px] max-w-xs mx-auto">Try adjusting your search or filters to find what you're looking for.</p>
+                        <h3 className="text-xl font-serif font-black text-[#2A1F1D] mb-1">No Tasks Found</h3>
+                        <p className="text-[#8C7B70] text-[11px] max-w-xs mx-auto">Tasks for this project will appear here once assigned.</p>
+                    </div>
+                ) : propProjectId ? (
+                    /* Embedded Kanban Columns */
+                    <div className="flex flex-col lg:flex-row gap-6 overflow-x-auto pb-8 min-h-[600px] scrollbar-hide">
+                        {[
+                            { id: 'pending', title: 'Todo', icon: ClipboardList, color: 'text-[#8C7B70]', bg: 'bg-[#F9F7F2]' },
+                            { id: 'submitted', title: 'Review', icon: RefreshCcw, color: 'text-blue-600', bg: 'bg-blue-50' },
+                            { id: 'approved', title: 'Done', icon: CheckCircle2, color: 'text-green-600', bg: 'bg-green-50' },
+                            { id: 'rejected', title: 'Rejected', icon: AlertCircle, color: 'text-red-600', bg: 'bg-red-50' }
+                        ].map(col => (
+                            <div key={col.id} className="flex-1 min-w-[300px] flex flex-col space-y-6">
+                                <div className={`p-4 rounded-2xl ${col.bg} border-2 border-white flex items-center justify-between ${col.color} shadow-sm`}>
+                                    <div className="flex items-center gap-3">
+                                        <col.icon size={16} />
+                                        <span className="text-[10px] font-black uppercase tracking-widest">{col.title}</span>
+                                    </div>
+                                    <span className="bg-white/60 px-2.5 py-0.5 rounded-lg text-[9px] font-black">{projectList[0].tasks.filter(t => t.status.toLowerCase() === col.id).length}</span>
+                                </div>
+                                <div className="space-y-4">
+                                    {projectList[0].tasks.filter(t => t.status.toLowerCase() === col.id).map(task => (
+                                        <TaskCard key={task.task_id} task={task} onPreview={() => openPreview(task)} />
+                                    ))}
+                                    {projectList[0].tasks.filter(t => t.status.toLowerCase() === col.id).length === 0 && (
+                                        <div className="py-12 border-2 border-dashed border-[#E3DACD]/40 rounded-3xl flex items-center justify-center opacity-40">
+                                            <p className="text-[9px] font-black uppercase tracking-widest text-[#8C7B70]">Empty</p>
+                                        </div>
+                                    )}
+                                </div>
+                            </div>
+                        ))}
                     </div>
                 ) : (
-                    projectList.map(project => (
-                        <ProjectCard key={project.id} project={project} onSelect={() => setSelectedProject(project)} />
-                    ))
+                    <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
+                        {projectList.map(project => (
+                            <ProjectCard key={project.id} project={project} onSelect={() => setSelectedProject(project)} />
+                        ))}
+                    </div>
                 )}
             </div>
 

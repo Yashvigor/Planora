@@ -2,6 +2,8 @@ import React, { useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { useMockApp } from '../../../hooks/useMockApp';
 import { FileText, Plus, Search, FileDown, Eye, X, Calculator, Send } from 'lucide-react';
+import jsPDF from 'jspdf';
+import autoTable from 'jspdf-autotable';
 
 const Quotations = () => {
     const { currentUser } = useMockApp();
@@ -64,19 +66,138 @@ const Quotations = () => {
     };
 
     const handleDownload = () => {
-        const element = document.getElementById('quotation-print-area');
-        if (!element) return;
-        
-        const opt = {
-            margin: [0.5, 0.5],
-            filename: `Planora_Quotation_${selectedQuotation?.title || 'Download'}.pdf`,
-            image: { type: 'jpeg', quality: 0.98 },
-            html2canvas: { scale: 3, useCORS: true, letterRendering: true },
-            jsPDF: { unit: 'in', format: 'a4', orientation: 'portrait' }
-        };
+        if (!selectedQuotation) return;
 
-        // Silent download
-        html2pdf().from(element).set(opt).save();
+        const doc = new jsPDF();
+        const pageWidth = doc.internal.pageSize.getWidth();
+        const planoraRust = [192, 104, 66];
+        const planoraDark = [42, 31, 29];
+        const planoraText = [140, 123, 112];
+
+        // Header - Planora Branding
+        doc.setFontSize(30);
+        doc.setTextColor(planoraRust[0], planoraRust[1], planoraRust[2]);
+        doc.setFont('helvetica', 'bold');
+        doc.text("Planora", 15, 25);
+        
+        doc.setFontSize(10);
+        doc.setTextColor(planoraText[0], planoraText[1], planoraText[2]);
+        doc.setFont('helvetica', 'normal');
+        doc.text("Interior Design & Project Management", 15, 32);
+        doc.text("Commercial Proposal", 15, 37);
+
+        // Header - Quote Info
+        doc.setFillColor(planoraDark[0], planoraDark[1], planoraDark[2]);
+        doc.roundedRect(pageWidth - 65, 18, 50, 8, 2, 2, 'F');
+        doc.setTextColor(255, 255, 255);
+        doc.setFontSize(8);
+        doc.setFont('helvetica', 'bold');
+        doc.text(`QUOTATION #${selectedQuotation.id.toString().substring(0, 8).toUpperCase()}`, pageWidth - 40, 23.5, { align: 'center' });
+
+        doc.setTextColor(planoraText[0], planoraText[1], planoraText[2]);
+        doc.setFont('helvetica', 'normal');
+        doc.text("Date Issued", pageWidth - 15, 32, { align: 'right' });
+        doc.setTextColor(planoraDark[0], planoraDark[1], planoraDark[2]);
+        doc.setFont('helvetica', 'bold');
+        doc.text(new Date(selectedQuotation.created_at).toLocaleDateString(undefined, { dateStyle: 'long' }), pageWidth - 15, 37, { align: 'right' });
+
+        doc.setDrawColor(227, 218, 205);
+        doc.line(15, 45, pageWidth - 15, 45);
+
+        // Client Info
+        doc.setTextColor(planoraText[0], planoraText[1], planoraText[2]);
+        doc.setFontSize(8);
+        doc.setFont('helvetica', 'bold');
+        doc.text("CLIENT INFORMATION", 15, 55);
+        
+        doc.setTextColor(planoraDark[0], planoraDark[1], planoraDark[2]);
+        doc.setFontSize(18);
+        doc.text(selectedQuotation.client_id || 'N/A', 15, 65);
+        
+        doc.setTextColor(planoraText[0], planoraText[1], planoraText[2]);
+        doc.setFontSize(10);
+        doc.setFont('helvetica', 'normal');
+        doc.text(`Reference: ${selectedQuotation.title}`, 15, 72);
+
+        // Validity info
+        doc.setTextColor(planoraText[0], planoraText[1], planoraText[2]);
+        doc.setFontSize(8);
+        doc.setFont('helvetica', 'bold');
+        doc.text("VALIDITY", pageWidth - 15, 55, { align: 'right' });
+        doc.setFontSize(10);
+        doc.setFont('helvetica', 'normal');
+        doc.text("This quotation is valid until:", pageWidth - 15, 65, { align: 'right' });
+        doc.setTextColor(planoraDark[0], planoraDark[1], planoraDark[2]);
+        doc.setFont('helvetica', 'bold');
+        doc.setFontSize(14);
+        const validUntil = selectedQuotation.valid_until 
+            ? new Date(selectedQuotation.valid_until).toLocaleDateString(undefined, { dateStyle: 'long' })
+            : 'N/A';
+        doc.text(validUntil, pageWidth - 15, 72, { align: 'right' });
+
+        // Table
+        const tableData = (selectedQuotation.items || []).map(item => [
+            item.description,
+            item.quantity,
+            `INR ${parseFloat(item.unit_price).toLocaleString()}`,
+            `INR ${parseFloat(item.total_price).toLocaleString()}`
+        ]);
+
+        autoTable(doc, {
+            startY: 85,
+            head: [['Description', 'Qty', 'Unit Price', 'Total']],
+            body: tableData,
+            theme: 'grid',
+            headStyles: { fillColor: planoraDark, textColor: [255, 255, 255], fontStyle: 'bold', fontSize: 9 },
+            bodyStyles: { textColor: planoraDark, fontSize: 8 },
+            alternateRowStyles: { fillColor: [253, 252, 248] },
+            columnStyles: {
+                0: { cellWidth: 'auto' },
+                1: { halign: 'center', cellWidth: 20 },
+                2: { halign: 'right', cellWidth: 35 },
+                3: { halign: 'right', cellWidth: 35 }
+            }
+        });
+
+        // Totals
+        const finalY = doc.lastAutoTable.finalY + 15;
+        doc.setDrawColor(227, 218, 205);
+        doc.line(pageWidth - 70, finalY - 5, pageWidth - 15, finalY - 5);
+        
+        doc.setTextColor(planoraText[0], planoraText[1], planoraText[2]);
+        doc.setFontSize(10);
+        doc.text("Subtotal", pageWidth - 70, finalY);
+        doc.setTextColor(planoraDark[0], planoraDark[1], planoraDark[2]);
+        doc.text(`INR ${parseFloat(selectedQuotation.total_amount).toLocaleString()}`, pageWidth - 15, finalY, { align: 'right' });
+
+        doc.setFillColor(planoraDark[0], planoraDark[1], planoraDark[2]);
+        doc.roundedRect(pageWidth - 85, finalY + 5, 70, 15, 1, 1, 'F');
+        doc.setTextColor(255, 255, 255);
+        doc.setFontSize(8);
+        doc.text("TOTAL ESTIMATE", pageWidth - 80, finalY + 14);
+        doc.setTextColor(planoraRust[0], planoraRust[1], planoraRust[2]);
+        doc.setFontSize(14);
+        doc.setFont('helvetica', 'bold');
+        doc.text(`INR ${parseFloat(selectedQuotation.total_amount).toLocaleString()}`, pageWidth - 20, finalY + 15, { align: 'right' });
+
+        // Terms
+        doc.setFillColor(253, 252, 248);
+        doc.roundedRect(15, finalY + 30, pageWidth - 30, 25, 2, 2, 'F');
+        doc.setDrawColor(227, 218, 205);
+        doc.roundedRect(15, finalY + 30, pageWidth - 30, 25, 2, 2, 'D');
+        
+        doc.setFont('helvetica', 'bold');
+        doc.setFontSize(10);
+        doc.setTextColor(planoraDark[0], planoraDark[1], planoraDark[2]);
+        doc.text("Terms & Conditions", pageWidth / 2, finalY + 38, { align: 'center' });
+        
+        doc.setFont('helvetica', 'normal');
+        doc.setFontSize(8);
+        doc.setTextColor(planoraText[0], planoraText[1], planoraText[2]);
+        const terms = "This estimate is based on the initial project requirements and is subject to change upon final technical assessment. Prices include standard delivery and labor. Special requests or structural changes will incur additional costs.";
+        doc.text(terms, pageWidth / 2, finalY + 45, { align: 'center', maxWidth: 150 });
+
+        doc.save(`Planora_Quotation_${selectedQuotation.title.replace(/\s+/g, '_')}.pdf`);
     };
 
     const fetchAssignedProjects = async () => {
@@ -97,7 +218,17 @@ const Quotations = () => {
     const fetchQuotations = async () => {
         try {
             setLoading(true);
-            const res = await fetch(`${import.meta.env.VITE_API_URL}/api/quotations/${uid}`);
+            const isLandowner = (currentUser?.role || currentUser?.sub_category) === 'Land Owner' || 
+                               (currentUser?.role || currentUser?.sub_category) === 'land_owner';
+            
+            // If landowner, fetch RECEIVED quotations. If professional, fetch CREATED quotations.
+            const endpoint = isLandowner 
+                ? `${import.meta.env.VITE_API_URL}/api/quotations/received/${uid}`
+                : `${import.meta.env.VITE_API_URL}/api/quotations/${uid}`;
+
+            const res = await fetch(endpoint, {
+                headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` }
+            });
             if (res.ok) {
                 const data = await res.json();
                 setQuotations(data);
@@ -173,9 +304,30 @@ const Quotations = () => {
         });
     };
 
+    const handleUpdateStatus = async (status, rejection_reason = '') => {
+        if (!selectedQuotation) return;
+        try {
+            const res = await fetch(`${import.meta.env.VITE_API_URL}/api/quotations/${selectedQuotation.id}/status`, {
+                method: 'PATCH',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${localStorage.getItem('token')}`
+                },
+                body: JSON.stringify({ status, rejection_reason })
+            });
+            if (res.ok) {
+                setShowDetailModal(false);
+                fetchQuotations();
+            }
+        } catch (error) {
+            console.error('Failed to update quotation status:', error);
+        }
+    };
+
     const filteredQuotations = quotations.filter(q =>
         q.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        (q.client_id || '').toLowerCase().includes(searchTerm.toLowerCase())
+        (q.client_id || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
+        (q.professional_name || '').toLowerCase().includes(searchTerm.toLowerCase())
     );
 
     const getStatusBadge = (status) => {
@@ -187,7 +339,7 @@ const Quotations = () => {
             draft: 'bg-[#8C7B70]/10 text-[#8C7B70] border-[#8C7B70]/30',
             rejected: 'bg-red-50 text-red-700 border-red-200'
         };
-        const label = status === 'pending_review' ? 'Pending Review' : (status === 'Personal' ? 'Personal' : status);
+        const label = status === 'pending_review' ? 'Awaiting Review' : (status === 'Personal' ? 'Personal' : status);
 
         return (
             <span className={`inline-flex items-center px-3 py-1 rounded-full text-[10px] uppercase font-bold tracking-wider border ${styles[status] || styles.draft}`}>
@@ -235,7 +387,7 @@ const Quotations = () => {
                     <div className="absolute top-0 right-0 w-32 h-32 bg-blue-500/10 rounded-full blur-2xl -mr-10 -mt-10 pointer-events-none"></div>
                     <p className="text-[#8C7B70] text-xs font-bold uppercase tracking-wider mb-1">Pending Responses</p>
                     <p className="text-4xl font-serif font-bold text-[#2A1F1D]">
-                        {quotations.filter(q => q.status === 'sent').length}
+                        {quotations.filter(q => q.status === 'sent' || q.status === 'pending_review').length}
                     </p>
                 </div>
             </div>
@@ -261,7 +413,7 @@ const Quotations = () => {
                         <thead>
                             <tr className="bg-[#F9F7F2] border-b border-[#E3DACD]/50 text-[#8C7B70] text-[10px] uppercase tracking-wider font-bold">
                                 <th className="p-4 pl-6">Title</th>
-                                <th className="p-4">Client</th>
+                                <th className="p-4">{ (currentUser?.role === 'land_owner') ? 'From Professional' : 'Client' }</th>
                                 <th className="p-4">Date Created</th>
                                 <th className="p-4">Amount</th>
                                 <th className="p-4">Status</th>

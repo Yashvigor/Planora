@@ -25,6 +25,7 @@ const AdminDashboard = ({ initialSection = 'verify_land' }) => {
     const [lands, setLands] = useState([]);
     const [loading, setLoading] = useState(true);
     const [projects, setProjects] = useState([]);
+    const [auctions, setAuctions] = useState([]);
     const [stats, setStats] = useState({
         totalUsers: 0,
         activeProjects: 0,
@@ -96,6 +97,19 @@ const AdminDashboard = ({ initialSection = 'verify_land' }) => {
                 }
             } catch (err) {
                 console.error("Failed to fetch projects", err);
+            }
+
+            // Fetch Auctions (Market Requests)
+            try {
+                const auctionRes = await fetch(`${import.meta.env.VITE_API_URL}/api/admin/auctions/pending`, {
+                    headers: { 'Authorization': `Bearer ${localStorage.getItem('planora_token') || localStorage.getItem('token')}` }
+                });
+                if (auctionRes.ok) {
+                    const auctionData = await auctionRes.json();
+                    setAuctions(auctionData);
+                }
+            } catch (e) {
+                console.error('Failed to fetch auctions', e);
             }
 
         } catch (error) {
@@ -241,6 +255,74 @@ const AdminDashboard = ({ initialSection = 'verify_land' }) => {
         } catch (error) {
             console.error(`Error ${action}ing user`, error);
         }
+    };
+
+    const handleVerifyAuction = async (id, status) => {
+        if (status === 'Rejected') {
+            openModal({
+                title: 'Reject Market Request',
+                message: 'Please provide a justification for declining this auction authorization.',
+                type: 'prompt',
+                icon: AlertTriangle,
+                iconColor: 'text-red-600',
+                confirmText: 'Confirm Rejection',
+                onConfirm: async (reason) => {
+                    if (!reason) return;
+                    try {
+                        const response = await fetch(`${import.meta.env.VITE_API_URL}/api/admin/auctions/${id}/verify`, {
+                            method: 'PATCH',
+                            headers: {
+                                'Content-Type': 'application/json',
+                                'Authorization': `Bearer ${localStorage.getItem('planora_token') || localStorage.getItem('token')}`
+                            },
+                            body: JSON.stringify({ status: 'rejected', rejection_reason: reason })
+                        });
+                        if (response.ok) {
+                            openModal({
+                                title: 'Auction Rejected',
+                                message: 'The request has been removed from the live queue.',
+                                type: 'alert',
+                                icon: XCircle,
+                                iconColor: 'text-red-500'
+                            });
+                            fetchData(true);
+                        }
+                    } catch (e) { console.error(e); }
+                }
+            });
+            return;
+        }
+
+        openModal({
+            title: 'Authorize Auction',
+            message: 'Are you sure you want to permit this land parcel to enter the live bidding market?',
+            type: 'confirm',
+            icon: Gavel,
+            iconColor: 'text-blue-600',
+            confirmText: 'Authorize Entry',
+            onConfirm: async () => {
+                try {
+                    const response = await fetch(`${import.meta.env.VITE_API_URL}/api/admin/auctions/${id}/verify`, {
+                        method: 'PATCH',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'Authorization': `Bearer ${localStorage.getItem('planora_token') || localStorage.getItem('token')}`
+                        },
+                        body: JSON.stringify({ status: 'active' })
+                    });
+                    if (response.ok) {
+                        openModal({
+                            title: 'Auction Authorized',
+                            message: 'The land is now live on the marketplace.',
+                            type: 'alert',
+                            icon: CheckCircle,
+                            iconColor: 'text-green-500'
+                        });
+                        fetchData(true);
+                    }
+                } catch (e) { console.error(e); }
+            }
+        });
     };
 
     const handleVerifyLand = (landId, status) => {
@@ -403,13 +485,13 @@ const AdminDashboard = ({ initialSection = 'verify_land' }) => {
                                         </div>
                                     </td>
                                 </tr>
-                            ) : filteredData.map(user => {
+                            ) : filteredData.map((user, index) => {
                                 const isAppeal = user.appeal_reason || user.rejection_reason?.startsWith('[APPEAL SUBMITTED]');
                                 const joinedDate = user.created_at ? new Date(user.created_at).toLocaleDateString('en-US', { month: 'numeric', day: 'numeric', year: 'numeric' }) : '';
                                 const isProfessional = !['Admin', 'Land Owner'].includes(user.category) && user.sub_category !== 'Land Owner';
  
                                 return (
-                                    <tr key={user.user_id} className="hover:bg-[#FDFCF8]/60 transition-colors duration-200 group">
+                                    <tr key={user.user_id || index} className="hover:bg-[#FDFCF8]/60 transition-colors duration-200 group">
                                         {/* USER Column */}
                                         <td className="px-6 py-4">
                                             <div className="flex items-center gap-3">
@@ -821,6 +903,72 @@ const AdminDashboard = ({ initialSection = 'verify_land' }) => {
                 </div>
             )}
 
+            {activeSection === 'verify_auctions' && (
+                <div className="space-y-6 animate-fade-in max-w-7xl mx-auto">
+                    <div className="flex justify-between items-center pb-4">
+                        <div>
+                            <h2 className="text-2xl font-bold text-[#2A1F1D]">Market Authorization</h2>
+                            <p className="text-sm text-[#8C7B70] mt-1">Review pending auction requests for land parcels</p>
+                        </div>
+                        <span className="text-xs font-semibold text-[#8C7B70] bg-[#F9F7F2] px-4 py-2 rounded-lg border border-[#E3DACD]/50 text-right">
+                            {auctions.length} Pending
+                        </span>
+                    </div>
+
+                    <div className="bg-white rounded-2xl border border-[#E3DACD]/40 shadow-sm overflow-hidden">
+                        <div className="overflow-x-auto">
+                            <table className="w-full text-sm text-left">
+                                <thead className="bg-[#FDFCF8]/50 text-[#8C7B70] uppercase text-[10px] font-bold tracking-wider border-b border-[#E3DACD]/30">
+                                    <tr>
+                                        <th className="px-6 py-3.5">Land Title</th>
+                                        <th className="px-6 py-3.5">Owner Info</th>
+                                        <th className="px-6 py-3.5">Target Value</th>
+                                        <th className="px-8 py-3.5 text-right">Market Status</th>
+                                    </tr>
+                                </thead>
+                                <tbody className="divide-y divide-[#E3DACD]/20">
+                                    {auctions.length === 0 ? (
+                                        <tr><td colSpan="4" className="px-8 py-24 text-center text-[#B8AFA5] italic font-serif text-xl border-none">No pending auction requests in queue.</td></tr>
+                                    ) : auctions.map((auction, index) => (
+                                        <tr key={auction.auction_id || index} className="hover:bg-[#FDFCF8]/40 transition-colors group">
+                                            <td className="px-6 py-4">
+                                                <div className="font-bold text-[#2A1F1D]">{auction.land_title}</div>
+                                                <div className="text-[10px] text-[#A65D3B] font-bold uppercase tracking-widest mt-1">Location: {auction.location}</div>
+                                            </td>
+                                            <td className="px-6 py-4 text-[#5D4037]">
+                                                <div className="font-semibold text-xs">{auction.owner_name}</div>
+                                                <div className="text-[10px] opacity-70 truncate max-w-[150px]">{auction.owner_email}</div>
+                                            </td>
+                                            <td className="px-6 py-4">
+                                                <div className="text-sm font-black text-[#2A1F1D]">₹ {auction.base_price?.toLocaleString() || '---'}</div>
+                                                <div className="text-[9px] text-[#8C7B70] font-bold uppercase mt-1">Base Price Protocol</div>
+                                            </td>
+                                            <td className="px-6 py-4 text-right">
+                                                <div className="flex justify-end gap-2">
+                                                    <button 
+                                                        onClick={() => handleVerifyAuction(auction.auction_id, 'Approved')} 
+                                                        className="p-2 text-green-700 bg-green-50 hover:bg-green-100 rounded-xl transition-colors border border-green-100" 
+                                                        title="Authorize Market Entry"
+                                                    >
+                                                        <CheckCircle size={18} />
+                                                    </button>
+                                                    <button 
+                                                        onClick={() => handleVerifyAuction(auction.auction_id, 'Rejected')} 
+                                                        className="p-2 text-red-700 bg-red-50 hover:bg-red-100 rounded-xl transition-colors border border-red-100" 
+                                                        title="Deny Access"
+                                                    >
+                                                        <XCircle size={18} />
+                                                    </button>
+                                                </div>
+                                            </td>
+                                        </tr>
+                                    ))}
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            )}
 
 
 
@@ -853,8 +1001,8 @@ const AdminDashboard = ({ initialSection = 'verify_land' }) => {
                                         <tr><td colSpan="5" className="px-8 py-24 text-center text-[#B8AFA5] italic font-serif text-xl border-none">No matching project cycles detected.</td></tr>
                                     ) : projects
                                         .filter(p => !searchQuery || p.title?.toLowerCase().includes(searchQuery.toLowerCase()) || p.owner_name?.toLowerCase().includes(searchQuery.toLowerCase()))
-                                        .map((project) => (
-                                        <tr key={project.project_id} className="hover:bg-[#FDFCF8]/40 transition-all duration-300">
+                                        .map((project, index) => (
+                                        <tr key={project.project_id || index} className="hover:bg-[#FDFCF8]/40 transition-all duration-300">
                                             <td className="px-6 py-4">
                                                 <div className="font-black text-lg text-[#2A1F1D] tracking-tight">{project.title}</div>
                                                 <div className="text-[11px] text-[#A65D3B] font-bold uppercase tracking-widest mt-1.5 opacity-80">Origin: {project.owner_name}</div>
@@ -866,8 +1014,8 @@ const AdminDashboard = ({ initialSection = 'verify_land' }) => {
                                             <td className="px-6 py-4">
                                                 {project.team && project.team.length > 0 ? (
                                                     <div className="flex flex-col gap-1.5">
-                                                        {project.team.map(member => (
-                                                            <div key={member.id} className="flex gap-3 items-center text-[10px] bg-[#FDFCF8] border border-[#E3DACD]/40 px-3 py-1.5 rounded-xl">
+                                                        {project.team.map((member, index) => (
+                                                            <div key={member.id || index} className="flex gap-3 items-center text-[10px] bg-[#FDFCF8] border border-[#E3DACD]/40 px-3 py-1.5 rounded-xl">
                                                                 <span className="font-black text-[#8C7B70] uppercase tracking-tighter opacity-70 w-20">{member.sub_category || member.category}:</span>
                                                                 <span className="text-[#2A1F1D] font-black tracking-tight">{member.name}</span>
                                                             </div>
