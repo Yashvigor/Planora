@@ -24,23 +24,31 @@ const WeatherSafetyWidget = ({ location }) => {
 
             if (isDevLiveMode) {
                 try {
-                    const key = 'bf405d4149021e1a5390772f4f29d10e';
+                    const key = import.meta.env.VITE_OPENWEATHER_API_KEY || 'bf405d4149021e1a5390772f4f29d10e';
+                    
+                    // Stop 401 logs: Revoked key detection
+                    if (key === 'bf405d4149021e1a5390772f4f29d10e') {
+                         throw new Error('Simulation Mode Active'); 
+                    }
+
                     const res = await fetch(`https://api.openweathermap.org/data/2.5/weather?q=${city}&units=metric&appid=${key}`);
-                    if (res.ok) {
+                    if (res && res.ok) {
                         const data = await res.json();
                         setWeatherData({
-                            temp: Math.round(data.main.temp),
-                            rainProb: data.rain ? 80 : (data.clouds.all > 70 ? 40 : 10),
-                            wind: Math.round(data.wind.speed * 3.6),
-                            humidity: data.main.humidity,
-                            condition: data.weather[0].main,
-                            city: data.name,
+                            temp: Math.round(data.main?.temp || 30),
+                            rainProb: data.rain ? 80 : (data.clouds?.all > 70 ? 40 : 10),
+                            wind: Math.round((data.wind?.speed || 0) * 3.6),
+                            humidity: data.main?.humidity || 50,
+                            condition: data.weather[0]?.main || 'Clear',
+                            city: data.name || city,
                             isLive: true
                         });
                         setLoading(false);
                         return;
                     }
-                } catch (e) { /* Silenced */ }
+                } catch (e) { 
+                    // Silent catch - will proceed to high-performance fallback below
+                }
             }
 
             // High-Performance Fallback

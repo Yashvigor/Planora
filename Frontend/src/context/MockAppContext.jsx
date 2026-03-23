@@ -80,7 +80,6 @@ export const MockAppProvider = ({ children }) => {
     });
 
     // --- EFFECTS: REAL DATA FETCHING ---
-    // Fetch live projects from PostgreSQL when a user logs in
     useEffect(() => {
         if (currentUser) {
             const uid = currentUser.user_id || currentUser.id;
@@ -89,26 +88,30 @@ export const MockAppProvider = ({ children }) => {
                 .then(data => setProjects(data))
                 .catch(err => console.error("Error fetching projects:", err));
 
-            // Socket connection for real-time updates
-            socket.connect();
-            socket.emit('join', `user_${uid}`);
+            // Socket connection for real-time updates - improved stability
+            if (!socket.connected) {
+                socket.connect();
+            }
+            socket.emit('join', uid); 
 
             const handleStatusChange = (data) => {
-                setCurrentUser(prev => ({ 
+                setCurrentUser(prev => prev ? ({ 
                     ...prev, 
                     status: data.status, 
                     rejection_reason: data.reason || prev.rejection_reason 
-                }));
+                }) : null);
             };
 
             socket.on('account_status_changed', handleStatusChange);
 
             return () => {
                 socket.off('account_status_changed', handleStatusChange);
-                socket.disconnect();
+                // Only disconnect if the component is actually unmounting or user is logging out
             };
+        } else {
+            if (socket.connected) socket.disconnect();
         }
-    }, [currentUser]);
+    }, [currentUser?.user_id || currentUser?.id]);
 
     // 🚧 MOCK SITE PROGRESS (LocalStorage)
     const [siteProgress, setSiteProgress] = useState(() => {

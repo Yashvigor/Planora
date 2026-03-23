@@ -120,7 +120,7 @@ const AppRoutes = () => {
                 {effectiveRole === 'admin' && (
                     <>
                         <Route path="verify-land" element={<AdminOverview initialSection="verify_land" />} />
-                        <Route path="verify-auctions" element={<AdminOverview initialSection="verify_auctions" />} />
+                        <Route path="auction-requests" element={<AdminOverview initialSection="verify_auctions" />} />
                         <Route path="verify-accounts" element={<AdminOverview initialSection="verify_accounts" />} />
                         <Route path="professionals" element={<AdminOverview initialSection="professionals" />} />
                         <Route path="land-owners" element={<AdminOverview initialSection="land_owners" />} />

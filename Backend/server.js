@@ -1253,7 +1253,29 @@ app.get('/api/admin/pending-counts', async (req, res) => {
     }
 });
 
-// Admin: Get all pending auctions
+// Admin: Get all auction requests (Pending, Active, Completed, Rejected)
+app.get('/api/admin/auctions/all', authenticateToken, async (req, res) => {
+    try {
+        const result = await pool.query(`
+            SELECT 
+                a.*, 
+                l.name as land_title, l.location, l.area, 
+                u.name as owner_name, u.email as owner_email,
+                w.name as winner_name, w.email as winner_email
+            FROM land_auctions a
+            JOIN lands l ON a.land_id = l.land_id
+            JOIN users u ON a.owner_id = u.user_id
+            LEFT JOIN users w ON a.winner_id = w.user_id
+            ORDER BY a.created_at DESC
+        `);
+        res.json(result.rows);
+    } catch (err) {
+        console.error('Error fetching all auctions:', err);
+        res.status(500).json({ error: 'Failed to fetch auction requests' });
+    }
+});
+
+// Admin: Get all pending auctions (legacy mapping for counts if still used)
 app.get('/api/admin/auctions/pending', authenticateToken, async (req, res) => {
     try {
         const result = await pool.query(`
@@ -2730,11 +2752,10 @@ app.get('/api/projects/user/:userId', async (req, res) => {
     const { userId } = req.params;
     try {
         const result = await pool.query(`
-            SELECT DISTINCT p.*, pa.assigned_role, pa.status as assignment_status
-            FROM projects p
-            LEFT JOIN projectassignments pa ON p.project_id = pa.project_id
-            WHERE p.land_owner_id = $1 OR (pa.user_id = $1 AND pa.status = 'Accepted')
-            ORDER BY p.created_at DESC
+            SELECT * FROM projects 
+            WHERE land_owner_id = $1 
+               OR project_id IN (SELECT project_id FROM projectassignments WHERE user_id = $1 AND status = 'Accepted')
+            ORDER BY created_at DESC
         `, [userId]);
 
         const projects = result.rows;

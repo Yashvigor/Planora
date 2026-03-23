@@ -14,6 +14,8 @@ import {
 const AdminDashboard = ({ initialSection = 'verify_land' }) => {
     const { currentUser } = useMockApp();
     const [activeSection, setActiveSection] = useState(initialSection);
+    const [auctionTab, setAuctionTab] = useState('requests'); // 'requests' or 'history'
+
 
     // Sync state if navigation changes from the global Sidebar
     useEffect(() => {
@@ -99,9 +101,9 @@ const AdminDashboard = ({ initialSection = 'verify_land' }) => {
                 console.error("Failed to fetch projects", err);
             }
 
-            // Fetch Auctions (Market Requests)
+            // Fetch Auctions (All Market Context)
             try {
-                const auctionRes = await fetch(`${import.meta.env.VITE_API_URL}/api/admin/auctions/pending`, {
+                const auctionRes = await fetch(`${import.meta.env.VITE_API_URL}/api/admin/auctions/all`, {
                     headers: { 'Authorization': `Bearer ${localStorage.getItem('planora_token') || localStorage.getItem('token')}` }
                 });
                 if (auctionRes.ok) {
@@ -905,61 +907,121 @@ const AdminDashboard = ({ initialSection = 'verify_land' }) => {
 
             {activeSection === 'verify_auctions' && (
                 <div className="space-y-6 animate-fade-in max-w-7xl mx-auto">
-                    <div className="flex justify-between items-center pb-4">
-                        <div>
-                            <h2 className="text-2xl font-bold text-[#2A1F1D]">Market Authorization</h2>
-                            <p className="text-sm text-[#8C7B70] mt-1">Review pending auction requests for land parcels</p>
+                    <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-6 pb-4">
+                        <div className="space-y-1">
+                            <h2 className="text-3xl font-black font-serif text-[#2A1F1D] tracking-tight">Auction Management</h2>
+                            <p className="text-[11px] text-[#8C7B70] font-bold uppercase tracking-widest leading-relaxed">Authorize market listings and monitor acquisition history</p>
                         </div>
-                        <span className="text-xs font-semibold text-[#8C7B70] bg-[#F9F7F2] px-4 py-2 rounded-lg border border-[#E3DACD]/50 text-right">
-                            {auctions.length} Pending
-                        </span>
+                        <div className="flex bg-[#F9F7F2] p-1.5 rounded-2xl border border-[#E3DACD]/50 shadow-sm">
+                            <button 
+                                onClick={() => setAuctionTab('requests')}
+                                className={`px-6 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${auctionTab === 'requests' ? 'bg-[#2A1F1D] text-white shadow-lg' : 'text-[#8C7B70] hover:bg-[#E3DACD]/20'}`}
+                            >
+                                Active Requests
+                            </button>
+                            <button 
+                                onClick={() => setAuctionTab('history')}
+                                className={`px-6 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${auctionTab === 'history' ? 'bg-[#2A1F1D] text-white shadow-lg' : 'text-[#8C7B70] hover:bg-[#E3DACD]/20'}`}
+                            >
+                                Market History
+                            </button>
+                        </div>
                     </div>
 
-                    <div className="bg-white rounded-2xl border border-[#E3DACD]/40 shadow-sm overflow-hidden">
+                    <div className="bg-white rounded-[2.5rem] border border-[#E3DACD]/40 shadow-sm overflow-hidden">
                         <div className="overflow-x-auto">
-                            <table className="w-full text-sm text-left">
-                                <thead className="bg-[#FDFCF8]/50 text-[#8C7B70] uppercase text-[10px] font-bold tracking-wider border-b border-[#E3DACD]/30">
+                            <table className="w-full text-sm text-left border-collapse">
+                                <thead className="bg-[#FDFCF8]/80 backdrop-blur-sm text-[#8C7B70] uppercase text-[10px] font-black tracking-[0.2em] border-b border-[#E3DACD]/30 sticky top-0 z-10">
                                     <tr>
-                                        <th className="px-6 py-3.5">Land Title</th>
-                                        <th className="px-6 py-3.5">Owner Info</th>
-                                        <th className="px-6 py-3.5">Target Value</th>
-                                        <th className="px-8 py-3.5 text-right">Market Status</th>
+                                        <th className="px-8 py-5">Land Asset Details</th>
+                                        <th className="px-8 py-5">Ownership Profile</th>
+                                        <th className="px-8 py-5">{auctionTab === 'requests' ? 'Target Valuation' : 'Execution Details'}</th>
+                                        <th className="px-8 py-5 text-right">{auctionTab === 'requests' ? 'Authorization' : 'Market Verdict'}</th>
                                     </tr>
                                 </thead>
-                                <tbody className="divide-y divide-[#E3DACD]/20">
-                                    {auctions.length === 0 ? (
-                                        <tr><td colSpan="4" className="px-8 py-24 text-center text-[#B8AFA5] italic font-serif text-xl border-none">No pending auction requests in queue.</td></tr>
-                                    ) : auctions.map((auction, index) => (
+                                <tbody className="divide-y divide-[#E3DACD]/20 text-[#2A1F1D]">
+                                    {(auctionTab === 'requests' ? auctions.filter(a => a.status === 'pending_verification') : auctions.filter(a => a.status !== 'pending_verification')).length === 0 ? (
+                                        <tr>
+                                            <td colSpan="4" className="px-8 py-32 text-center text-[#B8AFA5] italic font-serif text-xl border-none">
+                                                No operation records found in this sequence.
+                                            </td>
+                                        </tr>
+                                    ) : (auctionTab === 'requests' ? auctions.filter(a => a.status === 'pending_verification') : auctions.filter(a => a.status !== 'pending_verification')).map((auction, index) => (
                                         <tr key={auction.auction_id || index} className="hover:bg-[#FDFCF8]/40 transition-colors group">
-                                            <td className="px-6 py-4">
-                                                <div className="font-bold text-[#2A1F1D]">{auction.land_title}</div>
-                                                <div className="text-[10px] text-[#A65D3B] font-bold uppercase tracking-widest mt-1">Location: {auction.location}</div>
-                                            </td>
-                                            <td className="px-6 py-4 text-[#5D4037]">
-                                                <div className="font-semibold text-xs">{auction.owner_name}</div>
-                                                <div className="text-[10px] opacity-70 truncate max-w-[150px]">{auction.owner_email}</div>
-                                            </td>
-                                            <td className="px-6 py-4">
-                                                <div className="text-sm font-black text-[#2A1F1D]">₹ {auction.base_price?.toLocaleString() || '---'}</div>
-                                                <div className="text-[9px] text-[#8C7B70] font-bold uppercase mt-1">Base Price Protocol</div>
-                                            </td>
-                                            <td className="px-6 py-4 text-right">
-                                                <div className="flex justify-end gap-2">
-                                                    <button 
-                                                        onClick={() => handleVerifyAuction(auction.auction_id, 'Approved')} 
-                                                        className="p-2 text-green-700 bg-green-50 hover:bg-green-100 rounded-xl transition-colors border border-green-100" 
-                                                        title="Authorize Market Entry"
-                                                    >
-                                                        <CheckCircle size={18} />
-                                                    </button>
-                                                    <button 
-                                                        onClick={() => handleVerifyAuction(auction.auction_id, 'Rejected')} 
-                                                        className="p-2 text-red-700 bg-red-50 hover:bg-red-100 rounded-xl transition-colors border border-red-100" 
-                                                        title="Deny Access"
-                                                    >
-                                                        <XCircle size={18} />
-                                                    </button>
+                                            <td className="px-8 py-6">
+                                                <div className="font-black text-lg text-[#2A1F1D] tracking-tighter uppercase">{auction.land_title}</div>
+                                                <div className="text-[10px] text-[#A65D3B] font-bold uppercase tracking-widest mt-1.5 flex items-center gap-2 opacity-80">
+                                                    <MapPin size={10} /> {auction.location} · {auction.area} SQ.FT
                                                 </div>
+                                            </td>
+                                            <td className="px-8 py-6">
+                                                <div className="flex items-center gap-4">
+                                                    <div className="w-10 h-10 rounded-2xl bg-[#C06842]/5 border border-[#C06842]/10 flex items-center justify-center font-black text-[#C06842] text-xs">
+                                                        {auction.owner_name?.charAt(0)}
+                                                    </div>
+                                                    <div>
+                                                        <div className="font-black text-[#2A1F1D] text-sm tracking-tight">{auction.owner_name}</div>
+                                                        <div className="text-[10px] text-[#A65D3B] font-bold uppercase tracking-tighter opacity-70">{auction.owner_email}</div>
+                                                    </div>
+                                                </div>
+                                            </td>
+                                            <td className="px-8 py-6">
+                                                {auctionTab === 'requests' ? (
+                                                    <div className="space-y-1">
+                                                        <div className="text-xl font-black text-[#2A1F1D] leading-none mb-1">₹ {auction.base_price?.toLocaleString()}</div>
+                                                        <div className="text-[9px] text-[#8C7B70] font-black uppercase tracking-[0.2em] px-2 py-0.5 bg-[#F9F7F2] border border-[#E3DACD]/50 rounded-lg w-fit">Starting Protocol</div>
+                                                    </div>
+                                                ) : (
+                                                    <div className="space-y-2">
+                                                        {auction.status === 'completed' ? (
+                                                            <>
+                                                                <div className="flex items-center gap-2">
+                                                                    <div className="w-6 h-6 rounded-lg bg-green-50 text-green-600 flex items-center justify-center border border-green-100">
+                                                                        <Award size={14} />
+                                                                    </div>
+                                                                    <div className="text-[11px] font-black text-[#2A1F1D] uppercase tracking-tighter">Acquired by: {auction.winner_name || 'System Resolved'}</div>
+                                                                </div>
+                                                                <div className="text-sm font-black text-green-600 pl-8 leading-none">₹ {auction.current_bid?.toLocaleString() || auction.base_price?.toLocaleString()}</div>
+                                                            </>
+                                                        ) : auction.status === 'active' ? (
+                                                            <div className="flex items-center gap-2">
+                                                                <Activity size={12} className="text-[#C06842] animate-pulse" />
+                                                                <span className="text-[10px] text-[#8C7B70] font-black uppercase tracking-widest">Market Exposure Active</span>
+                                                            </div>
+                                                        ) : (
+                                                            <span className="text-[10px] text-[#B8AFA5] font-black uppercase tracking-widest italic">Request Archived</span>
+                                                        )}
+                                                    </div>
+                                                )}
+                                            </td>
+                                            <td className="px-8 py-6 text-right">
+                                                {auctionTab === 'requests' ? (
+                                                    <div className="flex justify-end gap-3 opacity-0 group-hover:opacity-100 transition-all duration-500 scale-95 group-hover:scale-100">
+                                                        <button 
+                                                            onClick={() => handleVerifyAuction(auction.auction_id, 'Approved')} 
+                                                            className="px-6 py-2.5 bg-green-600 text-white rounded-xl text-[10px] font-black uppercase tracking-widest shadow-xl shadow-green-100 hover:bg-green-700 transition-all border border-green-500"
+                                                        >
+                                                            Authorize
+                                                        </button>
+                                                        <button 
+                                                            onClick={() => handleVerifyAuction(auction.auction_id, 'Rejected')} 
+                                                            className="px-6 py-2.5 bg-[#2A1F1D] text-white rounded-xl text-[10px] font-black uppercase tracking-widest shadow-xl shadow-gray-200 hover:bg-red-600 transition-all border border-[#2A1F1D]"
+                                                        >
+                                                            Dismiss
+                                                        </button>
+                                                    </div>
+                                                ) : (
+                                                    <div className="flex justify-end">
+                                                        <span className={`px-4 py-2 rounded-xl text-[9px] font-black uppercase tracking-[0.2em] border-2 shadow-sm ${
+                                                            auction.status === 'completed' ? 'bg-[#F0FDF4] text-[#166534] border-[#BBF7D0]' :
+                                                            auction.status === 'rejected' ? 'bg-red-50 text-red-700 border-red-100' :
+                                                            auction.status === 'active' ? 'bg-[#C06842]/5 text-[#C06842] border-[#C06842]/20' :
+                                                            'bg-gray-50 text-gray-700 border-gray-200'
+                                                        }`}>
+                                                            {auction.status?.replace('_', ' ')}
+                                                        </span>
+                                                    </div>
+                                                )}
                                             </td>
                                         </tr>
                                     ))}
@@ -969,8 +1031,6 @@ const AdminDashboard = ({ initialSection = 'verify_land' }) => {
                     </div>
                 </div>
             )}
-
-
 
             {activeSection === 'projects' && (
                 <div className="space-y-6 animate-fade-in max-w-7xl mx-auto">

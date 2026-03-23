@@ -59,7 +59,7 @@ const Sidebar = ({ isOpen, onClose }) => {
         if (role === 'admin') return [
             { icon: Home, label: 'Land Verification', path: '/dashboard/verify-land', badge: counts.lands },
             { icon: UserCheck, label: 'Account Verification', path: '/dashboard/verify-accounts', badge: counts.accounts },
-            { icon: Gavel, label: 'Auctions', path: '/dashboard/verify-auctions' },
+            { icon: Gavel, label: 'Auction Requests', path: '/dashboard/auction-requests' },
             { icon: Users, label: 'Professionals', path: '/dashboard/professionals' },
             { icon: Building, label: 'Land Owners', path: '/dashboard/land-owners' },
             { icon: Briefcase, label: 'Projects', path: '/dashboard/projects' }

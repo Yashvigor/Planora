@@ -5,10 +5,11 @@ import {
     Plus, HardHat, FileText, MapPin, 
     XCircle, Construction, Check, LayoutGrid, PenTool,
     Search, ChevronRight, Award, Shield, Layers, Users,
-    Hammer, Star, ClipboardList, Calculator, ImageIcon
+    Hammer, Star, ClipboardList, Calculator, ImageIcon, Radio, ShieldAlert
 } from 'lucide-react';
 import ProfilePromptModal from '../../../components/dashboard/Common/ProfilePromptModal';
 import RatingModal from '../../../components/dashboard/Common/RatingModal';
+import WeatherSafetyWidget from '../../../components/dashboard/Common/WeatherSafetyWidget';
 import SiteWorkboard from '../Site/SiteWorkboard';
 import { motion, AnimatePresence } from 'framer-motion';
 import jsPDF from 'jspdf';
@@ -143,11 +144,9 @@ const LandOwnerDashboard = () => {
     const handleGenerateInvestmentReport = (project) => {
         const doc = new jsPDF();
         const today = new Date().toLocaleDateString(undefined, { month: 'long', day: 'numeric', year: 'numeric' });
-        const progressPercent = (
-            (project.planning_completed ? 30 : 0) +
-            (project.design_completed ? 30 : 0) +
-            (project.execution_completed ? 40 : 0)
-        );
+        const progressPercent = project.progress?.physical || 0;
+        const financialBurn = project.progress?.financial || 0;
+        const isOverBudget = project.progress?.isOverBudget;
 
         // Header
         doc.setFontSize(22);
@@ -185,7 +184,7 @@ const LandOwnerDashboard = () => {
         doc.setFontSize(8);
         doc.text("BUDGET EXHAUSTION", 78, 78);
         doc.setFontSize(14);
-        doc.text(`${progressPercent + 15}%`, 78, 88);
+        doc.text(`${financialBurn}%`, 78, 88);
 
         doc.setFillColor(249, 247, 242);
         doc.rect(135, 70, 55, 25, 'F');
@@ -218,7 +217,9 @@ const LandOwnerDashboard = () => {
         doc.text("Risk Observation:", 15, finalY);
         doc.setFontSize(8);
         doc.setTextColor(140, 123, 112);
-        doc.text("Physical progress is trailing budget expenditure by approximately 15%. Recommend secondary audit of material procurement logs and onsite productivity metrics.", 15, finalY + 5, { maxWidth: 175 });
+        doc.text(isOverBudget 
+            ? `Physical progress is trailing budget expenditure by ${Math.max(0, financialBurn - progressPercent)}%. Recommend immediate secondary audit of onsite productivity.` 
+            : `Project is currently stable. Financial expenditure is aligned with physical milestone completion.`, 15, finalY + 5, { maxWidth: 175 });
 
         // Footer
         doc.setFontSize(7);
@@ -368,68 +369,93 @@ const LandOwnerDashboard = () => {
                     activeProjects
                         .filter(p => !searchQuery || p.name?.toLowerCase().includes(searchQuery.toLowerCase()) || p.location?.toLowerCase().includes(searchQuery.toLowerCase()))
                         .map(project => {
-                        const progressPercent = (
-                            (project.planning_completed ? 30 : 0) +
-                            (project.design_completed ? 30 : 0) +
-                            (project.execution_completed ? 40 : 0)
-                        );
+                        const progressPercent = project.progress?.physical || 0;
+                        const financialBurn = project.progress?.financial || 0;
+                        const isOverBudget = project.progress?.isOverBudget;
+
                         return (
                             <motion.div 
-                                initial={{ opacity: 0, y: 30 }}
+                                initial={{ opacity: 0, y: 50 }}
                                 whileInView={{ opacity: 1, y: 0 }}
+                                transition={{ duration: 0.8, ease: "easeOut" }}
                                 viewport={{ once: true }}
                                 key={project.project_id} 
-                                className="space-y-12"
+                                className="relative bg-[#FDFCF8] p-12 rounded-[4rem] border border-[#E3DACD]/60 shadow-sm overflow-hidden"
                             >
-                                {/* Strategic Site Header */}
-                                <div className="flex flex-col md:flex-row justify-between items-end gap-10 px-8">
+                                {/* Decorative Accent */}
+                                <div className="absolute top-0 left-0 w-2 h-full bg-[#C06842]" />
+
+                                {/* 1. Strategic Header */}
+                                <div className="flex flex-col md:flex-row justify-between items-start gap-8 mb-16 px-2">
                                     <div className="space-y-4">
                                         <div className="flex items-center gap-4">
-                                            <span className="w-12 h-12 bg-[#2A1F1D] text-[#C06842] rounded-2xl flex items-center justify-center shadow-xl"><Layers size={22} /></span>
-                                            <div>
-                                                <div className="flex items-center gap-4 mb-2">
-                                                    <h2 className="text-3xl font-serif font-black text-[#2A1F1D] tracking-tight uppercase leading-none">{project.name}</h2>
-                                                    <span className="text-[8px] font-black uppercase text-[#C06842] bg-[#C06842]/5 border border-[#C06842]/10 px-3 py-1.5 rounded-full tracking-[0.22em]">{project.type} Project</span>
-                                                </div>
-                                                <p className="text-[11px] text-[#8C7B70] font-black uppercase tracking-[0.3em] flex items-center gap-2">
-                                                    <MapPin size={12} className="text-[#C06842]" /> {project.location} • <span className="text-[#2A1F1D]">Land Registry Status: Active</span>
-                                                </p>
-                                            </div>
+                                            <span className="text-[10px] font-black uppercase text-[#C06842] bg-[#C06842]/5 border border-[#C06842]/10 px-4 py-2 rounded-full tracking-[0.3em]">Active Asset</span>
+                                            <span className="text-[10px] font-black uppercase text-[#8C7B70] tracking-[0.2em]">{project.type} Construction</span>
                                         </div>
+                                        <h2 className="text-5xl font-serif font-black text-[#2A1F1D] tracking-tighter uppercase leading-none">{project.name}</h2>
+                                        <p className="text-xs text-[#8C7B70] font-black uppercase tracking-[0.4em] flex items-center gap-3">
+                                            <MapPin size={14} className="text-[#C06842]" /> {project.location} • Land Registry: Verified
+                                        </p>
                                     </div>
-                                    <div className="w-full max-w-md space-y-6">
-                                        <div className="space-y-3">
-                                            <div className="flex justify-between items-end">
-                                                <span className="text-[9px] font-black uppercase text-[#8C7B70] tracking-[0.2em]">Physical Progress</span>
-                                                <span className="text-2xl font-serif font-black text-[#2A1F1D]">{progressPercent}%</span>
-                                            </div>
-                                            <div className="h-4 w-full bg-[#E3DACD]/20 rounded-full border border-[#E3DACD]/50 p-1 backdrop-blur-md overflow-hidden">
+                                    <Button variant="outline" className="shrink-0" onClick={() => handleGenerateInvestmentReport(project)}>Export Insight Report</Button>
+                                </div>
+
+                                {/* 2. Core Operational Hub (3 Columns) */}
+                                <div className="grid grid-cols-1 lg:grid-cols-12 gap-10 items-stretch mb-16">
+                                    {/* Weather Pillar */}
+                                    <div className="lg:col-span-4 space-y-4">
+                                        <div className="flex items-center gap-3 mb-2 px-1">
+                                            <Radio size={14} className="text-[#C06842] animate-pulse" />
+                                            <span className="text-[10px] font-black uppercase text-[#2A1F1D] tracking-[0.2em]">Environmental Sync</span>
+                                        </div>
+                                        <WeatherSafetyWidget location={project.location} />
+                                    </div>
+
+                                    {/* Progress Pillar */}
+                                    <div className="lg:col-span-4 bg-white p-8 rounded-[2.5rem] border border-[#E3DACD]/40 space-y-8 flex flex-col justify-center">
+                                        <div className="space-y-2 text-center">
+                                            <span className="text-[9px] font-black uppercase text-[#8C7B70] tracking-[0.3em]">Physical Completion</span>
+                                            <h3 className="text-6xl font-serif font-black text-[#2A1F1D]">{progressPercent}<span className="text-2xl text-[#C06842]">%</span></h3>
+                                        </div>
+                                        <div className="space-y-4">
+                                            <div className="h-4 w-full bg-[#E3DACD]/10 rounded-full border border-[#E3DACD]/30 p-1 overflow-hidden">
                                                 <motion.div 
                                                     initial={{ width: 0 }}
                                                     whileInView={{ width: `${progressPercent}%` }}
-                                                    className="h-full bg-gradient-to-r from-amber-600 to-[#C06842] rounded-full shadow-lg"
+                                                    className="h-full bg-gradient-to-r from-[#2A1F1D] to-[#C06842] rounded-full"
                                                 />
                                             </div>
+                                            <p className="text-[8px] text-[#8C7B70] font-black text-center uppercase tracking-widest leading-relaxed">
+                                                Currently in {progressPercent < 30 ? 'Planning' : progressPercent < 60 ? 'Design & Procurement' : 'Active Execution'} Phase
+                                            </p>
                                         </div>
-                                        {/* Financial Burn Sync */}
-                                        <div className="space-y-3 p-5 bg-[#C06842]/5 rounded-[1.5rem] border border-[#C06842]/10">
-                                            <div className="flex justify-between items-end">
-                                                <div className="flex items-center gap-2">
-                                                    <span className="text-[9px] font-black uppercase text-[#C06842] tracking-[0.2em]">Budget Spent Sync</span>
-                                                    {((progressPercent + 15) > progressPercent) && (
-                                                        <span className="bg-[#C06842] text-white text-[7px] font-black px-1.5 py-0.5 rounded shadow-sm">RISK ALERT</span>
-                                                    )}
-                                                </div>
-                                                <span className="text-lg font-serif font-black text-[#C06842]">{progressPercent + 15}%</span>
-                                            </div>
-                                            <div className="h-2 w-full bg-[#C06842]/10 rounded-full overflow-hidden">
+                                    </div>
+
+                                    {/* Financial Pillar */}
+                                    <div className={`lg:col-span-4 p-8 rounded-[2.5rem] border flex flex-col justify-center space-y-8 ${isOverBudget ? 'bg-rose-50 border-rose-200' : 'bg-[#C06842]/5 border-[#C06842]/10'}`}>
+                                        <div className="space-y-2 text-center">
+                                            <span className={`text-[9px] font-black uppercase tracking-[0.3em] ${isOverBudget ? 'text-rose-600' : 'text-[#C06842]'}`}>Capital Burn Sync</span>
+                                            <h3 className={`text-6xl font-serif font-black ${isOverBudget ? 'text-rose-600' : 'text-[#2A1F1D]'}`}>{financialBurn}<span className="text-2xl opacity-60">%</span></h3>
+                                        </div>
+                                        <div className="space-y-4">
+                                            <div className={`h-2.5 w-full rounded-full overflow-hidden ${isOverBudget ? 'bg-rose-200' : 'bg-[#C06842]/10'}`}>
                                                 <motion.div 
                                                     initial={{ width: 0 }}
-                                                    whileInView={{ width: `${progressPercent + 15}%` }}
-                                                    className="h-full bg-[#C06842]"
+                                                    whileInView={{ width: `${financialBurn}%` }}
+                                                    className={`h-full transition-all duration-1000 ${isOverBudget ? 'bg-rose-500 shadow-[0_0_20px_rgba(244,63,94,0.3)]' : 'bg-[#C06842]'}`}
                                                 />
                                             </div>
-                                            <p className="text-[8px] text-[#8C7B70] font-bold uppercase tracking-tighter">Budget exhaustion is out-pacing physical progress by 15%.</p>
+                                            <div className="flex items-center justify-center gap-2">
+                                                {isOverBudget ? (
+                                                    <div className="flex items-center gap-1.5 text-rose-600 text-[9px] font-black uppercase">
+                                                        <ShieldAlert size={12} /> Financial Risk Detected
+                                                    </div>
+                                                ) : (
+                                                    <div className="flex items-center gap-1.5 text-[#C06842] text-[9px] font-black uppercase">
+                                                        <Shield size={12} /> Capital Optimized
+                                                    </div>
+                                                )}
+                                            </div>
                                         </div>
                                     </div>
                                 </div>
