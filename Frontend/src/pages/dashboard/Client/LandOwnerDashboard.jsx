@@ -93,8 +93,16 @@ const LandOwnerDashboard = () => {
                 fetch(`${import.meta.env.VITE_API_URL}/api/lands/user/${userId}`, { headers })
             ]);
             
-            if (projRes.ok) setProjects(await projRes.json());
-            if (landRes.ok) setLands(await landRes.json());
+            if (projRes.ok) {
+                const data = await projRes.json();
+                console.log("[Dashboard] Projects Fetched:", data);
+                setProjects(data);
+            }
+            if (landRes.ok) {
+                const ldata = await landRes.json();
+                console.log("[Dashboard] Lands Fetched:", ldata);
+                setLands(ldata);
+            }
 
             if (!currentUser.profile_completed && !localStorage.getItem('profile_prompt_dismissed')) {
                 setIsProfilePromptOpen(true);
@@ -238,7 +246,11 @@ const LandOwnerDashboard = () => {
         } catch (err) { console.error(err); }
     };
 
-    const activeProjects = useMemo(() => projects.filter(p => p.status !== 'Completed'), [projects]);
+    const activeProjects = useMemo(() => {
+        const active = projects.filter(p => p.status?.toLowerCase() !== 'completed' && p.status?.toLowerCase() !== 'cancelled');
+        console.log("[Dashboard] Active Project Count:", active.length);
+        return active;
+    }, [projects]);
     const completedProjectsCount = useMemo(() => projects.filter(p => p.status === 'Completed').length, [projects]);
     const pendingRatings = useMemo(() => projects.filter(p => p.status === 'Completed' && !p.has_rated), [projects]);
 
@@ -452,190 +464,105 @@ const LandOwnerDashboard = () => {
                                     </div>
                                 </div>
 
-                                <div className="grid grid-cols-1 lg:grid-cols-4 gap-12">
-                                    <div className="lg:col-span-3 space-y-12">
-                                        <ProjectLifecycle project={project} onUpdatePhase={handlePhaseUpdate} />
-                                    </div>
-
-                                    <div className="space-y-12">
-                                        <Card variant="dark" className="group relative overflow-hidden">
-                                            <div className="absolute top-0 right-0 w-32 h-32 bg-[#C06842]/20 blur-[60px] rounded-full group-hover:translate-x-4 transition-transform duration-1000" />
-                                            <SectionHeader title="Quick Actions" className="mb-10" />
-                                            <div className="space-y-4">
-                                                <Button icon={Users} className="w-full py-6" onClick={() => setViewingTeamProject(project)}>Project Team</Button>
-                                                <Button variant="secondary" icon={FileText} className="w-full py-6 bg-emerald-600/10 text-emerald-700 border-emerald-600/20 hover:bg-emerald-600/20" onClick={() => handleGenerateInvestmentReport(project)}>Investment Report</Button>
-                            <Button 
-                                variant="secondary" 
-                                icon={Calculator} 
-                                className="w-full py-6 bg-blue-600/10 text-blue-700 border-blue-600/20 hover:bg-blue-600/20" 
-                                onClick={() => navigate('/dashboard/quotations')}
-                            >
-                                Review Quotations
-                            </Button>
-                                            </div>
-                                        </Card>
-
-
-                                    </div>
-                                </div>
+                                <ProjectLifecycle project={project} onUpdatePhase={handlePhaseUpdate} />
                                 <div className="h-[1px] w-full bg-gradient-to-r from-transparent via-[#E3DACD]/50 to-transparent my-24" />
                             </motion.div>
                         );
                     })
                 )}
             </div>
-
-            {/* Project Initiation Overlay */}
+            
+            {/* Create Project Modal */}
             <AnimatePresence>
                 {isCreateModalOpen && (
-                    <motion.div 
-                        initial={{ opacity: 0 }}
-                        animate={{ opacity: 1 }}
-                        exit={{ opacity: 0 }}
-                        className="fixed inset-0 z-[100] flex items-center justify-center p-6 bg-[#2A1F1D]/80 backdrop-blur-xl"
-                    >
+                    <div className="fixed inset-0 z-[100] flex items-center justify-center p-6 backdrop-blur-xl bg-[#2A1F1D]/30">
                         <motion.div 
-                            initial={{ scale: 0.9, y: 20 }}
-                            animate={{ scale: 1, y: 0 }}
-                            exit={{ scale: 0.9, y: 20 }}
-                            className="bg-white rounded-[4rem] w-full max-w-xl p-16 shadow-3xl border border-white/20 relative"
+                            initial={{ scale: 0.9, opacity: 0, y: 20 }}
+                            animate={{ scale: 1, opacity: 1, y: 0 }}
+                            exit={{ scale: 0.9, opacity: 0, y: 20 }}
+                            className="bg-white w-full max-w-2xl rounded-[3rem] overflow-hidden shadow-2xl relative"
                         >
-                            <button onClick={() => setIsCreateModalOpen(false)} className="absolute top-10 right-10 p-3 rounded-full hover:bg-[#F9F7F2] transition-colors"><XCircle size={32} className="text-[#E3DACD]" /></button>
-                            <SectionHeader title="New Project" subtitle="Create a new construction project" />
-                            <form onSubmit={handleCreateProject} className="space-y-8">
+                            <button 
+                                onClick={() => setIsCreateModalOpen(false)}
+                                className="absolute top-8 right-8 text-[#8C7B70] hover:text-[#2A1F1D] transition-colors"
+                            >
+                                <XCircle size={32} strokeWidth={1.5} />
+                            </button>
+                            
+                            <div className="p-12 space-y-10">
                                 <div className="space-y-4">
-                                    <label className="block text-[10px] font-black text-[#8C7B70] uppercase tracking-[0.3em]">Project Title</label>
-                                    <input required type="text" placeholder="e.g. Zenith Corporate Hub" className="w-full bg-[#FDFCF8] border-2 border-[#E3DACD]/50 rounded-[1.5rem] px-7 py-5 font-serif font-bold text-lg focus:border-[#C06842] outline-none transition-all placeholder:text-[#E3DACD]/60" value={newProject.name} onChange={e => setNewProject({ ...newProject, name: e.target.value })} />
-                                </div>
-                                <div className="grid grid-cols-2 gap-6">
-                                    <div className="space-y-4">
-                                        <label className="block text-[10px] font-black text-[#8C7B70] uppercase tracking-[0.3em]">Project Type</label>
-                                        <select className="w-full bg-[#FDFCF8] border-2 border-[#E3DACD]/50 rounded-[1.5rem] px-7 py-5 font-bold text-sm outline-none appearance-none hover:border-[#C06842] transition-colors" value={newProject.type} onChange={e => setNewProject({ ...newProject, type: e.target.value })}>
-                                            <option>Residential</option><option>Commercial</option><option>Industrial</option><option>Hospitality</option>
-                                        </select>
+                                    <div className="flex items-center gap-3">
+                                        <span className="h-[1px] w-6 bg-[#C06842]" />
+                                        <span className="text-[10px] font-black uppercase tracking-[0.4em] text-[#C06842]">New Development</span>
                                     </div>
-                                    <div className="space-y-4">
-                                        <label className="block text-[10px] font-black text-[#8C7B70] uppercase tracking-[0.3em]">Budget</label>
-                                        <div className="relative">
-                                            <span className="absolute left-7 top-1/2 -translate-y-1/2 font-bold text-[#C06842]">₹</span>
-                                            <input required type="number" className="w-full bg-[#FDFCF8] border-2 border-[#E3DACD]/50 rounded-[1.5rem] pl-12 pr-7 py-5 font-bold text-sm focus:border-[#C06842] outline-none transition-all" value={newProject.budget} onChange={e => setNewProject({ ...newProject, budget: e.target.value })} />
+                                    <h2 className="text-4xl font-serif font-black text-[#2A1F1D] tracking-tight">Initiate Project</h2>
+                                </div>
+
+                                <form onSubmit={handleCreateProject} className="space-y-8">
+                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+                                        <div className="space-y-3">
+                                            <label className="text-[10px] font-black uppercase text-[#8C7B70] tracking-widest px-1">Project Name</label>
+                                            <input 
+                                                required 
+                                                className="w-full bg-[#FDFCF8] border-2 border-[#E3DACD]/40 rounded-2xl py-4 px-6 font-bold focus:border-[#C06842] transition-colors outline-none" 
+                                                placeholder="e.g. Zenith Residency"
+                                                value={newProject.name}
+                                                onChange={(e) => setNewProject({...newProject, name: e.target.value})}
+                                            />
+                                        </div>
+                                        <div className="space-y-3">
+                                            <label className="text-[10px] font-black uppercase text-[#8C7B70] tracking-widest px-1">Asset Category</label>
+                                            <select 
+                                                className="w-full bg-[#FDFCF8] border-2 border-[#E3DACD]/40 rounded-2xl py-4 px-6 font-bold focus:border-[#C06842] transition-colors outline-none appearance-none"
+                                                value={newProject.type}
+                                                onChange={(e) => setNewProject({...newProject, type: e.target.value})}
+                                            >
+                                                <option>Residential</option>
+                                                <option>Commercial</option>
+                                                <option>Industrial</option>
+                                            </select>
+                                        </div>
+                                        <div className="space-y-3">
+                                            <label className="text-[10px] font-black uppercase text-[#8C7B70] tracking-widest px-1">Location Context</label>
+                                            <input 
+                                                required 
+                                                className="w-full bg-[#FDFCF8] border-2 border-[#E3DACD]/40 rounded-2xl py-4 px-6 font-bold focus:border-[#C06842] transition-colors outline-none" 
+                                                placeholder="City, State"
+                                                value={newProject.location}
+                                                onChange={(e) => setNewProject({...newProject, location: e.target.value})}
+                                            />
+                                        </div>
+                                        <div className="space-y-3">
+                                            <label className="text-[10px] font-black uppercase text-[#8C7B70] tracking-widest px-1">Associate Land</label>
+                                            <select 
+                                                required
+                                                className="w-full bg-[#FDFCF8] border-2 border-[#E3DACD]/40 rounded-2xl py-4 px-6 font-bold focus:border-[#C06842] transition-colors outline-none appearance-none"
+                                                value={newProject.land_id}
+                                                onChange={(e) => setNewProject({...newProject, land_id: e.target.value})}
+                                            >
+                                                <option value="">Select an asset...</option>
+                                                {lands.map(land => (
+                                                    <option key={land.land_id} value={land.land_id}>{land.title} ({land.area} sq.ft)</option>
+                                                ))}
+                                            </select>
                                         </div>
                                     </div>
-                                </div>
-                                <div className="space-y-4">
-                                    <label className="block text-[10px] font-black text-[#8C7B70] uppercase tracking-[0.3em]">Select Land</label>
-                                    <select required className="w-full bg-[#FDFCF8] border-2 border-[#E3DACD]/50 rounded-[1.5rem] px-7 py-5 font-bold text-sm outline-none hover:border-[#C06842] transition-colors" value={newProject.land_id} onChange={e => {
-                                        const selectedLand = lands.find(l => l.land_id === e.target.value);
-                                        setNewProject({ ...newProject, land_id: e.target.value, location: selectedLand?.location || '' });
-                                    }}>
-                                        <option value="">Select Land</option>
-                                        {lands.map(l => <option key={l.land_id} value={l.land_id}>{l.name} - {l.location}</option>)}
-                                    </select>
-                                </div>
-                                <Button size="lg" className="w-full py-7" type="submit">Create Project</Button>
-                            </form>
+                                    <Button size="lg" className="w-full py-6 text-base" type="submit">Deploy Project Command</Button>
+                                </form>
+                            </div>
                         </motion.div>
-                    </motion.div>
+                    </div>
                 )}
             </AnimatePresence>
-
+            
             {/* Image Preview Modal */}
             <AnimatePresence>
                 {previewImage && (
-                    <motion.div 
-                        initial={{ opacity: 0 }}
-                        animate={{ opacity: 1 }}
-                        exit={{ opacity: 0 }}
-                        className="fixed inset-0 z-[110] flex items-center justify-center p-8 bg-[#2A1F1D]/90 backdrop-blur-xl"
-                        onClick={() => setPreviewImage(null)}
-                    >
-                        <motion.div 
-                            initial={{ scale: 0.9, y: 20 }}
-                            animate={{ scale: 1, y: 0 }}
-                            exit={{ scale: 0.9, y: 20 }}
-                            className="relative max-w-5xl max-h-full"
-                            onClick={e => e.stopPropagation()}
-                        >
-                            <button 
-                                onClick={() => setPreviewImage(null)}
-                                className="absolute -top-12 -right-12 p-3 text-white/60 hover:text-white transition-colors"
-                            >
-                                <XCircle size={32} />
-                            </button>
-                            <img src={previewImage} alt="Site Preview" className="w-full h-auto max-h-[85vh] object-contain rounded-[3rem] shadow-3xl border-4 border-white/20" />
+                    <div className="fixed inset-0 z-[200] flex items-center justify-center p-12 backdrop-blur-2xl bg-black/80" onClick={() => setPreviewImage(null)}>
+                        <motion.div initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} className="relative max-w-7xl max-h-full">
+                            <img src={previewImage} className="w-full h-full object-contain rounded-3xl" alt="Preview" />
                         </motion.div>
-                    </motion.div>
-                )}
-            </AnimatePresence>
-
-            {/* Project Team Modal */}
-            <AnimatePresence>
-                {viewingTeamProject && (
-                    <motion.div 
-                        initial={{ opacity: 0 }}
-                        animate={{ opacity: 1 }}
-                        exit={{ opacity: 0 }}
-                        className="fixed inset-0 z-[120] flex items-center justify-center p-8 bg-[#2A1F1D]/80 backdrop-blur-xl"
-                        onClick={() => setViewingTeamProject(null)}
-                    >
-                        <motion.div 
-                            initial={{ scale: 0.9, y: 20 }}
-                            animate={{ scale: 1, y: 0 }}
-                            exit={{ scale: 0.9, y: 20 }}
-                            className="bg-white rounded-[4rem] w-full max-w-xl p-16 shadow-3xl border border-white/20 relative"
-                            onClick={e => e.stopPropagation()}
-                        >
-                            <button onClick={() => setViewingTeamProject(null)} className="absolute top-10 right-10 p-3 rounded-full hover:bg-[#F9F7F2] transition-colors"><XCircle size={32} className="text-[#E3DACD]" /></button>
-                            
-                            <div className="mb-12">
-                                <div className="flex items-center gap-3 mb-2">
-                                    <span className="h-[1px] w-6 bg-[#C06842]" />
-                                    <span className="text-[9px] font-black uppercase tracking-[0.4em] text-[#C06842]">Strategic Assets</span>
-                                </div>
-                                <h2 className="text-4xl font-serif font-black text-[#2A1F1D] tracking-tight">{viewingTeamProject.name} Team</h2>
-                                <p className="text-[10px] text-[#8C7B70] font-black uppercase tracking-[0.2em] mt-2">Verified Field Professionals ({viewingTeamProject.team?.length || 0})</p>
-                            </div>
-
-                            <div className="space-y-4 max-h-[50vh] overflow-y-auto pr-4 custom-scrollbar">
-                                {viewingTeamProject.team?.map((member, midx) => {
-                                    const taskLoad = viewingTeamProject.tasks?.filter(t => t.assigned_to === (member.user_id || member.id)).length || 0;
-                                    return (
-                                        <div key={midx} className="p-6 bg-[#FDFCF8] rounded-[2rem] border-2 border-transparent hover:border-[#C06842]/10 flex items-center justify-between group transition-all">
-                                            <div className="flex items-center gap-6">
-                                                <div className="w-16 h-16 rounded-[1.2rem] bg-[#2A1F1D] text-[#C06842] flex items-center justify-center font-bold text-xl relative shadow-xl">
-                                                    {member.name?.[0].toUpperCase() || '?'}
-                                                    <div className="absolute -bottom-1 -right-1 w-5 h-5 bg-emerald-500 border-4 border-white rounded-full shadow-sm"></div>
-                                                </div>
-                                                <div>
-                                                    <p className="text-sm font-black uppercase text-[#2A1F1D] tracking-tight mb-1">{member.name}</p>
-                                                    <div className="flex items-center gap-2">
-                                                        <span className="text-[9px] font-black uppercase text-[#C06842] bg-[#C06842]/5 px-3 py-1 rounded-full border border-[#C06842]/10">{member.assigned_role || member.sub_category}</span>
-                                                        <span className="text-[8px] font-black text-[#8C7B70] uppercase italic tracking-widest leading-none">Registered Partner</span>
-                                                    </div>
-                                                </div>
-                                            </div>
-                                            <div className="flex items-center gap-6">
-                                                <div className="text-right">
-                                                    <p className="text-[7px] font-black uppercase text-[#8C7B70] tracking-widest leading-none mb-1">Assigned</p>
-                                                    <p className="text-lg font-serif font-black text-[#2A1F1D] leading-none">{taskLoad} Tasks</p>
-                                                </div>
-                                            </div>
-                                        </div>
-                                    );
-                                })}
-                                {(!viewingTeamProject.team || viewingTeamProject.team.length === 0) && (
-                                    <div className="py-20 text-center space-y-4">
-                                        <Users size={48} className="mx-auto text-[#E3DACD]" strokeWidth={0.5} />
-                                        <p className="text-[10px] text-[#8C7B70] uppercase font-black tracking-widest">Awaiting team allocation</p>
-                                    </div>
-                                )}
-                            </div>
-
-                            <div className="mt-12 p-6 bg-[#C06842]/5 rounded-[2.5rem] border border-[#C06842]/10">
-                                <p className="text-[9px] text-[#8C7B70] font-bold uppercase tracking-widest text-center">Team verified for {viewingTeamProject.name} deployment.</p>
-                            </div>
-                        </motion.div>
-                    </motion.div>
+                    </div>
                 )}
             </AnimatePresence>
         </div>

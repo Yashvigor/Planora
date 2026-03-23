@@ -337,17 +337,28 @@ pool.connect()
     .catch(err => console.error('Database Connection error', err.stack));
 
 // Helper to compute project progress based on phases (30-30-40 ratio)
-const enrichProjectWithProgress = (project, team = [], tasks = []) => {
-    let percentage = 0;
-    if (project.planning_completed) percentage = 30;
-    if (project.design_completed) percentage = 60; // 30 + 30
-    if (project.execution_completed) percentage = 100; // 60 + 40
+const enrichProjectWithProgress = (project, team = [], tasks = [], payments = []) => {
+    let physicalPercentage = 0;
+    if (project.planning_completed) physicalPercentage += 30;
+    if (project.design_completed) physicalPercentage += 30;
+    if (project.execution_completed) physicalPercentage += 40;
+
+    const totalSpent = payments
+        .filter(p => p.project_id === project.project_id && p.status === 'Completed')
+        .reduce((sum, p) => sum + parseFloat(p.amount || 0), 0);
+
+    const budget = parseFloat(project.budget || 0);
+    const financialBurn = budget > 0 ? Math.round((totalSpent / budget) * 100) : 0;
 
     return {
         ...project,
         team: team,
+        total_spent: totalSpent,
         progress: {
-            percentage,
+            percentage: physicalPercentage,
+            physical: physicalPercentage,
+            financial: financialBurn,
+            isOverBudget: financialBurn > physicalPercentage,
             planning: !!project.planning_completed,
             design: !!project.design_completed,
             execution: !!project.execution_completed
@@ -2718,27 +2729,35 @@ app.post('/api/projects/:projectId/rate', authenticateToken, async (req, res) =>
 app.get('/api/projects/user/:userId', async (req, res) => {
     const { userId } = req.params;
     try {
-        const result = await pool.query('SELECT * FROM projects WHERE land_owner_id = $1 ORDER BY created_at DESC', [userId]);
+        const result = await pool.query(`
+            SELECT DISTINCT p.*, pa.assigned_role, pa.status as assignment_status
+            FROM projects p
+            LEFT JOIN projectassignments pa ON p.project_id = pa.project_id
+            WHERE p.land_owner_id = $1 OR (pa.user_id = $1 AND pa.status = 'Accepted')
+            ORDER BY p.created_at DESC
+        `, [userId]);
+
         const projects = result.rows;
         const projectIds = projects.map(p => p.project_id);
 
         let tasks = [];
+        let payments = [];
         if (projectIds.length > 0) {
-            const tasksRes = await pool.query('SELECT task_id, project_id, status, title, description, image_path, created_at FROM tasks WHERE project_id = ANY($1)', [projectIds]);
+            const tasksRes = await pool.query(`SELECT task_id, project_id, status, title, description, image_path, created_at FROM tasks WHERE project_id = ANY($1)`, [projectIds]);
             tasks = tasksRes.rows;
+
+            const payRes = await pool.query('SELECT amount, project_id, status FROM payments WHERE project_id = ANY($1)', [projectIds]);
+            payments = payRes.rows;
         }
 
-        // Fetch team and check if rated
         const enriched = await Promise.all(projects.map(async (p) => {
             const pTasks = tasks.filter(t => t.project_id === p.project_id);
-            const enrichedP = enrichProjectWithProgress(p, [], pTasks);
+            const pPayments = payments.filter(pm => pm.project_id === p.project_id);
 
-            // Fetch team
             const teamRes = await pool.query(`
                 SELECT 
                     COALESCE(u.user_id, pp.id) as user_id, 
                     COALESCE(u.name, pp.name) as name, 
-                    COALESCE(u.email, pp.email) as email, 
                     COALESCE(u.category, pp.category) as category, 
                     COALESCE(u.sub_category, pp.sub_category) as sub_category,
                     pa.assigned_role, pa.status
@@ -2747,13 +2766,11 @@ app.get('/api/projects/user/:userId', async (req, res) => {
                 LEFT JOIN PendingProfessionals pp ON pa.user_id = pp.id
                 WHERE pa.project_id = $1 AND (pa.status = 'Accepted' OR pa.status = 'Pending')
             `, [p.project_id]);
+
+            const enrichedP = enrichProjectWithProgress(p, teamRes.rows, pTasks, pPayments);
             enrichedP.team = teamRes.rows;
 
-            // Check if current user (rater) has submitted any ratings for this project
-            const ratingCheck = await pool.query(
-                "SELECT EXISTS(SELECT 1 FROM ratings WHERE project_id = $1 AND rater_id = $2) as has_rated",
-                [p.project_id, userId]
-            );
+            const ratingCheck = await pool.query("SELECT EXISTS(SELECT 1 FROM ratings WHERE project_id = $1 AND rater_id = $2) as has_rated", [p.project_id, userId]);
             enrichedP.has_rated = ratingCheck.rows[0].has_rated;
 
             return enrichedP;
@@ -2762,10 +2779,7 @@ app.get('/api/projects/user/:userId', async (req, res) => {
         res.json(enriched);
     } catch (err) {
         console.error('Error fetching user projects:', err);
-        res.status(500).json({
-            error: 'Failed to fetch projects',
-            details: err.message
-        });
+        res.status(500).json({ error: 'Failed', details: err.message });
     }
 });
 

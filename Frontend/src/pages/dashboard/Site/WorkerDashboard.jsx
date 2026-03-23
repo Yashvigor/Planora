@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useMockApp } from '../../../hooks/useMockApp';
+import WeatherSafetyWidget from '../../../components/dashboard/Common/WeatherSafetyWidget';
 import {
     CheckSquare, Camera, Clock, AlertTriangle,
     MapPin, User, Phone, Star, Briefcase, Calendar,
@@ -322,6 +323,7 @@ const WorkerHome = ({ currentUser, roleType }) => {
             <div className="glass-panel p-6 rounded-[2rem] shadow-xl relative overflow-hidden text-white">
                 <div className={`absolute inset-0 ${isArchitectural ? 'bg-gradient-to-br from-[#1A1A1A] to-[#2A2A2A]' : 'bg-gradient-to-br from-[#2A1F1D] to-[#4A342E]'} z-0`} />
                 <div className={`absolute top-0 right-0 w-48 h-48 ${isArchitectural ? 'bg-blue-500/10' : 'bg-[#C06842]/20'} rounded-full blur-3xl -mr-10 -mt-10 pointer-events-none`} />
+            
             {/* Project Invitations Section */}
             {invitations.length > 0 && (
                 <div className={`rounded-[2rem] p-8 animate-slide-up ${isArchitectural ? 'bg-[#FDFCF8] border-2 border-[#E3DACD]/50 shadow-lg' : 'bg-amber-50/50 border border-amber-100'}`}>
@@ -378,6 +380,9 @@ const WorkerHome = ({ currentUser, roleType }) => {
                     </div>
                 </div>
             </div>
+
+            {/* Site Safety Intelligence (Critical Layer) */}
+            <WeatherSafetyWidget location={tasks?.[0]?.project_location || "Active Site"} />
 
             {/* Quick Stats */}
             <div className="grid grid-cols-3 gap-4">
