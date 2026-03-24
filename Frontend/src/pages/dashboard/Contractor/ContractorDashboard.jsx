@@ -125,11 +125,48 @@ const ContractorDashboard = () => {
 
     const handleGenerateDailyReport = (project) => {
         const doc = new jsPDF();
-        const today = new Date().toLocaleDateString(undefined, { month: 'long', day: 'numeric', year: 'numeric' });
+        const todayStr = new Date().toLocaleDateString(undefined, { month: 'long', day: 'numeric', year: 'numeric' });
+        const leadContractor = currentUser?.name || 'Lead Contractor';
+        
         doc.setFontSize(22); doc.setTextColor(192, 104, 66); doc.text("PLANORA", 15, 20);
         doc.setFontSize(14); doc.setTextColor(42, 31, 29); doc.text("DAILY SITE OPERATION REPORT", 15, 30);
         doc.setLineWidth(0.5); doc.setDrawColor(227, 218, 205); doc.line(15, 35, 195, 35);
-        doc.setFontSize(10); doc.setTextColor(140, 123, 112); doc.text(`Project: ${project.name}`, 15, 45);
+
+        doc.setFontSize(10); doc.setTextColor(140, 123, 112);
+        doc.text(`Project: ${project.name}`, 15, 45);
+        doc.text(`Date: ${todayStr}`, 15, 50);
+        doc.text(`Lead Contractor: ${leadContractor}`, 15, 55);
+        doc.text(`Location: ${project.location || 'Site Location'}`, 15, 60);
+
+        const todayDate = new Date().toDateString();
+        const todayTasks = (project.tasks || []).filter(t => new Date(t.created_at).toDateString() === todayDate);
+        const approvedTasks = todayTasks.filter(t => t.status === 'Approved');
+
+        doc.setFillColor(249, 247, 242); doc.rect(15, 70, 55, 25, 'F');
+        doc.setTextColor(42, 31, 29); doc.setFontSize(8); doc.text("TASKS LOGGED", 18, 78);
+        doc.setFontSize(14); doc.text(`${todayTasks.length}`, 18, 88);
+
+        doc.setFillColor(249, 247, 242); doc.rect(75, 70, 55, 25, 'F');
+        doc.setTextColor(52, 211, 153); doc.setFontSize(8); doc.text("TASKS APPROVED", 78, 78);
+        doc.setFontSize(14); doc.text(`${approvedTasks.length}`, 78, 88);
+
+        const tableData = todayTasks.length > 0 
+            ? todayTasks.map(t => [t.title, t.status.toUpperCase(), new Date(t.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }), t.assigned_to_name || '-'])
+            : [['No tasks recorded today', '-', '-', '-']];
+
+        autoTable(doc, {
+            startY: 105, head: [['Task Description', 'Status', 'Logged At', 'Professional']], body: tableData,
+            theme: 'grid', headStyles: { fillColor: [42, 31, 29], fontSize: 9 }, bodyStyles: { fontSize: 8 }
+        });
+
+        const finalY = doc.lastAutoTable.finalY + 15;
+        doc.setFontSize(10); doc.setTextColor(192, 104, 66); doc.text("Executive Summary:", 15, finalY);
+        doc.setFontSize(8); doc.setTextColor(140, 123, 112);
+        const summaryText = todayTasks.length > 0 
+            ? `Site activity for ${todayStr} included ${todayTasks.length} logged tasks, with ${approvedTasks.length} approved. Operations at ${Math.round((approvedTasks.length / Math.max(1, todayTasks.length)) * 100)}% today.`
+            : `No site activity was recorded for this reporting period. Project remains on standby or maintenance mode.`;
+        doc.text(summaryText, 15, finalY + 5, { maxWidth: 175 });
+
         doc.save(`${project.name.replace(/\s+/g, '_')}_Daily_Log.pdf`);
     };
 

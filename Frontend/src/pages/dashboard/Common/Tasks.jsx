@@ -6,6 +6,7 @@ import {
     Camera, FileIcon, Calendar
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
+import socket from '../../../utils/socket';
 
 const ProjectSelectModal = ({ isOpen, onClose, onAssign, team, projects, isSubmitting }) => {
     const [form, setForm] = useState({ project_id: '', assigned_to: '', title: '', description: '', due_date: '' });
@@ -172,6 +173,8 @@ const Tasks = () => {
     const [activeTab, setActiveTab] = useState(isManager ? 'assignments' : 'my_queue');
     const [selectedTask, setSelectedTask] = useState(null);
     const [reviewingTask, setReviewingTask] = useState(null);
+    const [extendingTaskId, setExtendingTaskId] = useState(null);
+    const [newDueDate, setNewDueDate] = useState('');
     const [isAssignModalOpen, setIsAssignModalOpen] = useState(false);
     const [isSubmitting, setIsSubmitting] = useState(false);
     const [file, setFile] = useState(null);
@@ -211,6 +214,22 @@ const Tasks = () => {
     }, [currentUser, isContractor]);
 
     useEffect(() => { fetchTasks(); }, [fetchTasks]);
+
+    useEffect(() => {
+        const uid = currentUser?.user_id || currentUser?.id;
+        if (!uid) return;
+        
+        socket.connect();
+        socket.on('new_notification', (noti) => {
+            if (noti.type?.includes('task')) {
+                fetchTasks();
+            }
+        });
+        
+        return () => {
+            socket.off('new_notification');
+        };
+    }, [currentUser, fetchTasks]);
 
     const handleFileChange = (e) => {
         const selectedFile = e.target.files[0];
@@ -277,6 +296,23 @@ const Tasks = () => {
         } catch (err) { console.error("Error reviewing task:", err); } finally { setIsSubmitting(false); }
     };
 
+    const handleExtendTask = async (taskId, newDate) => {
+        if (!newDate) return;
+        setIsSubmitting(true);
+        try {
+            const res = await fetch(`${import.meta.env.VITE_API_URL}/api/tasks/${taskId}/extend-deadline`, {
+                method: 'PATCH',
+                headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${localStorage.getItem('planora_token')}` },
+                body: JSON.stringify({ 
+                    new_due_date: newDate, 
+                    reviewer_id: currentUser.user_id || currentUser.id 
+                })
+            });
+            if (res.ok) { fetchTasks(); setExtendingTaskId(null); }
+            else { const err = await res.json(); alert(err.error || "Extension failed"); }
+        } catch (err) { console.error("Error extending task:", err); } finally { setIsSubmitting(false); }
+    };
+
     const getStatusColor = (status) => {
         switch (status) {
             case 'Approved': return 'bg-green-100 text-green-700 border-green-200';
@@ -303,8 +339,44 @@ const Tasks = () => {
                             <div className="flex flex-wrap gap-4 pt-2">
                                 <div className="flex items-center gap-2 text-[10px] font-bold text-[#8C7B70]"><User size={12} className="text-[#A65D3B]" /> {activeTab === 'my_queue' ? task.assigner_name : task.assignee_name}</div>
                                 <div className="flex items-center gap-2 text-[10px] font-bold text-[#8C7B70]"><MapPin size={12} className="text-[#C06842]" /> {task.location}</div>
-                                {task.due_date && <div className="flex items-center gap-2 text-[10px] font-bold text-[#8C7B70]"><Calendar size={12} className="text-[#E68A2E]" /> {new Date(task.due_date).toLocaleDateString()}</div>}
+                                {task.due_date && (
+                                    <div className="flex items-center gap-3">
+                                        <div className="flex items-center gap-2 text-[10px] font-bold text-[#8C7B70]">
+                                            <Calendar size={12} className="text-[#E68A2E]" /> {new Date(task.due_date).toLocaleDateString()}
+                                        </div>
+                                        {isManager && activeTab === 'assignments' && extendingTaskId !== task.task_id && (
+                                            <button 
+                                                onClick={() => {
+                                                    setExtendingTaskId(task.task_id);
+                                                    setNewDueDate(task.due_date.split('T')[0]);
+                                                }}
+                                                className="text-[9px] font-black text-[#C06842] uppercase tracking-tighter hover:underline"
+                                            >
+                                                Extend
+                                            </button>
+                                        )}
+                                    </div>
+                                )}
                             </div>
+                            
+                            {extendingTaskId === task.task_id && (
+                                <div className="mt-4 flex items-center gap-3 bg-[#F9F7F2] p-3 rounded-2xl border border-[#E3DACD] animate-fade-in max-w-sm">
+                                    <input 
+                                        type="date" 
+                                        className="bg-white border border-[#E3DACD] rounded-xl px-3 py-1.5 text-xs font-bold outline-none flex-1"
+                                        value={newDueDate}
+                                        onChange={(e) => setNewDueDate(e.target.value)}
+                                    />
+                                    <button 
+                                        onClick={() => handleExtendTask(task.task_id, newDueDate)}
+                                        className="px-4 py-1.5 bg-green-600 text-white text-[10px] font-black uppercase rounded-lg hover:bg-green-700 transition-colors"
+                                    >Update</button>
+                                    <button 
+                                        onClick={() => setExtendingTaskId(null)}
+                                        className="text-[10px] font-black text-[#8C7B70] hover:text-red-500 uppercase"
+                                    >Cancel</button>
+                                </div>
+                            )}
                         </div>
 
                         <div className="w-full lg:w-48 shrink-0">

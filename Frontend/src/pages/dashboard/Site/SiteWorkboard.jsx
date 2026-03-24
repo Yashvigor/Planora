@@ -1,11 +1,12 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import {
     LayoutGrid, ChevronRight,
-    FileText, Eye, MapPin, Clock, 
-    TrendingUp, Award, User, Search, 
+    FileText, Eye, MapPin, Clock,
+    TrendingUp, Award, User, Search,
     CheckCircle2, AlertCircle, XCircle,
     Lock, RefreshCcw, Activity, ClipboardList, Users
 } from 'lucide-react';
+import socket from '../../../utils/socket';
 
 // Shared Components
 import Card from '../../../components/Common/Card';
@@ -41,6 +42,17 @@ const SiteWorkboard = ({ currentUser, projectId: propProjectId, hideCompleted = 
     }, [userId, propProjectId]);
 
     useEffect(() => { fetchTasks(); }, [fetchTasks]);
+
+    useEffect(() => {
+        if (!userId) return;
+        socket.connect();
+        socket.on('new_notification', (noti) => {
+            if (noti.type?.includes('task')) {
+                fetchTasks();
+            }
+        });
+        return () => socket.off('new_notification');
+    }, [userId, fetchTasks]);
 
     const projectsMap = useMemo(() => {
         return tasks.reduce((acc, task) => {
@@ -83,6 +95,29 @@ const SiteWorkboard = ({ currentUser, projectId: propProjectId, hideCompleted = 
         const active = tasks.filter(t => t.status !== 'Approved').length;
         return { total, approved, active, percent: total > 0 ? Math.round((approved / total) * 100) : 0 };
     }, [tasks]);
+
+    const handleExtend = async (taskId, newDate) => {
+        if (!newDate) return;
+        try {
+            const res = await fetch(`${import.meta.env.VITE_API_URL}/api/tasks/${taskId}/extend-deadline`, {
+                method: 'PATCH',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${localStorage.getItem('planora_token') || localStorage.getItem('token')}`
+                },
+                body: JSON.stringify({ 
+                    new_due_date: newDate,
+                    reviewer_id: userId
+                })
+            });
+            if (res.ok) {
+                fetchTasks();
+            } else {
+                const err = await res.json();
+                alert(err.error || "Failed; check permissions");
+            }
+        } catch (err) { console.error(err); }
+    };
 
     const openPreview = (task) => {
         if (task.image_path) { setPreviewFile(`${import.meta.env.VITE_API_URL}/${task.image_path}`); setIsPreviewOpen(true); }
@@ -166,7 +201,13 @@ const SiteWorkboard = ({ currentUser, projectId: propProjectId, hideCompleted = 
                                 </div>
                                 <div className="space-y-4">
                                     {projectList[0].tasks.filter(t => t.status.toLowerCase() === col.id).map(task => (
-                                        <TaskCard key={task.task_id} task={task} onPreview={() => openPreview(task)} />
+                                        <TaskCard 
+                                            key={task.task_id} 
+                                            task={task} 
+                                            onPreview={() => openPreview(task)} 
+                                            onExtend={(date) => handleExtend(task.task_id, date)}
+                                            canExtend={String(userId) === String(task.assigned_by) || currentUser.role === 'client' || currentUser.role === 'contractor'}
+                                        />
                                     ))}
                                     {projectList[0].tasks.filter(t => t.status.toLowerCase() === col.id).length === 0 && (
                                         <div className="py-12 border-2 border-dashed border-[#E3DACD]/40 rounded-3xl flex items-center justify-center opacity-40">
@@ -291,7 +332,13 @@ const KanbanModal = ({ project, onClose, openPreview }) => {
                                     </div>
                                     <div className="flex-1 overflow-y-auto pr-2 space-y-4 scroll-smooth">
                                         {project.tasks.filter(t => t.status.toLowerCase() === col.id).map(task => (
-                                            <TaskCard key={task.task_id} task={task} onPreview={() => openPreview(task)} />
+                                            <TaskCard 
+                                                key={task.task_id} 
+                                                task={task} 
+                                                onPreview={() => openPreview(task)} 
+                                                onExtend={(date) => handleExtend(task.task_id, date)}
+                                                canExtend={String(userId) === String(task.assigned_by) || currentUser.role === 'client' || currentUser.role === 'contractor'}
+                                            />
                                         ))}
                                     </div>
                                 </div>
@@ -304,28 +351,61 @@ const KanbanModal = ({ project, onClose, openPreview }) => {
     );
 };
 
-const TaskCard = ({ task, onPreview }) => (
-    <Card variant="flat" className="p-5 border-transparent hover:border-[#C06842]/20 shadow-md">
-        <div className="flex justify-between items-start mb-4">
-            <h4 className="font-serif font-black text-[#2A1F1D] text-lg leading-tight text-left">{task.title}</h4>
-            <span className="text-[8px] font-black uppercase tracking-widest text-[#8C7B70] bg-[#F9F7F2] px-2 py-1 rounded-lg border border-[#E3DACD]/50">{new Date(task.created_at).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}</span>
-        </div>
-        {task.description && <p className="text-[11px] text-[#5D4037] leading-relaxed mb-6 font-medium text-left">{task.description}</p>}
-        {task.image_path && (
-            <div onClick={onPreview} className="relative mb-6 rounded-2xl overflow-hidden cursor-zoom-in aspect-video group">
-                <img src={`${import.meta.env.VITE_API_URL}/${task.image_path}`} alt="Detail" className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-110" />
-                <div className="absolute inset-0 bg-[#2A1F1D]/40 opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity"><Eye className="text-white" size={24} /></div>
+const TaskCard = ({ task, onPreview, onExtend, canExtend }) => {
+    const [isExtending, setIsExtending] = useState(false);
+    const [newDate, setNewDate] = useState(task.due_date ? task.due_date.split('T')[0] : '');
+
+    return (
+        <Card variant="flat" className="p-5 border-transparent hover:border-[#C06842]/20 shadow-md">
+            <div className="flex justify-between items-start mb-4">
+                <h4 className="font-serif font-black text-[#2A1F1D] text-lg leading-tight text-left">{task.title}</h4>
+                <span className="text-[8px] font-black uppercase tracking-widest text-[#8C7B70] bg-[#F9F7F2] px-2 py-1 rounded-lg border border-[#E3DACD]/50">{new Date(task.created_at).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}</span>
             </div>
-        )}
-        <div className="pt-4 border-t border-[#E3DACD]/30 flex justify-between items-center text-left">
-            <div className="flex items-center gap-3">
-                <div className="w-8 h-8 rounded-xl bg-[#2A1F1D] text-white flex items-center justify-center text-[10px] font-black shadow-md">{task.assigned_to_name?.[0]}</div>
-                <p className="text-[9px] font-black uppercase tracking-[0.1em] text-[#8C7B70]">{task.assigned_to_name?.split(' ')[0]}</p>
+            {task.description && <p className="text-[11px] text-[#5D4037] leading-relaxed mb-6 font-medium text-left">{task.description}</p>}
+            {task.image_path && (
+                <div onClick={onPreview} className="relative mb-6 rounded-2xl overflow-hidden cursor-zoom-in aspect-video group">
+                    <img src={`${import.meta.env.VITE_API_URL}/${task.image_path}`} alt="Detail" className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-110" />
+                    <div className="absolute inset-0 bg-[#2A1F1D]/40 opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity"><Eye className="text-white" size={24} /></div>
+                </div>
+            )}
+            <div className="pt-4 border-t border-[#E3DACD]/30 flex flex-col space-y-4">
+                <div className="flex justify-between items-center text-left">
+                    <div className="flex items-center gap-3">
+                        <div className="w-8 h-8 rounded-xl bg-[#2A1F1D] text-white flex items-center justify-center text-[10px] font-black shadow-md">{task.assigned_to_name?.[0] || '?'}</div>
+                        <p className="text-[9px] font-black uppercase tracking-[0.1em] text-[#8C7B70]">{task.assigned_to_name?.split(' ')[0] || 'Unknown'}</p>
+                    </div>
+                    {task.due_date && (
+                        <div className="text-right">
+                            <p className="text-[9px] font-black text-[#C06842] flex items-center justify-end gap-1.5"><Clock size={12} /> {new Date(task.due_date).toLocaleDateString()}</p>
+                            {canExtend && !isExtending && (
+                                <button onClick={() => setIsExtending(true)} className="text-[8px] font-black text-[#8C7B70] uppercase tracking-tighter hover:text-[#C06842] underline">Extend Deadline</button>
+                            )}
+                        </div>
+                    )}
+                </div>
+
+                {isExtending && (
+                    <div className="flex items-center gap-2 animate-fade-in bg-[#F9F7F2] p-2 rounded-xl border border-[#E3DACD]/50">
+                        <input 
+                            type="date" 
+                            className="text-[9px] font-bold p-1 bg-white border border-[#E3DACD] rounded outline-none flex-1"
+                            value={newDate}
+                            onChange={(e) => setNewDate(e.target.value)}
+                        />
+                        <button 
+                            onClick={() => { onExtend(newDate); setIsExtending(false); }}
+                            className="text-[8px] font-black text-white bg-green-600 px-2 py-1 rounded"
+                        >Update</button>
+                        <button 
+                            onClick={() => setIsExtending(false)}
+                            className="text-[8px] font-black text-[#8C7B70] hover:text-red-500"
+                        >Cancel</button>
+                    </div>
+                )}
             </div>
-            {task.due_date && <p className="text-[9px] font-black text-[#C06842] flex items-center gap-1.5"><Clock size={12} /> {new Date(task.due_date).toLocaleDateString()}</p>}
-        </div>
-    </Card>
-);
+        </Card>
+    );
+};
 
 const ImageModal = ({ isOpen, src, onClose }) => {
     if (!isOpen) return null;

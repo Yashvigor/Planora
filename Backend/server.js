@@ -245,6 +245,8 @@ pool.query("ALTER TABLE pendingprofessionals ADD COLUMN IF NOT EXISTS personal_i
     .catch(err => console.error('? Migration Error (pendingprofessionals):', err.message));
 
 pool.query("ALTER TABLE land_auctions ADD COLUMN IF NOT EXISTS rejection_reason TEXT").catch(() => { });
+pool.query("ALTER TABLE land_auctions ADD COLUMN IF NOT EXISTS current_highest_bid NUMERIC DEFAULT 0").catch(() => { });
+pool.query("ALTER TABLE tasks ADD COLUMN IF NOT EXISTS approved_at TIMESTAMP WITH TIME ZONE").catch(() => { });
 pool.query("ALTER TABLE projects ADD COLUMN IF NOT EXISTS planning_completed BOOLEAN DEFAULT FALSE").catch(() => { });
 pool.query("ALTER TABLE projects ADD COLUMN IF NOT EXISTS design_completed BOOLEAN DEFAULT FALSE").catch(() => { });
 pool.query("ALTER TABLE projects ADD COLUMN IF NOT EXISTS execution_completed BOOLEAN DEFAULT FALSE").catch(() => { });
@@ -2764,7 +2766,12 @@ app.get('/api/projects/user/:userId', async (req, res) => {
         let tasks = [];
         let payments = [];
         if (projectIds.length > 0) {
-            const tasksRes = await pool.query(`SELECT task_id, project_id, status, title, description, image_path, created_at FROM tasks WHERE project_id = ANY($1)`, [projectIds]);
+            const tasksRes = await pool.query(`
+                SELECT t.task_id, t.project_id, t.status, t.title, t.description, t.image_path, t.created_at, t.assigned_to, u.name as assigned_to_name, t.approved_at
+                FROM tasks t
+                LEFT JOIN users u ON t.assigned_to = u.user_id
+                WHERE t.project_id = ANY($1)
+            `, [projectIds]);
             tasks = tasksRes.rows;
 
             const payRes = await pool.query('SELECT amount, project_id, status FROM payments WHERE project_id = ANY($1)', [projectIds]);
@@ -2846,7 +2853,7 @@ app.get('/api/lands/user/:userId', async (req, res) => {
     const { userId } = req.params;
     try {
         const result = await pool.query(`
-            SELECT l.*, a.status as auction_status, a.rejection_reason as auction_rejection_reason
+            SELECT l.*, a.status as auction_status, a.rejection_reason as auction_rejection_reason, a.current_highest_bid
             FROM lands l
             LEFT JOIN land_auctions a ON l.land_id = a.land_id
             WHERE l.owner_id = $1 
@@ -3448,7 +3455,7 @@ app.put('/api/tasks/:taskId/review', authenticateToken, async (req, res) => {
             }
 
             const result = await client.query(
-                'UPDATE tasks SET status = $1, rejection_reason = $2, due_date = COALESCE($3, due_date) WHERE task_id = $4 RETURNING *',
+                'UPDATE tasks SET status = $1, rejection_reason = $2, due_date = COALESCE($3, due_date), approved_at = CASE WHEN $1 = \'Approved\' THEN CURRENT_TIMESTAMP ELSE approved_at END WHERE task_id = $4 RETURNING *',
                 [status, status === 'Rejected' ? (rejection_reason || 'No reason provided') : null, status === 'Rejected' ? due_date : null, taskId]
             );
 
@@ -3516,6 +3523,62 @@ app.put('/api/tasks/:taskId/review', authenticateToken, async (req, res) => {
     } catch (err) {
         console.error('Error reviewing task:', err);
         res.status(500).json({ error: 'Failed to review task' });
+    }
+});
+
+// Extend Task Deadline
+app.patch('/api/tasks/:taskId/extend-deadline', authenticateToken, async (req, res) => {
+    const { taskId } = req.params;
+    const { new_due_date, reviewer_id } = req.body;
+
+    try {
+        const client = await pool.connect();
+        try {
+            await client.query('BEGIN');
+
+            const authCheck = await client.query(`
+                SELECT t.*, p.land_owner_id, p.name as project_name, u.name as assignee_name, u.email as assignee_email
+                FROM tasks t
+                JOIN projects p ON t.project_id = p.project_id
+                JOIN users u ON t.assigned_to = u.user_id
+                WHERE t.task_id = $1
+            `, [taskId]);
+
+            if (authCheck.rows.length === 0) {
+                await client.query('ROLLBACK');
+                return res.status(404).json({ error: 'Task not found' });
+            }
+
+            const task = authCheck.rows[0];
+            const is_contractor = (await client.query(`
+                SELECT 1 FROM projectassignments pa 
+                WHERE pa.project_id = $1 AND pa.user_id = $2 AND pa.assigned_role = 'contractor' AND pa.status = 'Accepted'
+            `, [task.project_id, reviewer_id])).rows.length > 0;
+
+            const isAuthorized = String(reviewer_id) === String(task.assigned_by) || String(reviewer_id) === String(task.land_owner_id) || is_contractor;
+
+            if (!isAuthorized) {
+                await client.query('ROLLBACK');
+                return res.status(403).json({ error: 'Unauthorized to extend deadline' });
+            }
+
+            await client.query('UPDATE tasks SET due_date = $1 WHERE task_id = $2', [new_due_date, taskId]);
+
+            // Notify Assignee
+            const notificationMsg = `Update: The deadline for your task "${task.title}" in project "${task.project_name}" has been extended to ${new Date(new_due_date).toLocaleDateString()}.`;
+            await createNotification(task.assigned_to, 'task_update', notificationMsg, `/dashboard/tasks`, taskId);
+
+            await client.query('COMMIT');
+            res.json({ message: 'Deadline extended successfully', new_due_date });
+        } catch (err) {
+            await client.query('ROLLBACK');
+            throw err;
+        } finally {
+            client.release();
+        }
+    } catch (err) {
+        console.error('Error extending task deadline:', err);
+        res.status(500).json({ error: 'Failed to extend deadline' });
     }
 });
 
