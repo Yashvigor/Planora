@@ -1,5 +1,5 @@
 /**
- * Planora Main Backend Server
+ * Planora Main Backend Server - Service Maintenance
  * 
  * This is the central Express application handling all REST API requests from the frontend.
  * It manages Database connections to Neon Serverless Postgres, file uploads via Multer,
@@ -3218,6 +3218,12 @@ app.post('/api/tasks', authenticateToken, async (req, res) => {
     }
 
     try {
+        // [Security] Prevent assigning tasks to completed projects
+        const projectCheck = await pool.query('SELECT status FROM projects WHERE project_id = $1', [project_id]);
+        if (projectCheck.rows.length > 0 && projectCheck.rows[0].status === 'Completed') {
+            return res.status(403).json({ error: 'Cannot assign tasks to a completed project' });
+        }
+
         const result = await pool.query(
             'INSERT INTO tasks (project_id, assigned_by, assigned_to, title, description, due_date, status) VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING *',
             [project_id, assigned_by, assigned_to, title, description || '', due_date || null, 'Pending']
@@ -4829,33 +4835,44 @@ app.post('/api/auctions/:auctionId/bid', authenticateToken, async (req, res) => 
 
 // Finalize Auctions that have ended
 async function finalizeEndedAuctions() {
-    console.log('[Maintenance] Checking for ended auctions to finalize...');
+    console.log('[Maintenance] Checking for ended auctions to finalize or notify...');
     const client = await pool.connect();
     try {
         await client.query('BEGIN');
 
-        // Find active auctions that have passed their end time and haven't been finalized
+        // Find active auctions that have passed their end time, OR completed ones that haven't been notified
         const auctionsRes = await client.query(`
             SELECT a.*, l.name as land_title, u.email as owner_email, u.name as owner_name
             FROM land_auctions a
             JOIN lands l ON a.land_id = l.land_id
             JOIN users u ON a.owner_id = u.user_id
-            WHERE a.status = 'active' AND a.end_time <= CURRENT_TIMESTAMP AND a.winner_id IS NULL
+            WHERE (a.status = 'active' AND a.end_time <= CURRENT_TIMESTAMP AND a.winner_id IS NULL)
+               OR (a.status = 'completed' AND COALESCE(a.winner_notified, FALSE) = FALSE)
         `);
 
         for (const auction of auctionsRes.rows) {
-            // Find the highest bid
-            const bidRes = await client.query(
-                'SELECT b.*, u.name as bidder_name, u.email as bidder_email FROM bids b JOIN users u ON b.bidder_id = u.user_id WHERE b.auction_id = $1 ORDER BY b.amount DESC LIMIT 1',
-                [auction.auction_id]
-            );
+            let topBid;
 
-            if (bidRes.rows.length > 0) {
-                const topBid = bidRes.rows[0];
+            if (auction.status === 'completed' && auction.winner_id) {
+                // Already has a winner, just fetch details for notification/email
+                const bidRes = await client.query(
+                    'SELECT b.*, u.name as bidder_name, u.email as bidder_email FROM bids b JOIN users u ON b.bidder_id = u.user_id WHERE b.auction_id = $1 AND b.bidder_id = $2 ORDER BY b.amount DESC LIMIT 1',
+                    [auction.auction_id, auction.winner_id]
+                );
+                if (bidRes.rows.length > 0) topBid = bidRes.rows[0];
+            } else {
+                // Find top bidder for active but ended auction
+                const bidRes = await client.query(
+                    'SELECT b.*, u.name as bidder_name, u.email as bidder_email FROM bids b JOIN users u ON b.bidder_id = u.user_id WHERE b.auction_id = $1 ORDER BY b.amount DESC LIMIT 1',
+                    [auction.auction_id]
+                );
+                if (bidRes.rows.length > 0) topBid = bidRes.rows[0];
+            }
 
-                // Update auction with winner
+            if (topBid) {
+                // Update auction winner status immediately
                 await client.query(
-                    'UPDATE land_auctions SET winner_id = $1, status = \'completed\', winner_notified = TRUE WHERE auction_id = $2',
+                    'UPDATE land_auctions SET winner_id = $1, status = \'completed\' WHERE auction_id = $2',
                     [topBid.bidder_id, auction.auction_id]
                 );
 
@@ -4864,13 +4881,18 @@ async function finalizeEndedAuctions() {
                 await createNotification(auction.owner_id, 'auction_end', `Your auction for "${auction.land_title}" has ended. Winner: ${topBid.bidder_name} with bid of ₹${parseFloat(topBid.amount).toLocaleString()}.`, '/dashboard/lands', auction.auction_id);
 
                 try {
-                    await sendAuctionWinEmail(topBid.bidder_email, topBid.bidder_name, auction.land_title, topBid.amount);
-                    console.log(`[Auction] Win email sent to ${topBid.bidder_email}`);
+                    // Send Email
+                    const emailRes = await sendAuctionWinEmail(topBid.bidder_email, topBid.bidder_name, auction.land_title, topBid.amount);
+                    if (emailRes) {
+                        // Mark as notified only if email succeeded (or at least no error)
+                        await client.query('UPDATE land_auctions SET winner_notified = TRUE WHERE auction_id = $1', [auction.auction_id]);
+                        console.log(`[Auction] Win email successfully sent to ${topBid.bidder_email}`);
+                    }
                 } catch (e) {
-                    console.error('[Auction] Failed to send email:', e.message);
+                    console.error('[Auction] Email delivery failed, will retry in next maintenance cycle:', e.message);
                 }
-            } else {
-                // No bids - just mark as expired/closed
+            } else if (auction.status === 'active') {
+                // No bids - mark as closed
                 await client.query('UPDATE land_auctions SET status = \'closed\' WHERE auction_id = $1', [auction.auction_id]);
                 console.log(`[Auction] No bids for ${auction.land_title}, marked as closed.`);
             }
@@ -4878,13 +4900,12 @@ async function finalizeEndedAuctions() {
 
         await client.query('COMMIT');
     } catch (err) {
-        await client.query('ROLLBACK');
+        if (client) await client.query('ROLLBACK');
         console.error('[Maintenance] Auction finalization error:', err);
     } finally {
-        client.release();
+        if (client) client.release();
     }
 }
-
 // Run maintenance tasks every 5 minutes
 setInterval(finalizeEndedAuctions, 5 * 60 * 1000);
 // Also run on startup after a short delay

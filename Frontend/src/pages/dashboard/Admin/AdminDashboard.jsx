@@ -4,7 +4,8 @@ import {
     Shield, Users, AlertCircle, CheckCircle, XCircle, Search, FileText,
     Activity, AlertTriangle, Home, Briefcase, DollarSign, Bell,
     Settings, BarChart3, Lock, Eye, Download, MessageSquare,
-    UserCheck, Building, Gavel, Ban, Flag, Send, Layout, Menu, Award, ShieldCheck, MapPin, History, Check, ShieldAlert
+    UserCheck, Building, Gavel, Ban, Flag, Send, Layout, Menu, Award, ShieldCheck, MapPin, History, Check, ShieldAlert,
+    Construction, ImageIcon, Layers
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
@@ -675,6 +676,166 @@ const AdminDashboard = ({ initialSection = 'verify_land' }) => {
         );
     };
 
+    const ProjectManagementTable = ({ data }) => {
+        const [projectStatusFilter, setProjectStatusFilter] = useState('All');
+        
+        const filteredProjects = (data || []).filter(p => {
+            const matchesSearch = !searchQuery || 
+                                (p.title || p.name || '').toLowerCase().includes(searchQuery.toLowerCase()) || 
+                                (p.owner_name || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
+                                (p.location || '').toLowerCase().includes(searchQuery.toLowerCase());
+            
+            const matchesStatus = projectStatusFilter === 'All' || p.status === projectStatusFilter;
+            
+            return matchesSearch && matchesStatus;
+        });
+
+        const PhaseTick = ({ active, label }) => (
+            <div className={`w-5 h-5 rounded-md flex items-center justify-center text-[8px] font-black border transition-all ${
+                active ? 'bg-[#C06842] text-white border-[#C06842] shadow-sm' : 'bg-white text-[#B8AFA5] border-[#E3DACD]'
+            }`}>
+                {label}
+            </div>
+        );
+
+        return (
+            <div className="bg-white rounded-2xl border border-[#E3DACD]/40 shadow-sm overflow-hidden animate-fade-in">
+                {/* Header Bar */}
+                <div className="px-6 py-5 border-b border-[#E3DACD]/30 bg-[#FDFCF8] flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+                    <div className="flex items-center gap-3">
+                        <h3 className="text-lg font-bold text-[#2A1F1D] tracking-tight">Active Deployment Feed</h3>
+                        <span className="bg-[#F9F7F2] text-[#8C7B70] text-[10px] uppercase px-3 py-1 rounded-lg font-bold border border-[#E3DACD]/50 tracking-wider">
+                            TOTAL: {filteredProjects.length}
+                        </span>
+                    </div>
+                    <div className="flex flex-wrap items-center gap-3 w-full md:w-auto">
+                        <div className="relative flex-1 md:flex-initial">
+                            <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-[#B8AFA5]" size={14} />
+                            <input
+                                type="text"
+                                placeholder="Search projects..."
+                                className="pl-9 pr-4 py-2.5 bg-white border border-[#E3DACD] rounded-xl text-xs focus:border-[#C06842] outline-none transition-all w-full md:w-56"
+                                value={searchQuery}
+                                onChange={(e) => setSearchQuery(e.target.value)}
+                            />
+                        </div>
+                        <select 
+                            value={projectStatusFilter}
+                            onChange={(e) => setProjectStatusFilter(e.target.value)}
+                            className="px-3 py-2.5 bg-white border border-[#E3DACD] rounded-xl text-xs font-semibold text-[#5D4037] outline-none cursor-pointer focus:border-[#C06842] appearance-none pr-8 bg-[url('data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMTAiIGhlaWdodD0iNiIgdmlld0JveD0iMCAwIDEwIDYiIGZpbGw9Im5vbmUiIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyI+PHBhdGggZD0iTTEgMUw1IDVMOSAxIiBzdHJva2U9IiM4QzdCNzAiIHN0cm9rZS13aWR0aD0iMS41IiBzdHJva2UtbGluZWNhcD0icm91bmQiIHN0cm9rZS1saW5lam9pbj0icm91bmQiLz48L3N2Zz4=')] bg-[length:10px_6px] bg-[right_12px_center] bg-no-repeat"
+                        >
+                            <option value="All">All Status</option>
+                            <option value="Planning">Planning</option>
+                            <option value="Design">Design</option>
+                            <option value="Execution">Execution</option>
+                            <option value="Completed">Completed</option>
+                        </select>
+                    </div>
+                </div>
+
+                <div className="overflow-x-auto">
+                    <table className="w-full text-sm text-left border-collapse">
+                        <thead>
+                            <tr className="bg-[#FDFCF8]/50 text-[#8C7B70] uppercase text-[10px] font-bold tracking-wider border-b border-[#E3DACD]/30">
+                                <th className="px-6 py-3.5">Deployment Identity</th>
+                                <th className="px-6 py-3.5">Site Coordinates</th>
+                                <th className="px-6 py-3.5">Professional Team</th>
+                                <th className="px-6 py-3.5">Execution Flow</th>
+                                <th className="px-6 py-3.5 text-right">Operational Status</th>
+                            </tr>
+                        </thead>
+                        <tbody className="divide-y divide-[#E3DACD]/20 text-[#2A1F1D]">
+                            {filteredProjects.length === 0 ? (
+                                <tr>
+                                    <td colSpan="5" className="px-8 py-16 text-center">
+                                        <div className="flex flex-col items-center gap-3 text-[#B8AFA5]">
+                                            <Briefcase size={36} strokeWidth={1} />
+                                            <p className="text-sm text-[#8C7B70]">No operational assets found matching your search.</p>
+                                        </div>
+                                    </td>
+                                </tr>
+                            ) : filteredProjects.map((project, index) => {
+                                const progress = project.progress?.percentage || 0;
+                                return (
+                                    <tr key={project.project_id || index} className="hover:bg-[#FDFCF8]/60 transition-colors duration-200 group">
+                                        <td className="px-6 py-4">
+                                            <div className="flex items-center gap-3">
+                                                <div className="w-10 h-10 rounded-xl bg-[#C06842]/5 flex items-center justify-center text-[#C06842] border border-[#C06842]/10 shrink-0 group-hover:scale-110 transition-transform">
+                                                    <Home size={20} />
+                                                </div>
+                                                <div className="min-w-0">
+                                                    <p className="font-bold text-[#2A1F1D] text-sm truncate">{project.name || project.title}</p>
+                                                    <div className="flex items-center gap-1.5">
+                                                        <span className="text-[10px] text-[#C06842] font-black uppercase tracking-widest">{project.type}</span>
+                                                        <span className="text-[10px] text-[#B8AFA5]">• Owner: {project.owner_name}</span>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </td>
+                                        <td className="px-6 py-4">
+                                            <div className="flex flex-col">
+                                                <p className="text-sm font-bold text-[#2A1F1D] flex items-center gap-1.5">
+                                                    <MapPin size={12} className="text-[#C06842]" /> {project.land_name || 'Project Site'}
+                                                </p>
+                                                <p className="text-[11px] text-[#8C7B70] mt-0.5 uppercase tracking-wide">{project.location}</p>
+                                            </div>
+                                        </td>
+                                        <td className="px-6 py-4">
+                                            {project.team && project.team.length > 0 ? (
+                                                <div className="flex flex-wrap gap-1.5">
+                                                    {project.team.slice(0, 2).map((m, i) => (
+                                                        <span key={i} className="text-[9px] font-bold bg-[#F9F7F2] text-[#5D4037] px-2 py-0.5 rounded border border-[#E3DACD]/50" title={m.name}>
+                                                            {m.sub_category || m.category}
+                                                        </span>
+                                                    ))}
+                                                    {project.team.length > 2 && (
+                                                        <span className="text-[9px] font-bold text-[#C06842]">+{project.team.length - 2}</span>
+                                                    )}
+                                                </div>
+                                            ) : (
+                                                <span className="text-[10px] italic text-[#B8AFA5]">Assigning Team...</span>
+                                            )}
+                                        </td>
+                                        <td className="px-6 py-4">
+                                            <div className="flex flex-col gap-2 w-full max-w-[160px]">
+                                                <div className="flex justify-between items-end">
+                                                    <span className="text-[11px] font-bold text-[#2A1F1D]">{progress}%</span>
+                                                    <div className="flex gap-1 pb-0.5">
+                                                        <PhaseTick active={project.progress?.planning} label="P" />
+                                                        <PhaseTick active={project.progress?.design} label="D" />
+                                                        <PhaseTick active={project.progress?.execution} label="E" />
+                                                    </div>
+                                                </div>
+                                                <div className="w-full h-1.5 bg-[#F9F7F2] rounded-full overflow-hidden border border-[#E3DACD]/30">
+                                                    <motion.div
+                                                        initial={{ width: 0 }}
+                                                        animate={{ width: `${progress}%` }}
+                                                        transition={{ duration: 1, ease: "easeOut" }}
+                                                        className="h-full bg-gradient-to-r from-[#D98B6C] to-[#C06842] rounded-full"
+                                                    />
+                                                </div>
+                                            </div>
+                                        </td>
+                                        <td className="px-6 py-4 text-right">
+                                            <span className={`inline-flex items-center px-4 py-1.5 rounded-lg text-[10px] font-bold uppercase tracking-wider border ${
+                                                project.status === 'Completed' ? 'bg-green-50 text-green-700 border-green-100 shadow-sm shadow-green-50' :
+                                                project.status === 'Planning' ? 'bg-amber-50 text-amber-700 border-amber-100 shadow-sm shadow-amber-50' :
+                                                project.status === 'Execution' ? 'bg-blue-50 text-blue-700 border-blue-100 shadow-sm shadow-blue-50' :
+                                                'bg-gray-50 text-gray-700 border-gray-100'
+                                            }`}>
+                                                {project.status?.replace('_', ' ')}
+                                            </span>
+                                        </td>
+                                    </tr>
+                                );
+                            })}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        );
+    };
+
     if (loading) return (
         <div className="flex-1 h-screen flex flex-col items-center justify-center bg-[#FDFCF8] gap-6">
             <div className="w-16 h-16 border-4 border-[#C06842]/10 border-t-[#C06842] rounded-full animate-spin"></div>
@@ -1036,91 +1197,22 @@ const AdminDashboard = ({ initialSection = 'verify_land' }) => {
             )}
 
             {activeSection === 'projects' && (
-                <div className="space-y-6 animate-fade-in max-w-7xl mx-auto">
-                    <div className="flex justify-between items-center pb-4">
-                        <div>
-                            <h2 className="text-2xl font-bold text-[#2A1F1D]">Projects</h2>
-                            <p className="text-sm text-[#8C7B70] mt-1">Overview of all projects on the platform</p>
+                <div className="space-y-8 animate-fade-in max-w-7xl mx-auto">
+                    <div className="flex flex-col md:flex-row justify-between items-start md:items-end gap-6 border-b border-[#E3DACD]/20 pb-8">
+                        <div className="space-y-1">
+                            <span className="text-[10px] text-[#C06842] uppercase font-black tracking-[0.4em]">Resource Flow</span>
+                            <h2 className="text-4xl font-black font-serif text-[#2A1F1D] tracking-tight">Project Management</h2>
                         </div>
-                        <span className="text-xs font-semibold text-[#8C7B70] bg-[#F9F7F2] px-4 py-2 rounded-lg border border-[#E3DACD]/50">
-                            {projects.length} Total
-                        </span>
+                        <div className="flex items-center gap-4 bg-white px-6 py-4 rounded-[1.5rem] border border-[#E3DACD] shadow-sm">
+                            <div className="p-2.5 bg-green-50 text-green-600 rounded-xl"><Activity size={18} /></div>
+                            <div>
+                                <p className="text-[10px] font-black text-[#8C7B70] uppercase tracking-widest">Active Velocity</p>
+                                <p className="text-lg font-black text-[#2A1F1D] tracking-tighter leading-none">{projects.filter(p => p.status !== 'Completed').length} OPERATIONAL</p>
+                            </div>
+                        </div>
                     </div>
 
-                    <div className="bg-white rounded-2xl border border-[#E3DACD]/40 shadow-sm overflow-hidden">
-                        <div className="overflow-x-auto">
-                            <table className="w-full text-sm text-left">
-                                <thead className="bg-[#FDFCF8]/50 text-[#8C7B70] uppercase text-[10px] font-bold tracking-wider border-b border-[#E3DACD]/30">
-                                    <tr>
-                                        <th className="px-6 py-3.5">Project</th>
-                                        <th className="px-6 py-3.5">Land / Location</th>
-                                        <th className="px-6 py-3.5">Team</th>
-                                        <th className="px-6 py-3.5">Progress</th>
-                                        <th className="px-8 py-3.5 text-right">Status</th>
-                                    </tr>
-                                </thead>
-                                <tbody className="divide-y divide-[#E3DACD]/20 text-[#5D4037]">
-                                    {projects.filter(p => !searchQuery || p.title?.toLowerCase().includes(searchQuery.toLowerCase()) || p.owner_name?.toLowerCase().includes(searchQuery.toLowerCase())).length === 0 ? (
-                                        <tr><td colSpan="5" className="px-8 py-24 text-center text-[#B8AFA5] italic font-serif text-xl border-none">No matching project cycles detected.</td></tr>
-                                    ) : projects
-                                        .filter(p => !searchQuery || p.title?.toLowerCase().includes(searchQuery.toLowerCase()) || p.owner_name?.toLowerCase().includes(searchQuery.toLowerCase()))
-                                        .map((project, index) => (
-                                        <tr key={project.project_id || index} className="hover:bg-[#FDFCF8]/40 transition-all duration-300">
-                                            <td className="px-6 py-4">
-                                                <div className="font-black text-lg text-[#2A1F1D] tracking-tight">{project.title}</div>
-                                                <div className="text-[11px] text-[#A65D3B] font-bold uppercase tracking-widest mt-1.5 opacity-80">Origin: {project.owner_name}</div>
-                                            </td>
-                                            <td className="px-6 py-4">
-                                                <div className="text-sm font-black text-[#4A342E]">{project.land_name || 'Assigned Territory'}</div>
-                                                <div className="text-[10px] text-[#B8AFA5] font-black uppercase mt-1 tracking-wider">{project.location}</div>
-                                            </td>
-                                            <td className="px-6 py-4">
-                                                {project.team && project.team.length > 0 ? (
-                                                    <div className="flex flex-col gap-1.5">
-                                                        {project.team.map((member, index) => (
-                                                            <div key={member.id || index} className="flex gap-3 items-center text-[10px] bg-[#FDFCF8] border border-[#E3DACD]/40 px-3 py-1.5 rounded-xl">
-                                                                <span className="font-black text-[#8C7B70] uppercase tracking-tighter opacity-70 w-20">{member.sub_category || member.category}:</span>
-                                                                <span className="text-[#2A1F1D] font-black tracking-tight">{member.name}</span>
-                                                            </div>
-                                                        ))}
-                                                    </div>
-                                                ) : (
-                                                    <span className="text-[10px] uppercase font-black tracking-[0.2em] text-[#B8AFA5] italic">Deployment Queueing...</span>
-                                                )}
-                                            </td>
-                                            <td className="px-6 py-4">
-                                                <div className="flex flex-col gap-3 w-full max-w-[180px]">
-                                                    <div className="flex justify-between items-center text-[10px] font-black uppercase tracking-widest mb-1">
-                                                        <span className="text-[#8C7B70]">Site Progress: <span className="text-[#C06842]">{project.progress?.percentage || 0}%</span></span>
-                                                        <div className="flex gap-1">
-                                                            <PhaseTick active={project.progress?.planning} label="P" />
-                                                            <PhaseTick active={project.progress?.design} label="D" />
-                                                            <PhaseTick active={project.progress?.execution} label="E" />
-                                                        </div>
-                                                    </div>
-                                                    <div className="w-full h-2 bg-[#F9F7F2] rounded-full overflow-hidden border border-[#E3DACD]/50 shadow-inner">
-                                                        <div
-                                                            className="h-full bg-gradient-to-r from-[#D98B6C] via-[#C06842] to-[#8C4A32] rounded-full transition-all duration-1000 ease-out"
-                                                            style={{ width: `${project.progress?.percentage || 0}%` }}
-                                                        />
-                                                    </div>
-                                                </div>
-                                            </td>
-                                            <td className="px-6 py-4 text-right">
-                                                <span className={`px-5 py-2 rounded-2xl text-[10px] font-black uppercase tracking-[0.2em] border-2 ${project.status === 'Completed' ? 'bg-[#F0FDF4] text-[#166534] border-[#DCFCE7]' :
-                                                    project.status === 'Planning' ? 'bg-amber-50 text-amber-700 border-amber-200' :
-                                                        project.status === 'Execution' ? 'bg-blue-50 text-blue-700 border-blue-200' :
-                                                            'bg-gray-50 text-gray-700 border-gray-200'
-                                                    }`}>
-                                                    {project.status?.replace('_', ' ')}
-                                                </span>
-                                            </td>
-                                        </tr>
-                                    ))}
-                                </tbody>
-                            </table>
-                        </div>
-                    </div>
+                    <ProjectManagementTable data={projects} />
                 </div>
             )}
 

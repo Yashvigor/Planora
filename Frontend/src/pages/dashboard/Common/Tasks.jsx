@@ -46,7 +46,9 @@ const ProjectSelectModal = ({ isOpen, onClose, onAssign, team, projects, isSubmi
                             onChange={e => setForm({ ...form, project_id: e.target.value, assigned_to: '' })}
                         >
                             <option value="">-- Choose project --</option>
-                            {projects.map(p => <option key={p.project_id} value={p.project_id}>{p.name}</option>)}
+                                                        {projects
+                                .filter(p => (p.status || p.project_status) !== 'Completed')
+                                .map(p => <option key={p.project_id} value={p.project_id}>{p.name}</option>)}
                         </select>
                     </div>
                     <div>
