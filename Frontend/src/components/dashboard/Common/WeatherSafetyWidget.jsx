@@ -11,7 +11,7 @@ import Card from '../../Common/Card';
  * CONSTRUCTION SITE SAFETY & WEATHER BOARD (v5.0 - INDUSTRIAL GRADE)
  * Focus: Official Safety Metrics & Operational Authorization
  */
-const WeatherSafetyWidget = ({ location }) => {
+const WeatherSafetyWidget = ({ location, compact = false }) => {
     const [weatherData, setWeatherData] = useState(null);
     const [loading, setLoading] = useState(true);
     const [isDevLiveMode, setIsDevLiveMode] = useState(true);
@@ -26,10 +26,7 @@ const WeatherSafetyWidget = ({ location }) => {
                 try {
                     const key = import.meta.env.VITE_OPENWEATHER_API_KEY || 'bf405d4149021e1a5390772f4f29d10e';
                     
-                    // Stop 401 logs: Revoked key detection
-                    if (key === 'bf405d4149021e1a5390772f4f29d10e') {
-                         throw new Error('Simulation Mode Active'); 
-                    }
+                    // Attempting Live Fetch (Industrial Sync)
 
                     const res = await fetch(`https://api.openweathermap.org/data/2.5/weather?q=${city}&units=metric&appid=${key}`);
                     if (res && res.ok) {
@@ -76,8 +73,8 @@ const WeatherSafetyWidget = ({ location }) => {
                 status: 'NOT SAFE',
                 color: 'rose',
                 icon: XCircle,
-                instruction: 'OUTDOOR WORK SUSPENDED',
-                details: 'Stop high-elevation crane and concrete pouring activities immediately.',
+                instruction: 'WORK SUSPENDED',
+                details: 'Heavy rainfall or high winds detected. Stop all height work.',
                 riskLevel: 'HIGH'
             };
         }
@@ -87,8 +84,8 @@ const WeatherSafetyWidget = ({ location }) => {
                 status: 'CAUTION',
                 color: 'amber',
                 icon: AlertTriangle,
-                instruction: 'WORK RESTRICTIONS ACTIVE',
-                details: 'Scheduled hydration breaks mandatory. No crane operations if wind >30km/h.',
+                instruction: 'RESTRICTIONS',
+                details: 'High temperature. Mandatory hydration breaks in effect.',
                 riskLevel: 'MODERATE'
             };
         }
@@ -97,14 +94,14 @@ const WeatherSafetyWidget = ({ location }) => {
             status: 'SAFE',
             color: 'emerald',
             icon: ShieldCheck,
-            instruction: 'ALL WORK AUTHORIZED',
-            details: 'Conditions optimal for concrete pouring, welding, and high-altitude tasks.',
+            instruction: 'AUTHORIZED',
+            details: 'Conditions optimal for all on-site operations.',
             riskLevel: 'LOW'
         };
     }, [weatherData]);
 
     if (loading) return (
-        <Card className="h-[420px] flex items-center justify-center bg-[#F9F7F2]">
+        <Card className={`${compact ? 'h-[180px]' : 'h-[420px]'} flex items-center justify-center bg-[#F9F7F2]`}>
             <Activity className="animate-spin text-[#C06842]" />
         </Card>
     );
@@ -114,6 +111,51 @@ const WeatherSafetyWidget = ({ location }) => {
         amber: { bg: 'bg-amber-500', text: 'text-amber-700', light: 'bg-amber-50', border: 'border-amber-200' },
         rose: { bg: 'bg-rose-600', text: 'text-rose-700', light: 'bg-rose-50', border: 'border-rose-200' }
     }[safetyProtocol.color];
+
+    if (compact) {
+        return (
+            <Card variant="light" className="relative flex flex-col p-4 overflow-hidden border-[#E3DACD]/50 bg-white space-y-4">
+                <div className="flex justify-between items-center">
+                    <div className="flex items-center gap-2">
+                        <div className={`w-8 h-8 rounded-xl ${theme.bg} flex items-center justify-center text-white shrink-0`}>
+                            <safetyProtocol.icon size={16} />
+                        </div>
+                        <div>
+                            <h3 className={`text-lg font-black uppercase leading-none ${theme.text}`}>{safetyProtocol.status}</h3>
+                            <p className="text-[8px] font-bold text-[#8C7B70] uppercase tracking-widest mt-1">Status: {safetyProtocol.riskLevel} Risk</p>
+                        </div>
+                    </div>
+                    <div className="text-right">
+                        <div className="text-xl font-serif font-black text-[#2A1F1D] leading-none">{weatherData.temp}°C</div>
+                        <div className="text-[9px] font-bold text-[#8C7B70] uppercase tracking-widest">{weatherData.condition}</div>
+                    </div>
+                </div>
+
+                <div className="grid grid-cols-2 gap-3">
+                    <div className="bg-[#F9F7F2]/60 p-3 rounded-2xl border border-[#E3DACD]/30">
+                        <div className="flex items-center gap-1.5 mb-1">
+                            <Droplets size={12} className="text-blue-500" />
+                            <span className="text-[8px] font-black text-[#8C7B70] uppercase">Rain</span>
+                        </div>
+                        <span className="text-lg font-black text-[#2A1F1D]">{weatherData.rainProb}%</span>
+                    </div>
+                    <div className="bg-[#F9F7F2]/60 p-3 rounded-2xl border border-[#E3DACD]/30">
+                        <div className="flex items-center gap-1.5 mb-1">
+                            <Wind size={12} className="text-[#8C7B70]" />
+                            <span className="text-[8px] font-black text-[#8C7B70] uppercase">Wind</span>
+                        </div>
+                        <span className="text-lg font-black text-[#2A1F1D]">{weatherData.wind}<span className="text-[8px] ml-0.5">km/h</span></span>
+                    </div>
+                </div>
+
+                <div className={`${theme.light} ${theme.border} border p-3 rounded-2xl`}>
+                    <p className={`text-[9px] font-bold leading-tight ${theme.text}`}>
+                        <span className="uppercase mr-1 font-black">Directive:</span> {safetyProtocol.instruction}. {safetyProtocol.details}
+                    </p>
+                </div>
+            </Card>
+        );
+    }
 
     return (
         <Card variant="light" className="relative h-full flex flex-col p-0 overflow-hidden border-[#2A1F1D]/10 bg-white min-h-[440px]">

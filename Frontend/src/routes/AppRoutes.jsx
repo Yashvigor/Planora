@@ -58,7 +58,7 @@ const AppRoutes = () => {
         const userStatus = (currentUser.status || '').toLowerCase();
         if (userStatus === 'disabled') return <AccountDisabled />;
 
-        const isExempt = ['land_owner', 'contractor', 'admin'].includes(effectiveRole);
+        const isExempt = ['land_owner', 'contractor', 'admin', 'bidder'].includes(effectiveRole);
         if (!isExempt && userStatus !== 'approved') {
             return <PendingApproval />;
         }
@@ -85,6 +85,8 @@ const AppRoutes = () => {
             // Admin
             case 'admin': return <AdminOverview />;
 
+            case 'bidder': return <AuctionHouse />;
+
             default:
                 return <ComingSoon title="Workspace Setup" message={`Configuring environment for ${effectiveRole}...`} />;
         }
@@ -109,7 +111,7 @@ const AppRoutes = () => {
                 <Route path="project/:id" element={<ProjectWorkspace />} />
 
                 {/* Role Specific Routes */}
-                {(effectiveRole === 'land_owner' || effectiveRole === 'contractor') && (
+                {(effectiveRole === 'land_owner' || effectiveRole === 'contractor' || effectiveRole === 'bidder') && (
                     <>
                         <Route path="lands" element={<MyLands />} />
                         <Route path="projects" element={<MyProjects />} />

@@ -572,20 +572,21 @@ app.post('/api/signup', async (req, res) => {
             'carpenter': { category: 'SiteWork', sub_category: 'Carpenter' },
             'tile_fixer': { category: 'SiteWork', sub_category: 'Tile Worker' },
             'painter': { category: 'SiteWork', sub_category: 'Painter' },
-            'admin': { category: 'Admin', sub_category: 'Admin' }
+            'admin': { category: 'Admin', sub_category: 'Admin' },
+            'bidder': { category: 'Bidder', sub_category: 'Bidder' }
         };
 
         const { category, sub_category } = roleMapping[role] || { category: 'Planning', sub_category: role };
 
         // ?? New Logic: Professionals must be approved before entering role tables.
-        // Land Owners, Contractors, and Admins are approved by default.
-        const userStatus = (sub_category === 'Land Owner' || sub_category === 'Contractor' || category === 'Admin') ? 'Approved' : 'Pending';
+        // Bidders, Land Owners, Contractors, and Admins are approved by default.
+        const userStatus = (sub_category === 'Land Owner' || sub_category === 'Contractor' || category === 'Admin' || category === 'Bidder') ? 'Approved' : 'Pending';
 
         let userId;
 
         if (userStatus === 'Approved') {
             // Save User Data (Returns auto-generated UUID)
-            const isCompleted = category === 'Admin' || sub_category === 'Contractor' || sub_category === 'Land Owner';
+            const isCompleted = category === 'Admin' || sub_category === 'Contractor' || sub_category === 'Land Owner' || sub_category === 'Bidder';
             const userInsert = await client.query(
                 'INSERT INTO users (name, email, password_hash, category, sub_category, status, profile_completed) VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING user_id',
                 [name, email, passwordHash, category, sub_category, userStatus, isCompleted]
@@ -618,7 +619,7 @@ app.post('/api/signup', async (req, res) => {
 
         res.status(201).json({
             message: 'User registered successfully',
-            status: (category === 'Admin' || sub_category === 'Contractor' || sub_category === 'Land Owner') ? 'success' : 'incomplete',
+            status: (category === 'Admin' || sub_category === 'Contractor' || sub_category === 'Land Owner' || sub_category === 'Bidder') ? 'success' : 'incomplete',
             token, // ?? Return token to client
             user: {
                 id: userId,
@@ -627,7 +628,7 @@ app.post('/api/signup', async (req, res) => {
                 email: email,
                 role: role, // UI Routing key
                 status: userStatus,
-                profile_completed: (category === 'Admin' || sub_category === 'Land Owner' || sub_category === 'Contractor')
+                profile_completed: (category === 'Admin' || sub_category === 'Land Owner' || sub_category === 'Contractor' || sub_category === 'Bidder')
             }
         });
     } catch (err) {
@@ -764,7 +765,8 @@ app.post('/api/login', async (req, res) => {
         'Carpenter': 'carpenter',
         'Tile Worker': 'tile_fixer',
         'Painter': 'painter',
-        'Admin': 'admin'
+        'Admin': 'admin',
+        'Bidder': 'bidder'
     };
 
     if (!email || !password) {
@@ -843,7 +845,7 @@ app.post('/api/login', async (req, res) => {
         }
 
         // Determines if app should push user to wizard or main dashboard
-        const isInherentlyComplete = user.category === 'Admin';
+        const isInherentlyComplete = user.category === 'Admin' || user.category === 'Bidder';
         const isComplete = user.profile_completed || isInherentlyComplete;
 
         // ??? Admin Verification Logic check
@@ -1322,6 +1324,13 @@ app.patch('/api/admin/auctions/:auctionId/verify', authenticateToken, async (req
             ]
         );
 
+        // If manually marked as completed, trigger ownership transfer
+        if (status === 'completed' && auction.winner_id) {
+            await pool.query('UPDATE lands SET owner_id = $1 WHERE land_id = $2', [auction.winner_id, auction.land_id]);
+            await pool.query('UPDATE projects SET land_owner_id = $1 WHERE land_id = $2', [auction.winner_id, auction.land_id]);
+            console.log(`[Admin] Manual ownership transfer completed for Land ${auction.land_id}`);
+        }
+
         res.json(auction);
     } catch (err) {
         console.error('Error verifying auction:', err);
@@ -1708,7 +1717,8 @@ app.post('/api/auth/google', async (req, res) => {
             'Carpenter': 'carpenter',
             'Tile Worker': 'tile_fixer',
             'Painter': 'painter',
-            'Admin': 'admin'
+            'Admin': 'admin',
+            'Bidder': 'bidder'
         };
         if (user.sub_category && roleMap[user.sub_category]) {
             roleKey = roleMap[user.sub_category];
@@ -2577,6 +2587,14 @@ app.post('/api/projects', authenticateToken, async (req, res) => {
             }
         }
 
+        // [Security] Prevent creating project on land currently in active auction
+        if (land_id) {
+            const auctionCheck = await pool.query("SELECT status FROM land_auctions WHERE land_id = $1 AND status = 'active'", [land_id]);
+            if (auctionCheck.rows.length > 0) {
+                return res.status(403).json({ error: 'This land is currently listed in an active auction. Development is restricted until the auction concludes.' });
+            }
+        }
+
         const projectRes = await pool.query(
             'INSERT INTO projects (land_owner_id, name, description, budget, status, land_id) VALUES ($1, $2, $3, $4, $5, $6) RETURNING *',
             [owner_id, name, description, budget, 'Planning', land_id || null]
@@ -2754,10 +2772,12 @@ app.get('/api/projects/user/:userId', async (req, res) => {
     const { userId } = req.params;
     try {
         const result = await pool.query(`
-            SELECT * FROM projects 
-            WHERE land_owner_id = $1 
-               OR project_id IN (SELECT project_id FROM projectassignments WHERE user_id = $1 AND status = 'Accepted')
-            ORDER BY created_at DESC
+            SELECT p.* FROM projects p
+            JOIN lands l ON p.land_id = l.land_id
+            WHERE p.land_owner_id = $1 
+              AND l.owner_id = $1
+               OR p.project_id IN (SELECT project_id FROM projectassignments WHERE user_id = $1 AND status = 'Accepted')
+            ORDER BY p.created_at DESC
         `, [userId]);
 
         const projects = result.rows;
@@ -2857,6 +2877,13 @@ app.get('/api/lands/user/:userId', async (req, res) => {
             FROM lands l
             LEFT JOIN land_auctions a ON l.land_id = a.land_id
             WHERE l.owner_id = $1 
+              AND NOT EXISTS (
+                  SELECT 1 FROM land_auctions la 
+                  WHERE la.land_id = l.land_id 
+                    AND la.status = 'completed' 
+                    AND la.winner_id IS NOT NULL 
+                    AND la.winner_id != $1
+              )
             ORDER BY l.created_at DESC
         `, [userId]);
         res.json(result.rows);
@@ -3219,9 +3246,19 @@ app.post('/api/tasks', authenticateToken, async (req, res) => {
 
     try {
         // [Security] Prevent assigning tasks to completed projects
-        const projectCheck = await pool.query('SELECT status FROM projects WHERE project_id = $1', [project_id]);
-        if (projectCheck.rows.length > 0 && projectCheck.rows[0].status === 'Completed') {
-            return res.status(403).json({ error: 'Cannot assign tasks to a completed project' });
+        const projectCheck = await pool.query('SELECT status, land_id FROM projects WHERE project_id = $1', [project_id]);
+        if (projectCheck.rows.length > 0) {
+            if (projectCheck.rows[0].status === 'Completed') {
+                return res.status(403).json({ error: 'Cannot assign tasks to a completed project' });
+            }
+
+            // [Security] Prevent tasks if land is currently being auctioned
+            if (projectCheck.rows[0].land_id) {
+                const landAuctionCheck = await pool.query("SELECT status FROM land_auctions WHERE land_id = $1 AND status = 'active'", [projectCheck.rows[0].land_id]);
+                if (landAuctionCheck.rows.length > 0) {
+                    return res.status(403).json({ error: 'Operations are suspended while this property is in an active auction.' });
+                }
+            }
         }
 
         const result = await pool.query(
@@ -4671,14 +4708,14 @@ app.post('/api/auctions', authenticateToken, async (req, res) => {
     try {
         const result = await pool.query(
             'INSERT INTO land_auctions (land_id, owner_id, base_price, reserve_price, end_time, current_highest_bid, status) VALUES ($1, $2, $3, $4, $5, $3, $6) RETURNING *',
-            [land_id, owner_id, base_price, reserve_price || null, endTime, 'pending_verification']
+            [land_id, owner_id, base_price, reserve_price || null, endTime, 'active']
         );
         const auction = result.rows[0];
 
-        // Broadcast new auction (maybe only after approval? let's stick to user flow)
-        // io.emit('new_auction', auction); 
+        // Broadcast new auction
+        io.emit('new_auction', auction);
 
-        logActivity(owner_id, null, 'Auction Requested', `Submitted auction request for land ID: ${land_id}`);
+        logActivity(owner_id, null, 'Auction Started', `Listed land ID ${land_id} for auction with base price ₹${base_price}`);
         res.status(201).json(auction);
     } catch (err) {
         console.error('Error creating auction:', err);
@@ -4720,11 +4757,8 @@ app.get('/api/auctions', async (req, res) => {
             FROM land_auctions a
             JOIN lands l ON a.land_id = l.land_id
             JOIN users u ON a.owner_id = u.user_id
-            WHERE (a.status = 'active' AND a.end_time > (CURRENT_TIMESTAMP - INTERVAL '12 hours'))
-               OR a.status = 'completed'
-            ORDER BY 
-                CASE WHEN a.status = 'active' THEN 1 ELSE 2 END,
-                a.end_time DESC
+            WHERE a.status = 'active' AND a.end_time > CURRENT_TIMESTAMP
+            ORDER BY a.end_time ASC
             LIMIT 20
         `);
         res.json(result.rows);
@@ -4775,6 +4809,11 @@ app.post('/api/auctions/:auctionId/bid', authenticateToken, async (req, res) => 
 
         if (auction.status !== 'active' || new Date(auction.end_time) < new Date()) {
             throw new Error('Auction has ended');
+        }
+
+        // [Security] Owners cannot bid on their own auctions
+        if (parseInt(bidder_id) === parseInt(auction.owner_id)) {
+            throw new Error('As the property owner, you are not permitted to place bids on this auction.');
         }
 
         if (parseFloat(amount) <= parseFloat(auction.current_highest_bid)) {
@@ -4876,9 +4915,21 @@ async function finalizeEndedAuctions() {
                     [topBid.bidder_id, auction.auction_id]
                 );
 
+                // 🔥 TRANSFER LEGAL LAND AUTHORITY (How it works in real life)
+                await client.query(
+                    'UPDATE lands SET owner_id = $1, updated_at = CURRENT_TIMESTAMP WHERE land_id = $2',
+                    [topBid.bidder_id, auction.land_id]
+                );
+
+                // 🔥 TRANSFER ASSOCIATED PROJECT AUTHORITY
+                await client.query(
+                    'UPDATE projects SET land_owner_id = $1, updated_at = CURRENT_TIMESTAMP WHERE land_id = $2',
+                    [topBid.bidder_id, auction.land_id]
+                );
+
                 // Create Notifications
-                await createNotification(topBid.bidder_id, 'auction_win', `Congratulations! You won the auction for "${auction.land_title}" with a bid of ₹${parseFloat(topBid.amount).toLocaleString()}!`, '/dashboard/bidding', auction.auction_id);
-                await createNotification(auction.owner_id, 'auction_end', `Your auction for "${auction.land_title}" has ended. Winner: ${topBid.bidder_name} with bid of ₹${parseFloat(topBid.amount).toLocaleString()}.`, '/dashboard/lands', auction.auction_id);
+                await createNotification(topBid.bidder_id, 'auction_win', `Congratulations! You won the auction for "${auction.land_title}" with a bid of ₹${parseFloat(topBid.amount).toLocaleString()}! You now hold full legal authority over this asset.`, '/dashboard/lands', auction.auction_id);
+                await createNotification(auction.owner_id, 'auction_end', `Your auction for "${auction.land_title}" has ended. Assets successfully transferred to: ${topBid.bidder_name} for a final bid of ₹${parseFloat(topBid.amount).toLocaleString()}.`, '/dashboard/lands', auction.auction_id);
 
                 try {
                     // Send Email
@@ -4906,10 +4957,43 @@ async function finalizeEndedAuctions() {
         if (client) client.release();
     }
 }
-// Run maintenance tasks every 5 minutes
-setInterval(finalizeEndedAuctions, 5 * 60 * 1000);
-// Also run on startup after a short delay
-setTimeout(finalizeEndedAuctions, 10000);
+// ??? Global Sanity Check: Fix any orphaned auctions that were completed but never transferred or notified
+async function runAuctionSanitySync() {
+    console.log('[Sanity] Syncing missed auction transfers...');
+    try {
+        const result = await pool.query(`
+            SELECT a.*, COALESCE(a.winner_id, top_bid.bidder_id) as true_winner 
+            FROM land_auctions a
+            LEFT JOIN (
+                SELECT auction_id, bidder_id, amount 
+                FROM bids b1 
+                WHERE amount = (SELECT MAX(amount) FROM bids b2 WHERE b2.auction_id = b1.auction_id)
+            ) top_bid ON a.auction_id = top_bid.auction_id
+            JOIN lands l ON a.land_id = l.land_id
+            WHERE a.status = 'completed' AND l.owner_id = a.owner_id AND (a.winner_id IS NOT NULL OR top_bid.bidder_id IS NOT NULL)
+        `);
+
+        for (const auction of result.rows) {
+            console.log(`[Sanity] Transferring authority for skipped auction: ${auction.auction_id}`);
+            await pool.query('UPDATE lands SET owner_id = $1 WHERE land_id = $2', [auction.true_winner, auction.land_id]);
+            await pool.query('UPDATE projects SET land_owner_id = $1 WHERE land_id = $2', [auction.true_winner, auction.land_id]);
+        }
+    } catch (err) {
+        console.error('[Sanity] Sync Error:', err);
+    }
+}
+
+// Run maintenance tasks every 30 seconds for high responsiveness
+setInterval(() => {
+    finalizeEndedAuctions();
+    runAuctionSanitySync();
+}, 30 * 1000);
+
+// Also run immediately on startup
+setTimeout(() => {
+    finalizeEndedAuctions();
+    runAuctionSanitySync();
+}, 2000);
 
 // ??? Global Error Handling Middleware (Imported from middleware/error.js)
 app.use(errorHandler);
@@ -4917,3 +5001,4 @@ app.use(errorHandler);
 server.listen(port, () => {
     console.log(`Server successfully started on port ${port} with Socket.io enabled.`);
 });
+

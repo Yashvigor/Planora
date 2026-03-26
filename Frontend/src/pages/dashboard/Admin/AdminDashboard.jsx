@@ -1143,7 +1143,7 @@ const AdminDashboard = ({ initialSection = 'verify_land' }) => {
                                                                     <Award size={12} className="text-green-600" />
                                                                     <div className="text-[11px] font-bold text-[#2A1F1D] uppercase tracking-tighter truncate max-w-[150px]">{auction.winner_name || 'System Resolved'}</div>
                                                                 </div>
-                                                                <div className="text-xs font-bold text-green-600 pl-4">₹ {auction.current_bid?.toLocaleString() || auction.base_price?.toLocaleString()}</div>
+                                                                <div className="text-xs font-bold text-green-600 pl-4">₹ {auction.current_highest_bid?.toLocaleString() || auction.base_price?.toLocaleString()}</div>
                                                             </>
                                                         ) : auction.status === 'active' ? (
                                                             <div className="flex items-center gap-1.5">

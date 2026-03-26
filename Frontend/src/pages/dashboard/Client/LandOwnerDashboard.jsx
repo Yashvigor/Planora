@@ -5,11 +5,13 @@ import {
     Plus, HardHat, FileText, MapPin, 
     XCircle, Construction, Check, LayoutGrid, PenTool,
     Search, ChevronRight, Award, Shield, Layers, Users,
-    Hammer, Star, ClipboardList, Calculator, ImageIcon, Radio, ShieldAlert
+    Hammer, Star, ClipboardList, Calculator, ImageIcon, Radio, ShieldAlert,
+    Activity
 } from 'lucide-react';
 import ProfilePromptModal from '../../../components/dashboard/Common/ProfilePromptModal';
 import RatingModal from '../../../components/dashboard/Common/RatingModal';
 import WeatherSafetyWidget from '../../../components/dashboard/Common/WeatherSafetyWidget';
+import { ProjectLifecycle, DailyReportSummary } from '../../../components/dashboard/Common/SharedDashboardComponents';
 import SiteWorkboard from '../Site/SiteWorkboard';
 import { motion, AnimatePresence } from 'framer-motion';
 import jsPDF from 'jspdf';
@@ -20,54 +22,9 @@ import Card from '../../../components/Common/Card';
 import Button from '../../../components/Common/Button';
 import SectionHeader from '../../../components/Common/SectionHeader';
 
-const ProjectLifecycle = ({ project, onUpdatePhase }) => {
-    const phases = [
-        { id: 'planning', label: '1. Planning', weight: 30, icon: LayoutGrid, completed: project.planning_completed },
-        { id: 'design', label: '2. Design', weight: 30, icon: PenTool, completed: project.design_completed, dependsOn: 'planning_completed' },
-        { id: 'execution', label: '3. Execution', weight: 40, icon: Construction, completed: project.execution_completed, dependsOn: 'design_completed' }
-    ];
 
-    return (
-        <Card className="mb-12" variant="glass">
-            <SectionHeader 
-                title="Project Phases" 
-                subtitle="Manage project milestones"
-                action={<div className="text-[8px] font-black uppercase text-[#C06842] bg-[#C06842]/5 px-4 py-2 rounded-full border border-[#C06842]/10 tracking-[0.2em]">Phase Management</div>}
-            />
-            
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mt-4">
-                {phases.map(phase => {
-                    const isLocked = phase.dependsOn && !project[phase.dependsOn];
-                    const Icon = phase.icon;
-                    return (
-                        <div key={phase.id} className={`p-5 rounded-[2rem] border-2 transition-all duration-500 flex flex-col items-center text-center space-y-4 ${
-                            phase.completed ? 'bg-green-50/40 border-green-200 shadow-sm' : isLocked ? 'bg-[#FDFCF8]/30 border-transparent opacity-50 grayscale cursor-not-allowed' : 'bg-white border-[#C06842]/10 shadow-sm hover:border-[#C06842]/30'
-                        }`}>
-                            <div className={`w-12 h-12 rounded-[1.2rem] flex items-center justify-center transition-all duration-500 shadow-lg ${
-                                phase.completed ? 'bg-green-600 text-white rotate-6' : isLocked ? 'bg-[#E3DACD]/50 text-[#8C7B70]' : 'bg-[#C06842] text-white hover:rotate-6 shadow-xl shadow-[#C06842]/20'
-                            }`}>
-                                {phase.completed ? <Check size={22} /> : <Icon size={20} />}
-                            </div>
-                            <div className="space-y-1">
-                                <h4 className="font-serif font-bold text-[#2A1F1D] text-base">{phase.label}</h4>
-                                <p className="text-[9px] font-black uppercase tracking-[0.2em] text-[#C06842]">{phase.weight}% Completion</p>
-                            </div>
-                            <Button
-                                size="md"
-                                variant={phase.completed ? 'ghost' : isLocked ? 'outline' : 'primary'}
-                                disabled={isLocked || project.status === 'Completed'}
-                                onClick={() => onUpdatePhase(project.project_id, phase.id, !phase.completed)}
-                                className="w-full"
-                            >
-                                {phase.completed ? 'Reopen' : isLocked ? 'Locked' : 'Mark Completed'}
-                            </Button>
-                        </div>
-                    );
-                })}
-            </div>
-        </Card>
-    );
-};
+
+
 
 const LandOwnerDashboard = () => {
     const navigate = useNavigate();
@@ -426,126 +383,159 @@ const LandOwnerDashboard = () => {
 
                         return (
                             <motion.div 
-                                initial={{ opacity: 0, y: 50 }}
-                                whileInView={{ opacity: 1, y: 0 }}
-                                transition={{ duration: 0.8, ease: "easeOut" }}
-                                viewport={{ once: true }}
+                                initial={{ opacity: 0, y: 30 }}
+                                animate={{ opacity: 1, y: 0 }}
+                                transition={{ duration: 0.6 }}
                                 key={project.project_id} 
-                                className="relative bg-[#FDFCF8] p-12 rounded-[4rem] border border-[#E3DACD]/60 shadow-sm overflow-hidden"
+                                className="group relative bg-white rounded-[2rem] border border-[#E3DACD]/50 hover:border-[#b96a41]/30 overflow-hidden transition-all duration-500 hover:shadow-[0_25px_50px_-12px_rgba(42,31,29,0.08)] flex flex-col"
                             >
-                                {/* Decorative Accent */}
-                                <div className="absolute top-0 left-0 w-2 h-full bg-[#C06842]" />
+                                {/* Decorative Gradient Top (Professional Style) */}
+                                <div className="absolute top-0 left-0 right-0 h-2 bg-gradient-to-r from-[#C06842] via-[#E68A2E] to-[#C06842] opacity-0 group-hover:opacity-100 transition-opacity duration-500"></div>
 
-                                {/* 1. Strategic Header */}
-                                <div className="flex flex-col md:flex-row justify-between items-start gap-8 mb-16 px-2">
-                                    <div className="space-y-4">
-                                        <div className="flex items-center gap-4">
-                                            <span className="text-[10px] font-black uppercase text-[#C06842] bg-[#C06842]/5 border border-[#C06842]/10 px-4 py-2 rounded-full tracking-[0.3em]">Active Asset</span>
-                                            <span className="text-[10px] font-black uppercase text-[#8C7B70] tracking-[0.2em]">{project.type} Construction</span>
+                                {/* 1. HEADER SECTION (COMPACT) */}
+                                <div className="p-6 md:p-8 border-b border-[#F9F7F2] flex flex-col xl:flex-row justify-between items-start xl:items-center gap-6 bg-gradient-to-b from-[#FDFCF8] to-white">
+                                    <div className="flex items-center gap-5">
+                                        <div className="w-14 h-14 rounded-2xl bg-[#2A1F1D] flex items-center justify-center text-white shadow-lg rotate-3 group-hover:rotate-0 transition-transform duration-500">
+                                            <Construction size={24} strokeWidth={1.5} />
                                         </div>
-                                        <h2 className="text-5xl font-serif font-black text-[#2A1F1D] tracking-tighter uppercase leading-none">{project.name}</h2>
-                                        <p className="text-xs text-[#8C7B70] font-black uppercase tracking-[0.4em] flex items-center gap-3">
-                                            <MapPin size={14} className="text-[#C06842]" /> {project.location} • Land Registry: Verified
-                                        </p>
-                                     </div>
-                                     <div className="flex flex-col gap-3">
-                                         <Button variant="outline" className="shrink-0" onClick={() => handleGenerateInvestmentReport(project)}>Export Insight Report</Button>
-                                         <Button variant="secondary" className="shrink-0 bg-emerald-50 text-emerald-700 border-emerald-100 hover:bg-emerald-100" onClick={() => handleGenerateDailyReport(project)}>Export Daily Report</Button>
-                                     </div>
-                                 </div>
-
-                                {/* 2. Core Operational Hub (3 Columns) */}
-                                <div className="grid grid-cols-1 lg:grid-cols-12 gap-10 items-stretch mb-16">
-                                    {/* Weather Pillar */}
-                                    <div className="lg:col-span-4 space-y-4">
-                                        <div className="flex items-center gap-3 mb-2 px-1">
-                                            <Radio size={14} className="text-[#C06842] animate-pulse" />
-                                            <span className="text-[10px] font-black uppercase text-[#2A1F1D] tracking-[0.2em]">Environmental Sync</span>
-                                        </div>
-                                        <WeatherSafetyWidget location={project.location} />
-                                    </div>
-
-                                    {/* Progress Pillar */}
-                                    <div className="lg:col-span-4 bg-white p-8 rounded-[2.5rem] border border-[#E3DACD]/40 space-y-8 flex flex-col justify-center">
-                                        <div className="space-y-2 text-center">
-                                            <span className="text-[9px] font-black uppercase text-[#8C7B70] tracking-[0.3em]">Physical Completion</span>
-                                            <h3 className="text-6xl font-serif font-black text-[#2A1F1D]">{progressPercent}<span className="text-2xl text-[#C06842]">%</span></h3>
-                                        </div>
-                                        <div className="space-y-4">
-                                            <div className="h-4 w-full bg-[#E3DACD]/10 rounded-full border border-[#E3DACD]/30 p-1 overflow-hidden">
-                                                <motion.div 
-                                                    initial={{ width: 0 }}
-                                                    whileInView={{ width: `${progressPercent}%` }}
-                                                    className="h-full bg-gradient-to-r from-[#2A1F1D] to-[#C06842] rounded-full"
-                                                />
+                                        <div className="space-y-0.5">
+                                            <div className="flex items-center gap-3">
+                                                <h2 className="text-2xl font-serif font-black text-[#2A1F1D] tracking-tight group-hover:text-[#C06842] transition-colors">{project.name}</h2>
+                                                <span className="text-[9px] font-black uppercase text-emerald-600 bg-emerald-50 px-2.5 py-0.5 rounded-full border border-emerald-100 flex items-center gap-1 shadow-sm">
+                                                    <Shield size={9} className="fill-emerald-600" /> Verified
+                                                </span>
                                             </div>
-                                            <p className="text-[8px] text-[#8C7B70] font-black text-center uppercase tracking-widest leading-relaxed">
-                                                Currently in {progressPercent < 30 ? 'Planning' : progressPercent < 60 ? 'Design & Procurement' : 'Active Execution'} Phase
-                                            </p>
+                                            <div className="flex items-center gap-2.5 text-[10px] font-bold text-[#8C7B70] uppercase tracking-widest">
+                                                <span className="text-[#C06842]">{project.type}</span>
+                                                <span className="w-1 h-1 rounded-full bg-[#E3DACD]" />
+                                                <span className="flex items-center gap-1">
+                                                    <MapPin size={10} className="text-[#C06842]" /> {project.location}
+                                                </span>
+                                            </div>
                                         </div>
                                     </div>
+                                    
+                                    <div className="flex flex-wrap gap-2.5 w-full xl:w-auto">
+                                        <Button 
+                                            icon={FileText} 
+                                            variant="outline" 
+                                            size="sm"
+                                            className="bg-white border-[#E3DACD] text-[#5D4037] hover:border-[#C06842] text-[10px] py-2"
+                                            onClick={() => handleGenerateInvestmentReport(project)}
+                                        >
+                                            Export IDR
+                                        </Button>
+                                        <Button 
+                                            icon={Activity} 
+                                            variant="primary" 
+                                            size="sm"
+                                            className="bg-[#3E2B26] hover:bg-[#2A1F1D] text-white shadow-md text-[10px] py-2"
+                                            onClick={() => handleGenerateDailyReport(project)}
+                                        >
+                                            Daily Site Log
+                                        </Button>
+                                    </div>
+                                </div>
 
-                                    {/* Financial Pillar */}
-                                    <div className={`lg:col-span-4 p-8 rounded-[2.5rem] border flex flex-col justify-center space-y-8 ${isOverBudget ? 'bg-rose-50 border-rose-200' : 'bg-[#C06842]/5 border-[#C06842]/10'}`}>
-                                        <div className="space-y-2 text-center">
-                                            <span className={`text-[9px] font-black uppercase tracking-[0.3em] ${isOverBudget ? 'text-rose-600' : 'text-[#C06842]'}`}>Capital Burn Sync</span>
-                                            <h3 className={`text-6xl font-serif font-black ${isOverBudget ? 'text-rose-600' : 'text-[#2A1F1D]'}`}>{financialBurn}<span className="text-2xl opacity-60">%</span></h3>
+                                {/* 2. MAIN CONTENT GRID */}
+                                <div className="p-8 md:p-10 grid grid-cols-1 md:grid-cols-2 xl:grid-cols-12 gap-10">
+                                    
+                                    {/* LEFT COLUMN (25%) - ENVIRONMENT (COMPACT) */}
+                                    <div className="xl:col-span-3 md:col-span-1 space-y-4 order-2 xl:order-1">
+                                        <div className="flex items-center gap-2 px-1">
+                                            <Radio size={12} className="text-[#C06842] animate-pulse" />
+                                            <span className="text-[9px] font-black uppercase text-[#2A1F1D] tracking-[0.2em]">Site Sync</span>
                                         </div>
+                                        <WeatherSafetyWidget location={project.location} compact={true} />
+                                    </div>
+
+                                    {/* MIDDLE COLUMN (50%) - CORE PROJECT INFO (COMPACT) */}
+                                    <div className="xl:col-span-6 md:col-span-2 order-1 xl:order-2 space-y-4 bg-[#F9F7F2]/30 p-6 rounded-[2rem] border border-[#F9F7F2]">
                                         <div className="space-y-4">
-                                            <div className={`h-2.5 w-full rounded-full overflow-hidden ${isOverBudget ? 'bg-rose-200' : 'bg-[#C06842]/10'}`}>
-                                                <motion.div 
-                                                    initial={{ width: 0 }}
-                                                    whileInView={{ width: `${financialBurn}%` }}
-                                                    className={`h-full transition-all duration-1000 ${isOverBudget ? 'bg-rose-500 shadow-[0_0_20px_rgba(244,63,94,0.3)]' : 'bg-[#C06842]'}`}
-                                                />
+                                            <div className="flex items-center gap-2 px-1">
+                                                <Activity size={12} className="text-[#C06842]" />
+                                                <span className="text-[9px] font-black uppercase text-[#2A1F1D] tracking-[0.2em]">Live Analytics</span>
                                             </div>
-                                            <div className="flex items-center justify-center gap-2">
-                                                {isOverBudget ? (
-                                                    <div className="flex items-center gap-1.5 text-rose-600 text-[9px] font-black uppercase">
-                                                        <ShieldAlert size={12} /> Financial Risk Detected
+                                            
+                                            {/* Progress Sections */}
+                                            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                                                {/* Physical Progress */}
+                                                <div className="space-y-2">
+                                                    <div className="flex justify-between items-end">
+                                                        <span className="text-[9px] font-black uppercase text-[#8C7B70] tracking-widest">Physical</span>
+                                                        <span className="text-xl font-serif font-black text-[#2A1F1D]">{progressPercent}%</span>
                                                     </div>
+                                                    <div className="h-2 w-full bg-white rounded-full border border-[#E3DACD]/50 p-0.5 shadow-inner">
+                                                        <motion.div 
+                                                            initial={{ width: 0 }}
+                                                            whileInView={{ width: `${progressPercent}%` }}
+                                                            className="h-full bg-gradient-to-r from-[#2A1F1D] to-[#C06842] rounded-full"
+                                                        />
+                                                    </div>
+                                                </div>
+
+                                                {/* Financial Burn */}
+                                                <div className="space-y-2">
+                                                    <div className="flex justify-between items-end">
+                                                        <span className="text-[9px] font-black uppercase text-[#8C7B70] tracking-widest">Financial</span>
+                                                        <span className={`text-xl font-serif font-black ${isOverBudget ? 'text-rose-600' : 'text-[#2A1F1D]'}`}>{financialBurn}%</span>
+                                                    </div>
+                                                    <div className="h-2 w-full bg-white rounded-full border border-[#E3DACD]/50 p-0.5 shadow-inner">
+                                                        <motion.div 
+                                                            initial={{ width: 0 }}
+                                                            whileInView={{ width: `${financialBurn}%` }}
+                                                            className={`h-full rounded-full transition-all duration-1000 ${isOverBudget ? 'bg-rose-500' : 'bg-[#C06842]'}`}
+                                                        />
+                                                    </div>
+                                                </div>
+                                            </div>
+
+                                            {/* Phase Sync */}
+                                            <div className="pt-4 border-t border-[#E3DACD]/30">
+                                                <div className="flex items-center gap-2 mb-4 px-1">
+                                                    <Layers size={12} className="text-[#C06842]" />
+                                                    <span className="text-[9px] font-black uppercase text-[#2A1F1D] tracking-[0.2em]">Lifecycle</span>
+                                                </div>
+                                                <ProjectLifecycle project={project} onUpdatePhase={handlePhaseUpdate} />
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    {/* RIGHT COLUMN (25%) - VISUALS + REPORTING (COMPACT) */}
+                                    <div className="xl:col-span-3 md:col-span-1 space-y-6 order-3">
+                                        {/* Site Visuals */}
+                                        <div className="space-y-3">
+                                            <div className="flex items-center justify-between px-1">
+                                                <div className="flex items-center gap-2">
+                                                    <ImageIcon size={12} className="text-[#C06842]" />
+                                                    <span className="text-[9px] font-black uppercase text-[#2A1F1D] tracking-[0.2em]">Visuals</span>
+                                                </div>
+                                            </div>
+                                            
+                                            <div className="flex gap-3 overflow-x-auto pb-2 custom-scrollbar snap-x">
+                                                {project.tasks?.filter(t => t.image_path).length > 0 ? (
+                                                    project.tasks?.filter(t => t.image_path).map((task, tidx) => (
+                                                        <div 
+                                                            key={tidx} 
+                                                            className="relative w-40 h-28 rounded-xl overflow-hidden border border-[#E3DACD]/30 shadow-sm group/img shrink-0 snap-start cursor-pointer transition-all"
+                                                            onClick={() => setPreviewImage(`${import.meta.env.VITE_API_URL}/${task.image_path}`)}
+                                                        >
+                                                            <img src={`${import.meta.env.VITE_API_URL}/${task.image_path}`} alt="Site" className="w-full h-full object-cover group-hover/img:scale-105 transition-transform" />
+                                                        </div>
+                                                    ))
                                                 ) : (
-                                                    <div className="flex items-center gap-1.5 text-[#C06842] text-[9px] font-black uppercase">
-                                                        <Shield size={12} /> Capital Optimized
+                                                    <div className="w-full h-28 rounded-xl border border-dashed border-[#E3DACD] bg-[#F9F7F2]/50 flex flex-col items-center justify-center text-center p-3">
+                                                        <ImageIcon size={16} className="text-[#E3DACD] mb-1" />
+                                                        <p className="text-[7px] font-black uppercase text-[#8C7B70] tracking-widest">No Feed</p>
                                                     </div>
                                                 )}
                                             </div>
                                         </div>
+
+                                        {/* Daily Report Summary */}
+                                        <DailyReportSummary project={project} />
                                     </div>
                                 </div>
-
-                                {/* Site Visuals Strip */}
-                                <div className="px-8 overflow-x-auto">
-                                    <div className="flex gap-4 min-w-max pb-4">
-                                        <div className="w-40 h-52 rounded-[2.5rem] bg-[#C06842]/5 border-2 border-dashed border-[#C06842]/20 flex flex-col items-center justify-center text-center p-6 space-y-2 shrink-0">
-                                            <ImageIcon size={24} className="text-[#C06842]" />
-                                            <p className="text-[9px] font-black uppercase text-[#8C7B70] tracking-widest leading-tight">Site<br/>Gallery</p>
-                                        </div>
-                                        {project.tasks?.filter(t => t.image_path).map((task, tidx) => (
-                                            <div 
-                                                key={tidx} 
-                                                className="relative w-80 h-52 rounded-[2.5rem] overflow-hidden border-4 border-white shadow-xl group shrink-0 transition-all hover:scale-[1.02] hover:-rotate-1 cursor-zoom-in"
-                                                onClick={() => setPreviewImage(`${import.meta.env.VITE_API_URL}/${task.image_path}`)}
-                                            >
-                                                <img src={`${import.meta.env.VITE_API_URL}/${task.image_path}`} alt="Site" className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-110" />
-                                                <div className="absolute inset-0 bg-gradient-to-t from-[#2A1F1D]/80 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity">
-                                                    <div className="absolute bottom-0 inset-x-0 p-6">
-                                                        <p className="text-[10px] text-white font-black uppercase tracking-widest truncate">{task.title}</p>
-                                                        <p className="text-[8px] text-[#C06842] font-black uppercase tracking-widest">{new Date(task.created_at).toLocaleDateString()}</p>
-                                                    </div>
-                                                </div>
-                                            </div>
-                                        ))}
-                                        {(!project.tasks || project.tasks.filter(t => t.image_path).length === 0) && (
-                                            <div className="flex items-center px-10 text-[#8C7B70] text-[10px] uppercase font-black tracking-widest bg-white/40 rounded-[2.5rem] border border-dashed border-[#E3DACD]">
-                                                Awaiting first site visuals for this project
-                                            </div>
-                                        )}
-                                    </div>
-                                </div>
-
-                                <ProjectLifecycle project={project} onUpdatePhase={handlePhaseUpdate} />
-                                <div className="h-[1px] w-full bg-gradient-to-r from-transparent via-[#E3DACD]/50 to-transparent my-24" />
                             </motion.div>
                         );
                     })

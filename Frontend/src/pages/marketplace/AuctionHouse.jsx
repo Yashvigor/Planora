@@ -200,6 +200,7 @@ const AuctionHouse = () => {
                                         key={auction.auction_id}
                                         auction={auction}
                                         index={index}
+                                        currentUser={currentUser}
                                         formatCurrency={formatCurrency}
                                         getTimeRemaining={getTimeRemaining}
                                         onPlaceBid={() => handlePlaceBid(auction.auction_id, auction.current_highest_bid)}
@@ -236,30 +237,16 @@ const AuctionHouse = () => {
                         </button>
                     </div>
 
-                    {/* How it works Promo */}
-                    <div className="bg-gradient-to-br from-[#2A1F1D] to-[#4A342E] rounded-[2.5rem] p-8 text-white relative overflow-hidden group">
-                        <div className="relative z-10">
-                            <Wallet className="mb-4 text-[#A65D4D]" size={32} />
-                            <h3 className="font-serif font-bold text-xl mb-2">Secure Deposits</h3>
-                            <p className="text-white/70 text-sm mb-6 leading-relaxed">
-                                Our automated escrow system ensures your bid amount is locked safely and refunded instantly if you are outbid.
-                            </p>
-                            <button className="flex items-center space-x-2 text-[#A65D4D] font-bold text-xs uppercase tracking-widest group-hover:translate-x-2 transition-transform">
-                                <span>Learn More</span>
-                                <ArrowUpRight size={14} />
-                            </button>
-                        </div>
-                        <div className="absolute -bottom-10 -right-10 opacity-10 group-hover:scale-110 transition-transform duration-700">
-                            <ShieldCheck size={180} />
-                        </div>
-                    </div>
+
                 </div>
             </div>
         </div>
     );
 };
 
-const AuctionCard = ({ auction, index, formatCurrency, getTimeRemaining, onPlaceBid }) => {
+const AuctionCard = ({ auction, index, currentUser, formatCurrency, getTimeRemaining, onPlaceBid }) => {
+    const isOwner = (currentUser?.user_id || currentUser?.id) === auction.owner_id;
+
     const [timeLeft, setTimeLeft] = useState(getTimeRemaining(auction.end_time));
 
     useEffect(() => {
@@ -365,14 +352,15 @@ const AuctionCard = ({ auction, index, formatCurrency, getTimeRemaining, onPlace
                             )}
                         </div>
                         <button
-                            disabled={timeLeft.total <= 0 || auction.status === 'completed'}
+                            disabled={timeLeft.total <= 0 || auction.status === 'completed' || isOwner}
                             onClick={onPlaceBid}
-                            className={`px-6 py-3 rounded-xl font-black text-[10px] uppercase tracking-widest transition-all ${timeLeft.total > 0 && auction.status !== 'completed'
+                            className={`px-6 py-3 rounded-xl font-black text-[10px] uppercase tracking-widest transition-all ${
+                                timeLeft.total > 0 && auction.status !== 'completed' && !isOwner
                                 ? 'bg-[#2A1F1D] text-white shadow-lg shadow-[#2A1F1D]/20 hover:bg-[#C06842] hover:-translate-y-1'
                                 : 'bg-gray-100 text-gray-400 cursor-not-allowed border border-gray-200'
                                 }`}
                         >
-                            {auction.status === 'completed' ? 'Sold' : timeLeft.total <= 0 ? 'Closed' : 'Place Bid'}
+                            {auction.status === 'completed' ? 'Sold' : isOwner ? 'Viewing Own' : timeLeft.total <= 0 ? 'Closed' : 'Place Bid'}
                         </button>
                     </div>
                 </div>

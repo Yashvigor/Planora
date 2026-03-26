@@ -172,7 +172,7 @@ const sendAuctionWinEmail = async (toEmail, name, landTitle, bidAmount) => {
     try {
         console.log(`Attempting to send Auction Win Email to ${toEmail}...`);
         const info = await transporter.sendMail({
-            from: `"Planora Auctions" <${process.env.SENDER_EMAIL}>`,
+            from: `"Planora" <${process.env.SENDER_EMAIL}>`,
             to: toEmail,
             subject: 'Exclusive Victory: You have Won the Auction! 🏆',
             html: `
