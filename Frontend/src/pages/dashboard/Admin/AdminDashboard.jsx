@@ -416,7 +416,7 @@ const AdminDashboard = ({ initialSection = 'verify_land' }) => {
 
     const UserManagementTable = ({ data, title, subtitle, badge, isProfessional = false }) => {
         const professionalCategories = [
-            'All', 'Architect', 'Civil Engineer', 'Interior Designer',
+            'All', 'Bidder', 'Architect', 'Civil Engineer', 'Interior Designer',
             'False Ceiling Worker', 'Fabrication Worker', 'Mason',
             'Contractor', 'Electrician', 'Plumber', 'Carpenter',
             'Tile Worker', 'Painter'

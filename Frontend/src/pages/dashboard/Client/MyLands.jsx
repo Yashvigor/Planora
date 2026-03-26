@@ -12,7 +12,8 @@ const MyLands = () => {
     const [auctionLand, setAuctionLand] = useState(null);
     const [auctionData, setAuctionData] = useState({
         base_price: '',
-        duration_hours: '24'
+        duration_hours: '24',
+        duration_minutes: '0'
     });
     const [formData, setFormData] = useState({
         name: '',
@@ -162,7 +163,8 @@ const MyLands = () => {
                     land_id: auctionLand.land_id || auctionLand.id,
                     owner_id: userId,
                     base_price: auctionData.base_price,
-                    duration_hours: auctionData.duration_hours
+                    duration_hours: auctionData.duration_hours,
+                    duration_minutes: auctionData.duration_minutes
                 })
             });
 
@@ -376,7 +378,21 @@ const MyLands = () => {
                                         referrerPolicy="no-referrer-when-downgrade"
                                         src={`https://maps.google.com/maps?q=${encodeURIComponent(land.location)}&t=&z=13&ie=UTF8&iwloc=&output=embed`}
                                     ></iframe>
-                                    <div className="absolute top-4 right-4 bg-white px-2 py-1 rounded text-xs font-semibold shadow-sm overflow-hidden z-[1]">
+                                    <div className="absolute top-4 left-4 flex flex-col space-y-1 z-[1]">
+                                        <div className={`px-2 py-0.5 rounded text-[8px] font-black uppercase tracking-widest shadow-sm ${
+                                            land.verification_status === 'Verified' ? 'bg-green-600 text-white' : 
+                                            land.verification_status === 'Rejected' ? 'bg-red-600 text-white' : 
+                                            'bg-amber-500 text-white'
+                                        }`}>
+                                            {land.verification_status || 'Pending Verification'}
+                                        </div>
+                                        {land.verification_status === 'Rejected' && land.rejection_reason && (
+                                            <div className="bg-red-50 text-red-700 p-1 rounded text-[7px] max-w-[150px] font-medium border border-red-200">
+                                                Reason: {land.rejection_reason}
+                                            </div>
+                                        )}
+                                    </div>
+                                    <div className="absolute top-4 right-4 bg-white/90 backdrop-blur-sm px-2 py-1 rounded text-[10px] font-bold shadow-sm overflow-hidden z-[1] text-gray-700 border border-gray-100">
                                         {land.type}
                                     </div>
                                 </div>
@@ -428,15 +444,24 @@ const MyLands = () => {
                                                     )}
                                                 </div>
                                             ) : (
-                                                <button
-                                                    onClick={() => {
-                                                        setAuctionLand(land);
-                                                        setIsAuctioning(true);
-                                                    }}
-                                                    className="px-3 py-1 bg-orange-50 text-orange-600 border border-orange-100 text-xs rounded hover:bg-orange-100 flex items-center"
-                                                >
-                                                    <Gavel size={12} className="mr-1" /> Auction
-                                                </button>
+                                                land.verification_status === 'Verified' ? (
+                                                    <button
+                                                        onClick={() => {
+                                                            setAuctionLand(land);
+                                                            setIsAuctioning(true);
+                                                        }}
+                                                        className="px-3 py-1 bg-orange-50 text-orange-600 border border-orange-100 text-xs rounded hover:bg-orange-100 flex items-center"
+                                                    >
+                                                        <Gavel size={12} className="mr-1" /> Auction
+                                                    </button>
+                                                ) : (
+                                                    <div className="flex flex-col items-end">
+                                                        <span className="text-[9px] font-black text-amber-600 uppercase tracking-tighter bg-amber-50 px-2 py-0.5 rounded border border-amber-100">
+                                                            Awaiting Verification
+                                                        </span>
+                                                        <span className="text-[7px] text-gray-400 font-medium italic mt-0.5">Contact support to verify</span>
+                                                    </div>
+                                                )
                                             )}
                                             <button
                                                 onClick={() => handleDelete(land.land_id || land.id)}
@@ -499,21 +524,34 @@ const MyLands = () => {
 
                             <div>
                                 <label className="block text-[10px] font-black uppercase tracking-widest text-[#8C7B70] mb-2">Duration</label>
-                                <div className="grid grid-cols-3 gap-3">
-                                    {['24', '48', '72'].map(h => (
-                                        <button
-                                            key={h}
-                                            type="button"
-                                            onClick={() => setAuctionData({...auctionData, duration_hours: h})}
-                                            className={`py-3 rounded-xl border font-bold text-xs transition-all ${
-                                                auctionData.duration_hours === h 
-                                                ? 'bg-[#2A1F1D] text-white border-[#2A1F1D] shadow-lg shadow-[#2A1F1D]/20' 
-                                                : 'bg-white text-[#8C7B70] border-[#E3DACD]'
-                                            }`}
-                                        >
-                                            {h} Hours
-                                        </button>
-                                    ))}
+                                <div className="grid grid-cols-2 gap-4">
+                                    <div className="relative">
+                                        <span className="absolute left-4 top-1/2 -translate-y-1/2 text-[#8C7B70]"><Clock size={16} /></span>
+                                        <input 
+                                            type="number" 
+                                            min="0"
+                                            step="1"
+                                            className="w-full pl-10 pr-4 py-4 bg-[#F9F7F2] border border-[#E3DACD]/50 rounded-2xl focus:ring-2 focus:ring-orange-500 focus:outline-none font-bold text-[#2A1F1D]"
+                                            placeholder="Hours"
+                                            value={auctionData.duration_hours}
+                                            onChange={e => setAuctionData({...auctionData, duration_hours: e.target.value})}
+                                        />
+                                        <span className="absolute right-4 top-1/2 -translate-y-1/2 text-[9px] font-bold text-[#8C7B70] uppercase">Hrs</span>
+                                    </div>
+                                    <div className="relative">
+                                        <span className="absolute left-4 top-1/2 -translate-y-1/2 text-[#8C7B70]"><Clock size={16} /></span>
+                                        <input 
+                                            type="number" 
+                                            min="0"
+                                            max="59"
+                                            step="1"
+                                            className="w-full pl-10 pr-4 py-4 bg-[#F9F7F2] border border-[#E3DACD]/50 rounded-2xl focus:ring-2 focus:ring-orange-500 focus:outline-none font-bold text-[#2A1F1D]"
+                                            placeholder="Min"
+                                            value={auctionData.duration_minutes}
+                                            onChange={e => setAuctionData({...auctionData, duration_minutes: e.target.value})}
+                                        />
+                                        <span className="absolute right-4 top-1/2 -translate-y-1/2 text-[9px] font-bold text-[#8C7B70] uppercase">Min</span>
+                                    </div>
                                 </div>
                             </div>
 

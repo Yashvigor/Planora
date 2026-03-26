@@ -250,6 +250,8 @@ pool.query("ALTER TABLE tasks ADD COLUMN IF NOT EXISTS approved_at TIMESTAMP WIT
 pool.query("ALTER TABLE projects ADD COLUMN IF NOT EXISTS planning_completed BOOLEAN DEFAULT FALSE").catch(() => { });
 pool.query("ALTER TABLE projects ADD COLUMN IF NOT EXISTS design_completed BOOLEAN DEFAULT FALSE").catch(() => { });
 pool.query("ALTER TABLE projects ADD COLUMN IF NOT EXISTS execution_completed BOOLEAN DEFAULT FALSE").catch(() => { });
+pool.query("ALTER TABLE land_auctions ADD COLUMN IF NOT EXISTS winner_id UUID REFERENCES users(user_id)").catch(() => { });
+pool.query("ALTER TABLE land_auctions ADD COLUMN IF NOT EXISTS winner_notified BOOLEAN DEFAULT FALSE").catch(() => { });
 
 
 // Maintenance: Ingest local files and synchronize all paths to use the universal database URL
@@ -578,9 +580,14 @@ app.post('/api/signup', async (req, res) => {
 
         const { category, sub_category } = roleMapping[role] || { category: 'Planning', sub_category: role };
 
-        // ?? New Logic: Professionals must be approved before entering role tables.
         // Bidders, Land Owners, Contractors, and Admins are approved by default.
-        const userStatus = (sub_category === 'Land Owner' || sub_category === 'Contractor' || category === 'Admin' || category === 'Bidder') ? 'Approved' : 'Pending';
+        const userStatus = (
+            sub_category === 'Land Owner' ||
+            sub_category === 'Contractor' ||
+            category === 'Admin' ||
+            category === 'Bidder' ||
+            role === 'bidder'
+        ) ? 'Approved' : 'Pending';
 
         let userId;
 
@@ -1673,7 +1680,7 @@ app.post('/api/auth/google', async (req, res) => {
         }
 
         // Check internal status (category/sub_category)
-        const isInherentlyComplete = user.sub_category === 'Land Owner' || user.sub_category === 'Contractor' || user.category === 'Admin';
+        const isInherentlyComplete = user.sub_category === 'Land Owner' || user.sub_category === 'Contractor' || user.category === 'Admin' || user.category === 'Bidder';
         const isRejected = user.status === 'Rejected';
 
         if ((!user.profile_completed && !isInherentlyComplete) || isRejected) {
@@ -1802,7 +1809,7 @@ app.get('/api/users/verifications', async (req, res) => {
              
              SELECT user_id, name, email, category, sub_category, status, resume_path, degree_path, created_at, 'users' as source_table
              FROM users
-             WHERE (category NOT IN ('Land Owner', 'Admin', 'LAND OWNER', 'ADMIN') 
+             WHERE (category NOT IN ('Land Owner', 'Admin', 'LAND OWNER', 'ADMIN', 'Bidder', 'BIDDER') 
                OR (status = 'Pending' AND appeal_reason IS NOT NULL))
              
              ORDER BY created_at DESC`
@@ -4702,10 +4709,21 @@ app.patch('/api/quotations/:id/status', authenticateToken, async (req, res) => {
 
 // Create a new auction
 app.post('/api/auctions', authenticateToken, async (req, res) => {
-    const { land_id, owner_id, base_price, reserve_price, duration_hours } = req.body;
-    const endTime = new Date(Date.now() + (duration_hours || 24) * 60 * 60 * 1000);
+    const { land_id, owner_id, base_price, reserve_price, duration_hours, duration_minutes } = req.body;
+    const totalMinutes = (parseInt(duration_hours) || 0) * 60 + (parseInt(duration_minutes) || 0);
+    const endTime = new Date(Date.now() + (totalMinutes || 1440) * 60 * 1000);
 
     try {
+        // Security Check: Ensure the land is verified before allowing an auction
+        const landRes = await pool.query('SELECT verification_status, name FROM lands WHERE land_id = $1', [land_id]);
+        if (landRes.rows.length === 0) return res.status(404).json({ error: 'Land not found' });
+
+        if (landRes.rows[0].verification_status !== 'Verified') {
+            return res.status(403).json({
+                error: `Land "${landRes.rows[0].name}" is not yet verified by an administrator. Auctions can only be started for verified properties.`
+            });
+        }
+
         const result = await pool.query(
             'INSERT INTO land_auctions (land_id, owner_id, base_price, reserve_price, end_time, current_highest_bid, status) VALUES ($1, $2, $3, $4, $5, $3, $6) RETURNING *',
             [land_id, owner_id, base_price, reserve_price || null, endTime, 'active']
@@ -4874,7 +4892,7 @@ app.post('/api/auctions/:auctionId/bid', authenticateToken, async (req, res) => 
 
 // Finalize Auctions that have ended
 async function finalizeEndedAuctions() {
-    console.log('[Maintenance] Checking for ended auctions to finalize or notify...');
+    // console.log('[Maintenance] Checking for ended auctions to finalize or notify...'); // Reduced noise
     const client = await pool.connect();
     try {
         await client.query('BEGIN');
@@ -4932,15 +4950,16 @@ async function finalizeEndedAuctions() {
                 await createNotification(auction.owner_id, 'auction_end', `Your auction for "${auction.land_title}" has ended. Assets successfully transferred to: ${topBid.bidder_name} for a final bid of ₹${parseFloat(topBid.amount).toLocaleString()}.`, '/dashboard/lands', auction.auction_id);
 
                 try {
-                    // Send Email
+                    console.log(`[Auction] Sending win email for "${auction.land_title}" to winner: ${topBid.bidder_email}`);
                     const emailRes = await sendAuctionWinEmail(topBid.bidder_email, topBid.bidder_name, auction.land_title, topBid.amount);
                     if (emailRes) {
-                        // Mark as notified only if email succeeded (or at least no error)
                         await client.query('UPDATE land_auctions SET winner_notified = TRUE WHERE auction_id = $1', [auction.auction_id]);
-                        console.log(`[Auction] Win email successfully sent to ${topBid.bidder_email}`);
+                        console.log(`[Auction] ✅ Win email successfully sent to ${topBid.bidder_email}`);
+                    } else {
+                        console.warn(`[Auction] ⚠️ Email service returned empty response for ${topBid.bidder_email}. Marking as notified anyway to prevent loop? No, retrying next cycle.`);
                     }
                 } catch (e) {
-                    console.error('[Auction] Email delivery failed, will retry in next maintenance cycle:', e.message);
+                    console.error('[Auction] ❌ Email delivery failed:', e.message);
                 }
             } else if (auction.status === 'active') {
                 // No bids - mark as closed
