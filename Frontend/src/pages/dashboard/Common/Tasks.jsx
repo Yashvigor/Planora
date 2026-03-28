@@ -81,6 +81,7 @@ const ProjectSelectModal = ({ isOpen, onClose, onAssign, team, projects, isSubmi
                         <label className="block text-[10px] font-black text-[#8C7B70] uppercase tracking-widest mb-2">Due Date</label>
                         <input
                             type="date"
+                            min={new Date().toISOString().split('T')[0]}
                             className="w-full bg-[#F9F7F2] border border-[#E3DACD] rounded-xl px-4 py-3 text-sm focus:border-[#C06842] outline-none transition-colors"
                             value={form.due_date}
                             onChange={e => setForm({ ...form, due_date: e.target.value })}
@@ -141,7 +142,8 @@ const TaskReviewModal = ({ task, isOpen, onClose, onReview, isSubmitting }) => {
                 {review.status === 'Rejected' && (
                     <div className="space-y-4 mb-6">
                         <textarea required className="w-full bg-[#F9F7F2] border border-[#E3DACD] rounded-xl px-4 py-3 text-sm focus:border-red-400 outline-none resize-none" rows={3} placeholder="What needs correction?" value={review.rejection_reason} onChange={e => setReview({ ...review, rejection_reason: e.target.value })} />
-                        <input type="date" className="w-full bg-[#F9F7F2] border border-[#E3DACD] rounded-xl px-4 py-3 text-sm" value={review.due_date} onChange={e => setReview({ ...review, due_date: e.target.value })} />
+                        <label className="block text-[10px] font-black text-[#8C7B70] uppercase tracking-widest px-1">Correction Deadline</label>
+                        <input type="date" min={new Date().toISOString().split('T')[0]} className="w-full bg-[#F9F7F2] border border-[#E3DACD] rounded-xl px-4 py-3 text-sm" value={review.due_date} onChange={e => setReview({ ...review, due_date: e.target.value })} />
                     </div>
                 )}
 
@@ -365,6 +367,7 @@ const Tasks = () => {
                                 <div className="mt-4 flex items-center gap-3 bg-[#F9F7F2] p-3 rounded-2xl border border-[#E3DACD] animate-fade-in max-w-sm">
                                     <input 
                                         type="date" 
+                                        min={new Date().toISOString().split('T')[0]}
                                         className="bg-white border border-[#E3DACD] rounded-xl px-3 py-1.5 text-xs font-bold outline-none flex-1"
                                         value={newDueDate}
                                         onChange={(e) => setNewDueDate(e.target.value)}

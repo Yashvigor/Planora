@@ -33,6 +33,9 @@ CREATE TABLE IF NOT EXISTS users (
     otp character varying(6),
     otp_expiry timestamp with time zone,
     status character varying(20) DEFAULT 'Pending',
+    rejection_reason text,
+    appeal_reason text,
+    appeal_document_path text,
     created_at timestamp with time zone DEFAULT CURRENT_TIMESTAMP,
     updated_at timestamp with time zone DEFAULT CURRENT_TIMESTAMP
 );
@@ -137,6 +140,7 @@ CREATE TABLE IF NOT EXISTS tasks (
     status character varying(50) DEFAULT 'Pending',
     image_path text,
     rejection_reason text,
+    approved_at timestamp with time zone,
     created_at timestamp with time zone DEFAULT CURRENT_TIMESTAMP
 );
 
@@ -193,7 +197,11 @@ CREATE TABLE IF NOT EXISTS payments (
     sender_id uuid REFERENCES users(user_id),
     receiver_id uuid REFERENCES users(user_id),
     amount numeric NOT NULL,
+    type character varying(50) DEFAULT 'adhoc',
     description text,
+    notes text,
+    reference_id character varying(255),
+    proof_image_path text,
     status character varying(50) DEFAULT 'Pending',
     created_at timestamp with time zone DEFAULT CURRENT_TIMESTAMP,
     updated_at timestamp with time zone DEFAULT CURRENT_TIMESTAMP

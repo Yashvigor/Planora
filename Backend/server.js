@@ -385,7 +385,7 @@ const enrichProjectWithProgress = (project, team = [], tasks = [], payments = []
 const logActivity = async (userId, projectId, action, details) => {
     try {
         await pool.query(
-            'INSERT INTO activitylog (user_id, project_id, action, details) VALUES ($1, $2, $3, $4)',
+            'INSERT INTO activitylog (user_id, project_id, action, details) VALUES ($1::uuid, $2::uuid, $3, $4)',
             [userId, projectId, action, details]
         );
     } catch (err) {
@@ -397,7 +397,7 @@ const logActivity = async (userId, projectId, action, details) => {
 async function createNotification(userId, type, message, link = '', relatedId = null) {
     try {
         await pool.query(
-            'INSERT INTO notifications (user_id, type, message, link, related_id) VALUES ($1, $2, $3, $4, $5)',
+            'INSERT INTO notifications (user_id, type, message, link, related_id) VALUES ($1::uuid, $2, $3, $4, $5)',
             [userId, type, message, link, relatedId]
         );
 
@@ -3244,8 +3244,13 @@ app.post('/api/projects/:projectId/tasks', authenticateToken, async (req, res) =
         }
 
         // [Validation] Prevent due dates in the past
-        if (due_date && new Date(due_date) < new Date().setHours(0, 0, 0, 0)) {
-            return res.status(400).json({ error: 'Task due date cannot be in the past.' });
+        if (due_date && due_date.trim() !== "") {
+            const selectedDate = new Date(due_date);
+            const today = new Date();
+            today.setHours(0, 0, 0, 0);
+            if (selectedDate < today) {
+                return res.status(400).json({ error: 'Task due date cannot be in the past.' });
+            }
         }
 
         const result = await pool.query(
@@ -3320,8 +3325,13 @@ app.post('/api/tasks', authenticateToken, async (req, res) => {
         }
 
         // [Validation] Prevent due dates in the past
-        if (due_date && new Date(due_date) < new Date().setHours(0, 0, 0, 0)) {
-            return res.status(400).json({ error: 'Task due date cannot be in the past.' });
+        if (due_date && due_date.trim() !== "") {
+            const selectedDate = new Date(due_date);
+            const today = new Date();
+            today.setHours(0, 0, 0, 0);
+            if (selectedDate < today) {
+                return res.status(400).json({ error: 'Task due date cannot be in the past.' });
+            }
         }
 
         const result = await pool.query(
@@ -3439,7 +3449,7 @@ app.put('/api/tasks/:taskId/submit', authenticateToken, upload.single('file'), a
     const { user_id } = req.body;
 
     try {
-        const verifyRes = await pool.query('SELECT assigned_to, project_id, title FROM tasks WHERE task_id = $1', [taskId]);
+        const verifyRes = await pool.query('SELECT assigned_to, project_id, title FROM tasks WHERE task_id = $1::uuid', [taskId]);
         if (verifyRes.rowCount === 0) return res.status(404).json({ error: 'Task not found' });
 
         const task = verifyRes.rows[0];
@@ -3458,21 +3468,21 @@ app.put('/api/tasks/:taskId/submit', authenticateToken, upload.single('file'), a
         });
 
         const result = await pool.query(
-            'UPDATE tasks SET status = $1, image_path = $2, rejection_reason = NULL WHERE task_id = $3 RETURNING *',
+            'UPDATE tasks SET status = $1, image_path = $2, rejection_reason = NULL WHERE task_id = $3::uuid RETURNING *',
             ['Submitted', doc.file_path, taskId]
         );
 
         await logActivity(user_id, task.project_id, 'Task Submitted', `Task "${task.title}" submitted with proof`);
 
         // Notify the assigner (Contractor/Landowner)
-        const assigneeRes = await pool.query('SELECT name FROM users WHERE user_id = $1', [user_id]);
+        const assigneeRes = await pool.query('SELECT name FROM users WHERE user_id = $1::uuid', [user_id]);
         const assigneeName = assigneeRes.rows[0]?.name || 'Professional';
 
         const taskInfoRes = await pool.query(`
             SELECT t.assigned_by, t.title, p.land_owner_id 
             FROM tasks t 
             JOIN projects p ON t.project_id = p.project_id 
-            WHERE t.task_id = $1
+            WHERE t.task_id = $1::uuid
             `, [taskId]);
 
         if (taskInfoRes.rows.length > 0) {
@@ -3483,7 +3493,7 @@ app.put('/api/tasks/:taskId/submit', authenticateToken, upload.single('file'), a
                 assigned_by,
                 'task_completion',
                 `${assigneeName} has completed and submitted the task: "${title}".`,
-                `/ dashboard / tasks`,
+                `/dashboard/tasks`,
                 project_id
             );
 
@@ -3493,7 +3503,7 @@ app.put('/api/tasks/:taskId/submit', authenticateToken, upload.single('file'), a
                     land_owner_id,
                     'task_completion',
                     `Professional ${assigneeName} has submitted work for "${title}".Review needed.`,
-                    `/ dashboard / tasks`,
+                    `/dashboard/tasks`,
                     project_id
                 );
             }
@@ -3501,8 +3511,8 @@ app.put('/api/tasks/:taskId/submit', authenticateToken, upload.single('file'), a
             // 3. Notify Contractor if they weren't the assigner or landowner
             const contractorRes = await pool.query(`
                 SELECT user_id FROM projectassignments 
-                WHERE project_id = $1 AND assigned_role = 'contractor' AND status = 'Accepted' 
-                AND user_id != $2 AND user_id != $3
+                WHERE project_id = $1::uuid AND assigned_role = 'contractor' AND status = 'Accepted' 
+                AND user_id != $2::uuid AND user_id != $3::uuid
             `, [project_id, assigned_by, land_owner_id]);
 
             if (contractorRes.rows.length > 0) {
@@ -3510,7 +3520,7 @@ app.put('/api/tasks/:taskId/submit', authenticateToken, upload.single('file'), a
                     contractorRes.rows[0].user_id,
                     'task_completion',
                     `Professional ${assigneeName} submitted work for "${title}".Review needed.`,
-                    `/ dashboard / tasks`,
+                    `/dashboard/tasks`,
                     project_id
                 );
             }
@@ -3526,10 +3536,25 @@ app.put('/api/tasks/:taskId/submit', authenticateToken, upload.single('file'), a
 // Contractor reviews (approves/rejects) a submitted task
 app.put('/api/tasks/:taskId/review', authenticateToken, async (req, res) => {
     const { taskId } = req.params;
-    const { status, rejection_reason, due_date, reviewer_id } = req.body;
+    const { status, rejection_reason, reviewer_id } = req.body;
+    let { due_date } = req.body;
+
+    const actionUserId = req.user?.user_id || req.user?.id || reviewer_id;
 
     if (!['Approved', 'Rejected'].includes(status)) {
         return res.status(400).json({ error: 'Status must be Approved or Rejected' });
+    }
+
+    // [Validation] Prevent empty string dates from breaking Postgres cast and prevent past dates
+    if (due_date && due_date.trim() !== "") {
+        const selectedDate = new Date(due_date);
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+        if (selectedDate < today) {
+            return res.status(400).json({ error: 'Correction deadline cannot be in the past.' });
+        }
+    } else {
+        due_date = null; // Convert empty string to null for clean DB update
     }
 
     try {
@@ -3537,23 +3562,21 @@ app.put('/api/tasks/:taskId/review', authenticateToken, async (req, res) => {
         try {
             await client.query('BEGIN');
 
-            // --- Authorization Check ---
-            // Reviewer must be: Assigner OR Landowner OR Project Contractor
             const authCheck = await client.query(`
-                SELECT t.assigned_by, p.land_owner_id,
-                (SELECT 1 FROM projectassignments pa WHERE pa.project_id = t.project_id AND pa.user_id = $1 AND pa.assigned_role = 'contractor' AND pa.status = 'Accepted') as is_contractor
+                SELECT t.assigned_by, p.land_owner_id, t.project_id, t.assigned_to, t.title, t.image_path, t.description,
+                (SELECT 1 FROM projectassignments pa WHERE pa.project_id = t.project_id AND pa.user_id = $1::uuid AND pa.assigned_role = 'contractor' AND pa.status = 'Accepted') as is_contractor
                 FROM tasks t
                 JOIN projects p ON t.project_id = p.project_id
-                WHERE t.task_id = $2
-    `, [reviewer_id, taskId]);
+                WHERE t.task_id = $2::uuid
+    `, [actionUserId, taskId]);
 
             if (authCheck.rows.length === 0) {
                 await client.query('ROLLBACK');
                 return res.status(404).json({ error: 'Task not found' });
             }
 
-            const { assigned_by, land_owner_id, is_contractor } = authCheck.rows[0];
-            const isManager = String(reviewer_id) === String(assigned_by) || String(reviewer_id) === String(land_owner_id) || !!is_contractor;
+            const { assigned_by, land_owner_id, is_contractor, project_id, assigned_to, title, image_path, description } = authCheck.rows[0];
+            const isManager = String(actionUserId) === String(assigned_by) || String(actionUserId) === String(land_owner_id) || !!is_contractor;
 
             if (!isManager) {
                 await client.query('ROLLBACK');
@@ -3561,60 +3584,61 @@ app.put('/api/tasks/:taskId/review', authenticateToken, async (req, res) => {
             }
 
             const result = await client.query(
-                'UPDATE tasks SET status = $1, rejection_reason = $2, due_date = COALESCE($3, due_date), approved_at = CASE WHEN $1 = \'Approved\' THEN CURRENT_TIMESTAMP ELSE approved_at END WHERE task_id = $4 RETURNING *',
-                [status, status === 'Rejected' ? (rejection_reason || 'No reason provided') : null, status === 'Rejected' ? due_date : null, taskId]
+                `UPDATE tasks SET 
+                    status = $1::text, 
+                    rejection_reason = $2::text, 
+                    due_date = COALESCE($3::date, due_date), 
+                    approved_at = CASE WHEN $1::text = 'Approved' THEN CURRENT_TIMESTAMP ELSE approved_at END 
+                WHERE task_id = $4::uuid 
+                RETURNING *`,
+                [status, status === 'Rejected' ? (rejection_reason || 'No reason provided') : null, status === 'Rejected' ? (due_date || null) : null, taskId]
             );
 
             const task = result.rows[0];
 
-            // If Approved, automatically create a Site Progress record
             if (status === 'Approved') {
                 await client.query(
-                    'INSERT INTO siteprogress (project_id, updated_by, note, image_path, alert_type, status) VALUES ($1, $2, $3, $4, $5, $6)',
-                    [task.project_id, task.assigned_to, `Completed Task: ${task.title}. ${task.description || ''} `, task.image_path, 'Completion', 'Approved']
+                    'INSERT INTO siteprogress (project_id, updated_by, note, image_path, alert_type, status) VALUES ($1::uuid, $2::uuid, $3, $4, $5, $6)',
+                    [project_id, assigned_to, `Completed Task: ${title}. ${description || ''} `, image_path, 'Completion', 'Approved']
                 );
             }
 
-            await logActivity(reviewer_id, task.project_id, `Task ${status} `, `Task "${task.title}" ${status.toLowerCase()} by contractor`);
+            await logActivity(actionUserId, project_id, `Task ${status} `, `Task "${title}" ${status.toLowerCase()} by manager`);
 
-            // Notify the assigned worker
-            const reviewerRes = await client.query('SELECT name FROM users WHERE user_id = $1', [reviewer_id]);
+            const reviewerRes = await client.query('SELECT name FROM users WHERE user_id = $1::uuid', [actionUserId]);
             const reviewerName = reviewerRes.rows[0]?.name || 'Manager';
 
             const isRejected = status === 'Rejected';
             await createNotification(
-                task.assigned_to,
+                assigned_to,
                 isRejected ? 'task_rejection' : 'task_approval',
                 isRejected
-                    ? `Task "${task.title}" was REJECTED by ${reviewerName}.Reason: "${rejection_reason || 'No reason specified'}".New Deadline: ${due_date || 'None'}.`
-                    : `Your task "${task.title}" has been APPROVED by ${reviewerName}. Project progress updated.`,
-                `/ dashboard / tasks`,
-                task.project_id
+                    ? `Task "${title}" was REJECTED by ${reviewerName}. Reason: "${rejection_reason || 'No reason specified'}". New Deadline: ${due_date || 'None'}.`
+                    : `Your task "${title}" has been APPROVED by ${reviewerName}. Project progress updated.`,
+                `/dashboard/tasks`,
+                project_id
             );
 
-            // Fetch Contractor ID for cross-notification (Landowner already fetched in authCheck)
-            const contractorRes = await client.query(`SELECT user_id FROM projectassignments WHERE project_id = $1 AND assigned_role = 'contractor' AND status = 'Accepted'`, [task.project_id]);
+            const contractorRes = await client.query(`SELECT user_id FROM projectassignments WHERE project_id = $1::uuid AND assigned_role = 'contractor' AND status = 'Accepted'`, [project_id]);
             const contractor_id = contractorRes.rows[0]?.user_id;
 
-            // Notify Landowner if someone else reviewed it
-            if (land_owner_id && land_owner_id !== reviewer_id && land_owner_id !== task.assigned_to) {
+            if (land_owner_id && String(land_owner_id) !== String(actionUserId) && String(land_owner_id) !== String(assigned_to)) {
                 await createNotification(
                     land_owner_id,
                     'task_update',
-                    `Task "${task.title}" has been ${status.toLowerCase()} by ${reviewerName}.`,
-                    `/ dashboard / tasks`,
-                    task.project_id
+                    `Task "${title}" has been ${status.toLowerCase()} by ${reviewerName}.`,
+                    `/dashboard/tasks`,
+                    project_id
                 );
             }
 
-            // Notify Contractor if someone else reviewed it
-            if (contractor_id && contractor_id !== reviewer_id && contractor_id !== task.assigned_to) {
+            if (contractor_id && String(contractor_id) !== String(actionUserId) && String(contractor_id) !== String(assigned_to)) {
                 await createNotification(
                     contractor_id,
                     'task_update',
-                    `Task "${task.title}" has been ${status.toLowerCase()} by ${reviewerName}.`,
-                    `/ dashboard / tasks`,
-                    task.project_id
+                    `Task "${title}" has been ${status.toLowerCase()} by ${reviewerName}.`,
+                    `/dashboard/tasks`,
+                    project_id
                 );
             }
 
@@ -3628,7 +3652,7 @@ app.put('/api/tasks/:taskId/review', authenticateToken, async (req, res) => {
         }
     } catch (err) {
         console.error('Error reviewing task:', err);
-        res.status(500).json({ error: 'Failed to review task' });
+        res.status(500).json({ error: 'Failed to review task: ' + err.message });
     }
 });
 
@@ -3636,6 +3660,18 @@ app.put('/api/tasks/:taskId/review', authenticateToken, async (req, res) => {
 app.patch('/api/tasks/:taskId/extend-deadline', authenticateToken, async (req, res) => {
     const { taskId } = req.params;
     const { new_due_date, reviewer_id } = req.body;
+
+    const actionUserId = req.user?.user_id || req.user?.id || reviewer_id;
+
+    // [Validation] Prevent due dates in the past
+    if (new_due_date && new_due_date.trim() !== "") {
+        const selectedDate = new Date(new_due_date);
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+        if (selectedDate < today) {
+            return res.status(400).json({ error: 'Extended deadline cannot be in the past.' });
+        }
+    }
 
     try {
         const client = await pool.connect();
@@ -3647,7 +3683,7 @@ app.patch('/api/tasks/:taskId/extend-deadline', authenticateToken, async (req, r
                 FROM tasks t
                 JOIN projects p ON t.project_id = p.project_id
                 JOIN users u ON t.assigned_to = u.user_id
-                WHERE t.task_id = $1
+                WHERE t.task_id = $1::uuid
     `, [taskId]);
 
             if (authCheck.rows.length === 0) {
@@ -3658,21 +3694,21 @@ app.patch('/api/tasks/:taskId/extend-deadline', authenticateToken, async (req, r
             const task = authCheck.rows[0];
             const is_contractor = (await client.query(`
                 SELECT 1 FROM projectassignments pa 
-                WHERE pa.project_id = $1 AND pa.user_id = $2 AND pa.assigned_role = 'contractor' AND pa.status = 'Accepted'
-    `, [task.project_id, reviewer_id])).rows.length > 0;
+                WHERE pa.project_id = $1::uuid AND pa.user_id = $2::uuid AND pa.assigned_role = 'contractor' AND pa.status = 'Accepted'
+    `, [task.project_id, actionUserId])).rows.length > 0;
 
-            const isAuthorized = String(reviewer_id) === String(task.assigned_by) || String(reviewer_id) === String(task.land_owner_id) || is_contractor;
+            const isAuthorized = String(actionUserId) === String(task.assigned_by) || String(actionUserId) === String(task.land_owner_id) || is_contractor;
 
             if (!isAuthorized) {
                 await client.query('ROLLBACK');
                 return res.status(403).json({ error: 'Unauthorized to extend deadline' });
             }
 
-            await client.query('UPDATE tasks SET due_date = $1 WHERE task_id = $2', [new_due_date, taskId]);
+            await client.query('UPDATE tasks SET due_date = $1::date WHERE task_id = $2::uuid', [new_due_date, taskId]);
 
             // Notify Assignee
             const notificationMsg = `Update: The deadline for your task "${task.title}" in project "${task.project_name}" has been extended to ${new Date(new_due_date).toLocaleDateString()}.`;
-            await createNotification(task.assigned_to, 'task_update', notificationMsg, `/ dashboard / tasks`, taskId);
+            await createNotification(task.assigned_to, 'task_update', notificationMsg, `/dashboard/tasks`, taskId);
 
             await client.query('COMMIT');
             res.json({ message: 'Deadline extended successfully', new_due_date });
@@ -3699,10 +3735,10 @@ app.get('/api/tasks/pending-count/:userId', authenticateToken, async (req, res) 
         let count = 0;
 
         if (role === 'contractor' || role === 'land_owner') {
-            const resSub = await pool.query("SELECT COUNT(*) FROM tasks WHERE status = 'Submitted' AND assigned_by = $1", [userId]);
+            const resSub = await pool.query("SELECT COUNT(*) FROM tasks WHERE status = 'Submitted' AND assigned_by = $1::uuid", [userId]);
             count = parseInt(resSub.rows[0].count);
         } else {
-            const resPend = await pool.query("SELECT COUNT(*) FROM tasks WHERE assigned_to = $1 AND (status = 'Pending' OR status = 'Rejected')", [userId]);
+            const resPend = await pool.query("SELECT COUNT(*) FROM tasks WHERE assigned_to = $1::uuid AND (status = 'Pending' OR status = 'Rejected')", [userId]);
             count = parseInt(resPend.rows[0].count);
         }
 

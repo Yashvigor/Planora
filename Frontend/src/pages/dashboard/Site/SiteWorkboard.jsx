@@ -206,7 +206,7 @@ const SiteWorkboard = ({ currentUser, projectId: propProjectId, hideCompleted = 
                                             task={task} 
                                             onPreview={() => openPreview(task)} 
                                             onExtend={(date) => handleExtend(task.task_id, date)}
-                                            canExtend={String(userId) === String(task.assigned_by) || currentUser.role === 'client' || currentUser.role === 'contractor'}
+                                            canExtend={String(userId) === String(task.assigned_by) || currentUser?.role === 'land_owner' || currentUser?.sub_category === 'Land Owner' || currentUser?.role === 'contractor' || currentUser?.sub_category === 'Contractor'}
                                         />
                                     ))}
                                     {projectList[0].tasks.filter(t => t.status.toLowerCase() === col.id).length === 0 && (

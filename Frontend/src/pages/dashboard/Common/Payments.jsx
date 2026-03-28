@@ -149,7 +149,10 @@ const Payments = () => {
         } catch (err) { console.error('Submit Error:', err); } finally { setIsSubmitting(false); }
     };
 
+    const [isUpdating, setIsUpdating] = useState(false);
+
     const handleUpdateStatus = async (paymentId, newStatus) => {
+        setIsUpdating(true);
         const token = getToken();
         try {
             const res = await fetch(`${import.meta.env.VITE_API_URL}/api/payments/${paymentId}`, {
@@ -163,7 +166,7 @@ const Payments = () => {
                 fetchSummary(activeProject.project_id);
                 if (selectedPayment?.payment_id === paymentId) setSelectedPayment(null);
             }
-        } catch (err) { console.error('Update Error:', err); }
+        } catch (err) { console.error('Update Error:', err); } finally { setIsUpdating(false); }
     };
 
     const handleExport = () => {
@@ -240,6 +243,65 @@ const Payments = () => {
         }
 
         doc.save(`${activeProject?.name.replace(/\s+/g, '_')}_Master_Ledger.pdf`);
+    };
+
+    const handleDownloadReceipt = (payment) => {
+        if (!payment) return;
+        const doc = new jsPDF();
+        const dateStr = new Date(payment.created_at).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
+        const formatPdfCurrency = (amt) => 'Rs. ' + new Intl.NumberFormat('en-IN', { maximumFractionDigits: 0 }).format(amt || 0);
+
+        // Document Border & Frame
+        doc.setDrawColor(227, 218, 205); doc.setLineWidth(0.1); doc.rect(5, 5, 200, 287);
+        
+        // Header
+        doc.setFillColor(42, 31, 29); doc.rect(10, 10, 190, 40, 'F');
+        doc.setFontSize(28); doc.setTextColor(255, 255, 255); doc.setFont("helvetica", "bold"); doc.text("PLANORA", 20, 30);
+        doc.setFontSize(10); doc.setTextColor(192, 104, 66); doc.setFont("helvetica", "normal"); doc.text("PAYMENT RECEIPT", 20, 38);
+        doc.setFontSize(12); doc.setTextColor(255, 255, 255); doc.text(`RECEIPT #PL-${payment.payment_id.toString().substring(0,8).toUpperCase()}`, 140, 30, { align: 'right' });
+
+        // Metadata
+        doc.setTextColor(42, 31, 29); doc.setFontSize(10); doc.setFont("helvetica", "bold"); doc.text("TRANSACTION DETAILS", 15, 65);
+        doc.setFont("helvetica", "normal"); doc.setTextColor(140, 123, 112);
+        
+        doc.text("Date:", 15, 75); doc.setTextColor(42, 31, 29); doc.text(dateStr, 50, 75);
+        doc.setTextColor(140, 123, 112); doc.text("Project:", 15, 82); doc.setTextColor(42, 31, 29); doc.text(activeProject?.name || 'Unspecified', 50, 82);
+        doc.setTextColor(140, 123, 112); doc.text("From (Payer):", 15, 89); doc.setTextColor(42, 31, 29); doc.text(payment.sender_name || 'System Generated', 50, 89);
+        doc.setTextColor(140, 123, 112); doc.text("To (Receiver):", 15, 96); doc.setTextColor(42, 31, 29); doc.text(payment.receiver_name || 'System Generated', 50, 96);
+        
+        // Items Table
+        autoTable(doc, {
+            startY: 110,
+            head: [['Description', 'Track', 'Amount']],
+            body: [[
+                payment.description || 'General Construction Services',
+                payment.type.toUpperCase(),
+                { content: formatPdfCurrency(payment.amount), styles: { halign: 'right', fontStyle: 'bold' } }
+            ]],
+            theme: 'grid',
+            headStyles: { fillColor: [42, 31, 29], fontSize: 10, cellPadding: 8 },
+            bodyStyles: { fontSize: 9, cellPadding: 10, textColor: [42, 31, 29] },
+        });
+
+        const finalY = doc.lastAutoTable.finalY;
+
+        // Total Summary
+        doc.setFillColor(249, 247, 242); doc.rect(130, finalY + 10, 65, 25, 'F');
+        doc.setFontSize(9); doc.setTextColor(140, 123, 112); doc.text("TOTAL SETTLED:", 135, finalY + 20);
+        doc.setFontSize(14); doc.setTextColor(42, 31, 29); doc.setFont("helvetica", "bold"); doc.text(formatPdfCurrency(payment.amount), 135, finalY + 30);
+
+        // Status Stamp
+        if (payment.status?.toLowerCase() === 'paid') {
+            doc.setDrawColor(16, 185, 129); doc.setLineWidth(1); doc.rect(20, finalY + 10, 40, 15);
+            doc.setTextColor(16, 185, 129); doc.setFontSize(12); doc.text("PAID", 40, finalY + 20, { align: 'center' });
+        }
+
+        // Footer
+        doc.setFontSize(8); doc.setTextColor(140, 123, 112); doc.setFont("helvetica", "normal");
+        doc.text("Planora Integrity: This ledger record is digitally synchronized and verified for secondary auditing purposes.", 15, 280);
+        doc.text("Official Project Document | System Generated | Planora.in", 195, 280, { align: 'right' });
+
+        doc.save(`Receipt_${payment.payment_id.toString().substring(0,8).toUpperCase()}.pdf`);
     };
 
     // --------------------------------------------------------------------------
@@ -550,12 +612,27 @@ const Payments = () => {
 
                                     <div className="pt-6 space-y-3">
                                         {isPayer(selectedPayment) && selectedPayment.status === 'pending_review' && (
-                                            <button onClick={() => handleUpdateStatus(selectedPayment.payment_id, 'approved')} className="w-full py-4 bg-blue-600 hover:bg-blue-700 text-white rounded-2xl font-black uppercase text-xs tracking-widest">Authorize Claim</button>
+                                            <button 
+                                                disabled={isUpdating}
+                                                onClick={() => handleUpdateStatus(selectedPayment.payment_id, 'approved')} 
+                                                className="w-full py-4 bg-blue-600 hover:bg-blue-700 text-white rounded-2xl font-black uppercase text-xs tracking-widest disabled:opacity-50"
+                                            >
+                                                {isUpdating ? 'Authorizing...' : 'Authorize Claim'}
+                                            </button>
                                         )}
                                         {isPayer(selectedPayment) && selectedPayment.status === 'approved' && (
-                                            <button onClick={() => handleUpdateStatus(selectedPayment.payment_id, 'paid')} className="w-full py-4 bg-emerald-600 hover:bg-emerald-700 text-white rounded-2xl font-black uppercase text-xs tracking-widest">Final Settlement</button>
+                                            <button 
+                                                disabled={isUpdating}
+                                                onClick={() => handleUpdateStatus(selectedPayment.payment_id, 'paid')} 
+                                                className="w-full py-4 bg-emerald-600 hover:bg-emerald-700 text-white rounded-2xl font-black uppercase text-xs tracking-widest disabled:opacity-50"
+                                            >
+                                                {isUpdating ? 'Settling...' : 'Final Settlement'}
+                                            </button>
                                         )}
-                                        <button className="w-full py-4 bg-white/5 hover:bg-white/10 text-white border border-white/10 rounded-2xl font-black uppercase text-xs tracking-widest flex items-center justify-center gap-2">
+                                        <button 
+                                            onClick={() => handleDownloadReceipt(selectedPayment)}
+                                            className="w-full py-4 bg-white/5 hover:bg-white/10 text-white border border-white/10 rounded-2xl font-black uppercase text-xs tracking-widest flex items-center justify-center gap-2"
+                                        >
                                             <Download size={14} /> Download Receipt
                                         </button>
                                     </div>
