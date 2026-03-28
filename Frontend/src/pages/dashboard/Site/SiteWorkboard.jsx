@@ -358,8 +358,8 @@ const TaskCard = ({ task, onPreview, onExtend, canExtend }) => {
     return (
         <Card variant="flat" className="p-5 border-transparent hover:border-[#C06842]/20 shadow-md">
             <div className="flex justify-between items-start mb-4">
-                <h4 className="font-serif font-black text-[#2A1F1D] text-lg leading-tight text-left">{task.title}</h4>
-                <span className="text-[8px] font-black uppercase tracking-widest text-[#8C7B70] bg-[#F9F7F2] px-2 py-1 rounded-lg border border-[#E3DACD]/50">{new Date(task.created_at).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}</span>
+                <h4 className="font-serif font-black text-[#2A1F1D] text-lg leading-tight text-left truncate w-4/5">{task.title}</h4>
+                <span className="text-[8px] font-black uppercase tracking-widest text-[#8C7B70] bg-[#F9F7F2] px-2 py-1 rounded-lg border border-[#E3DACD]/50 shrink-0">{new Date(task.created_at).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}</span>
             </div>
             {task.description && <p className="text-[11px] text-[#5D4037] leading-relaxed mb-6 font-medium text-left">{task.description}</p>}
             {task.image_path && (
@@ -388,6 +388,7 @@ const TaskCard = ({ task, onPreview, onExtend, canExtend }) => {
                     <div className="flex items-center gap-2 animate-fade-in bg-[#F9F7F2] p-2 rounded-xl border border-[#E3DACD]/50">
                         <input 
                             type="date" 
+                            min={new Date().toISOString().split('T')[0]}
                             className="text-[9px] font-bold p-1 bg-white border border-[#E3DACD] rounded outline-none flex-1"
                             value={newDate}
                             onChange={(e) => setNewDate(e.target.value)}

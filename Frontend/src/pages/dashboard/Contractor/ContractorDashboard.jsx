@@ -6,7 +6,7 @@ import {
     Construction, ClipboardList, Clock, 
     ArrowUpRight, MapPin, Search, ChevronRight,
     Star, Briefcase, FileText, Layers, ImageIcon,
-    Activity, ShieldAlert, CheckCircle, Navigation, BarChart3, PenTool, Check
+    Activity, ShieldAlert, CheckCircle, Navigation, BarChart3, PenTool, Check, DollarSign
 } from 'lucide-react';
 import ProfilePromptModal from '../../../components/dashboard/Common/ProfilePromptModal';
 import RatingModal from '../../../components/dashboard/Common/RatingModal';
@@ -276,6 +276,15 @@ const ContractorDashboard = () => {
                                             onClick={() => navigate('/dashboard/reports')}
                                         >
                                             Project Team
+                                        </Button>
+                                        <Button 
+                                            icon={DollarSign} 
+                                            variant="outline" 
+                                            size="sm"
+                                            className="bg-white border-[#E3DACD] text-[#5D4037] hover:border-[#C06842] text-[10px] py-2"
+                                            onClick={() => navigate('/dashboard/payments')}
+                                        >
+                                            Payout Control
                                         </Button>
                                         <Button 
                                             icon={FileText} 

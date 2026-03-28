@@ -135,8 +135,8 @@ const Auth = () => {
                     setAuthState('onboarding');
                 } else if (
                     data.user?.status?.toLowerCase() === 'pending' && 
-                    !['land owner', 'contractor', 'admin'].includes((data.user?.category || '').toLowerCase()) &&
-                    !['land owner', 'contractor', 'admin'].includes((data.user?.sub_category || '').toLowerCase())
+                    !['land owner', 'contractor', 'admin', 'bidder'].includes((data.user?.category || '').toLowerCase()) &&
+                    !['land owner', 'contractor', 'admin', 'bidder'].includes((data.user?.sub_category || '').toLowerCase())
                 ) {
                     setAuthUser(data.user);
                     setError('Your account is under review by the Admin. You will be able to access the dashboard once approved.');

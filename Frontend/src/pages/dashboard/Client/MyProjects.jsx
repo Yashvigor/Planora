@@ -70,7 +70,8 @@ const MyProjects = () => {
                     type: formData.type,
                     description: formData.description,
                     budget: formData.budget,
-                    location: locationStr
+                    location: locationStr,
+                    land_id: formData.landId
                 }),
             });
 

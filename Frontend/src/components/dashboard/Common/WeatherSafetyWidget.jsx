@@ -39,27 +39,52 @@ const WeatherSafetyWidget = ({ location, compact = false }) => {
 
             if (isDevLiveMode) {
                 try {
-                    const key = import.meta.env.VITE_OPENWEATHER_API_KEY || 'bf405d4149021e1a5390772f4f29d10e';
+                    const key = import.meta.env.VITE_OPENWEATHER_API_KEY;
                     
-                    const res = await fetch(`https://api.openweathermap.org/data/2.5/weather?q=${city}&units=metric&appid=${key}`);
-                    if (res && res.ok) {
-                        const data = await res.json();
+                    // Only attempt OpenWeather if a custom key is provided in .env
+                    if (key && key !== 'bf405d4149021e1a5390772f4f29d10e') {
+                        const res = await fetch(`https://api.openweathermap.org/data/2.5/weather?q=${city}&units=metric&appid=${key}`);
+                        if (res && res.ok) {
+                            const data = await res.json();
+                            setWeatherData({
+                                temp: Math.round(data.main?.temp),
+                                rainProb: data.rain ? 80 : (data.clouds?.all > 70 ? 40 : 10),
+                                wind: Math.round((data.wind?.speed || 0) * 3.6),
+                                humidity: data.main?.humidity || 50,
+                                condition: data.weather[0]?.main || 'Clear',
+                                city: data.name || city,
+                                isLive: true,
+                                source: 'OpenWeather'
+                            });
+                            setLoading(false);
+                            return;
+                        }
+                    }
+                } catch (e) { 
+                    // Silent fail to move to fallback
+                }
+
+                // --- Secondary Live Fallback (wttr.in) ---
+                try {
+                    const wttrRes = await fetch(`https://wttr.in/${city}?format=j1`);
+                    if (wttrRes.ok) {
+                        const data = await wttrRes.json();
+                        const current = data.current_condition[0];
                         setWeatherData({
-                            temp: Math.round(data.main?.temp),
-                            rainProb: data.rain ? 80 : (data.clouds?.all > 70 ? 40 : 10),
-                            wind: Math.round((data.wind?.speed || 0) * 3.6),
-                            humidity: data.main?.humidity || 50,
-                            condition: data.weather[0]?.main || 'Clear',
-                            city: data.name || city,
-                            isLive: true
+                            temp: Math.round(parseFloat(current.temp_C)),
+                            rainProb: parseInt(current.precipMM) > 0 ? 80 : 15,
+                            wind: Math.round(parseFloat(current.windspeedKmph)),
+                            humidity: parseInt(current.humidity),
+                            condition: current.weatherDesc[0].value,
+                            city: city,
+                            isLive: true,
+                            source: 'wttr.in'
                         });
                         setLoading(false);
                         return;
-                    } else {
-                        console.warn(`[Weather] Live fetch failed for ${city}: ${res.status}`);
                     }
-                } catch (e) { 
-                    console.error('[Weather] Network error during fetch', e);
+                } catch (err) {
+                    console.warn('[Weather] wttr.in fallback failed', err);
                 }
             }
 
@@ -81,6 +106,8 @@ const WeatherSafetyWidget = ({ location, compact = false }) => {
             setLoading(false);
         };
         syncSiteConditions();
+        const intervalId = setInterval(syncSiteConditions, 10 * 60 * 1000); // 10 min refresh
+        return () => clearInterval(intervalId);
     }, [location, isDevLiveMode]);
 
     // --- Intelligence: Industrial Safety Logic ---

@@ -16,6 +16,7 @@ const ArchitectWorkboard = ({ currentUser }) => {
     const [projects, setProjects] = useState([]);
     const [teamMembers, setTeamMembers] = useState({});
     const [loading, setLoading] = useState(true);
+    const [isSubmitting, setIsSubmitting] = useState(false);
     
     // UI States
     const [isUploadModalOpen, setIsUploadModalOpen] = useState(false);
@@ -83,6 +84,8 @@ const ArchitectWorkboard = ({ currentUser }) => {
 
     const handleUpload = async (e) => {
         e.preventDefault();
+        if (isSubmitting) return;
+        setIsSubmitting(true);
         const data = new FormData();
         data.append('architect_id', uid);
         data.append('title', formData.title);
@@ -118,6 +121,8 @@ const ArchitectWorkboard = ({ currentUser }) => {
             }
         } catch (err) {
             console.error('Error handling asset update:', err);
+        } finally {
+            setIsSubmitting(false);
         }
     };
 
@@ -424,7 +429,7 @@ const ArchitectWorkboard = ({ currentUser }) => {
                                                 {task.status === 'Rejected' ? <AlertOctagon size={18} /> : <Briefcase size={18} />}
                                             </div>
                                             <div>
-                                                <h4 className="text-sm font-bold text-[#2A1F1D]">{task.title}</h4>
+                                                <h4 className="text-sm font-bold text-[#2A1F1D] truncate w-48">{task.title}</h4>
                                                 <p className="text-[10px] text-[#C06842] font-bold mt-0.5">{task.project_name}</p>
                                             </div>
                                         </div>
@@ -609,9 +614,19 @@ const ArchitectWorkboard = ({ currentUser }) => {
                                         </label>
                                     </div>
                                 </div>
-                                <button type="submit" className="w-full py-4 bg-[#C06842] text-white font-bold uppercase tracking-wider rounded-xl hover:bg-[#A65D3B] transition-all shadow-lg shadow-[#C06842]/20 flex items-center justify-center gap-2 text-sm">
-                                    {editingDrawing ? <Save size={16} /> : <Upload size={16} />} 
-                                    {editingDrawing ? 'Save Changes' : 'Upload Drawing'}
+                                <button 
+                                    type="submit" 
+                                    disabled={isSubmitting}
+                                    className={`w-full py-4 bg-[#C06842] text-white font-bold uppercase tracking-wider rounded-xl transition-all shadow-lg shadow-[#C06842]/20 flex items-center justify-center gap-2 text-sm ${isSubmitting ? 'opacity-50 cursor-not-allowed' : 'hover:bg-[#A65D3B]'}`}
+                                >
+                                    {isSubmitting ? (
+                                        <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                                    ) : (
+                                        <>
+                                            {editingDrawing ? <Save size={16} /> : <Upload size={16} />} 
+                                            {editingDrawing ? 'Save Changes' : 'Upload Drawing'}
+                                        </>
+                                    )}
                                 </button>
                             </form>
                         </motion.div>

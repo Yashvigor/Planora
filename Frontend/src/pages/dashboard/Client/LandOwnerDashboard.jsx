@@ -6,7 +6,7 @@ import {
     XCircle, Construction, Check, LayoutGrid, PenTool,
     Search, ChevronRight, Award, Shield, Layers, Users,
     Hammer, Star, ClipboardList, Calculator, ImageIcon, Radio, ShieldAlert,
-    Activity
+    Activity, DollarSign
 } from 'lucide-react';
 import ProfilePromptModal from '../../../components/dashboard/Common/ProfilePromptModal';
 import RatingModal from '../../../components/dashboard/Common/RatingModal';
@@ -165,6 +165,31 @@ const LandOwnerDashboard = () => {
             theme: 'grid',
             headStyles: { fillColor: [42, 31, 29], fontSize: 9 },
             bodyStyles: { fontSize: 8 }
+        });
+
+        // Financial Audit Table (Phase-aligned)
+        const totalBudget = parseFloat(project.budget || 0);
+        const spentVal = parseFloat(project.total_spent || 0);
+        const remainingVal = Math.max(0, totalBudget - spentVal);
+
+        const financeData = [
+            ['Total Projected Budget', formatCurrency(totalBudget)],
+            ['Actual Expenditure (Verified PAID)', formatCurrency(spentVal)],
+            ['Available Project Liquidity', formatCurrency(remainingVal)],
+            ['Financial Burn (Paid/Budget)', `${financialBurn}%`]
+        ];
+
+        doc.setFontSize(10);
+        doc.setTextColor(42, 31, 29);
+        doc.text("FINANCIAL INTEGRITY AUDIT", 15, doc.lastAutoTable.finalY + 15);
+
+        autoTable(doc, {
+            startY: doc.lastAutoTable.finalY + 20,
+            head: [['Financial Metric', 'Audit Value']],
+            body: financeData,
+            theme: 'grid',
+            headStyles: { fillColor: [192, 104, 66], fontSize: 9 },
+            bodyStyles: { fontSize: 8, fontStyle: 'bold' }
         });
 
         // Risk Note
@@ -398,12 +423,13 @@ const LandOwnerDashboard = () => {
                                         <div className="w-14 h-14 rounded-2xl bg-[#2A1F1D] flex items-center justify-center text-white shadow-lg rotate-3 group-hover:rotate-0 transition-transform duration-500">
                                             <Construction size={24} strokeWidth={1.5} />
                                         </div>
-                                        <div className="space-y-0.5">
-                                            <div className="flex items-center gap-3">
-                                                <h2 className="text-2xl font-serif font-black text-[#2A1F1D] tracking-tight group-hover:text-[#C06842] transition-colors">{project.name}</h2>
-                                                <span className="text-[9px] font-black uppercase text-emerald-600 bg-emerald-50 px-2.5 py-0.5 rounded-full border border-emerald-100 flex items-center gap-1 shadow-sm">
-                                                    <Shield size={9} className="fill-emerald-600" /> Verified
-                                                </span>
+                                         <div className="space-y-0.5 max-w-[60%]">
+                                             <div className="flex items-center gap-3">
+                                                 <h2 className="text-2xl font-serif font-black text-[#2A1F1D] tracking-tight group-hover:text-[#C06842] transition-colors truncate">{project.name}</h2>
+                                                 <span className="text-[9px] font-black uppercase text-emerald-600 bg-emerald-50 px-2.5 py-0.5 rounded-full border border-emerald-100 flex items-center gap-1 shadow-sm shrink-0">
+                                                     <Shield size={9} className="fill-emerald-600" /> Verified
+                                                 </span>
+                                             </div>
                                             </div>
                                             <div className="flex items-center gap-2.5 text-[10px] font-bold text-[#8C7B70] uppercase tracking-widest">
                                                 <span className="text-[#C06842]">{project.type}</span>
@@ -413,10 +439,8 @@ const LandOwnerDashboard = () => {
                                                 </span>
                                             </div>
                                         </div>
-                                    </div>
                                     
-                                    <div className="flex flex-wrap gap-2.5 w-full xl:w-auto">
-                                        <Button 
+                                         <Button 
                                             icon={FileText} 
                                             variant="outline" 
                                             size="sm"
@@ -424,6 +448,15 @@ const LandOwnerDashboard = () => {
                                             onClick={() => handleGenerateInvestmentReport(project)}
                                         >
                                             Export IDR
+                                        </Button>
+                                        <Button 
+                                            icon={DollarSign} 
+                                            variant="outline" 
+                                            size="sm"
+                                            className="bg-white border-[#E3DACD] text-[#5D4037] hover:border-[#C06842] text-[10px] py-2"
+                                            onClick={() => navigate('/dashboard/payments')}
+                                        >
+                                            Financial Terminal
                                         </Button>
                                         <Button 
                                             icon={Activity} 
@@ -434,7 +467,6 @@ const LandOwnerDashboard = () => {
                                         >
                                             Daily Site Log
                                         </Button>
-                                    </div>
                                 </div>
 
                                 {/* 2. MAIN CONTENT GRID */}
@@ -598,12 +630,24 @@ const LandOwnerDashboard = () => {
                                                 required 
                                                 className="w-full bg-[#FDFCF8] border-2 border-[#E3DACD]/40 rounded-2xl py-4 px-6 font-bold focus:border-[#C06842] transition-colors outline-none" 
                                                 placeholder="City, State"
-                                                value={newProject.location}
-                                                onChange={(e) => setNewProject({...newProject, location: e.target.value})}
-                                            />
-                                        </div>
-                                        <div className="space-y-3">
-                                            <label className="text-[10px] font-black uppercase text-[#8C7B70] tracking-widest px-1">Associate Land</label>
+                                                 value={newProject.location}
+                                                 onChange={(e) => setNewProject({...newProject, location: e.target.value})}
+                                             />
+                                         </div>
+                                         <div className="space-y-3">
+                                             <label className="text-[10px] font-black uppercase text-[#8C7B70] tracking-widest px-1">Estimate Budget (USD)</label>
+                                             <input 
+                                                 required 
+                                                 type="number"
+                                                 min="0"
+                                                 className="w-full bg-[#FDFCF8] border-2 border-[#E3DACD]/40 rounded-2xl py-4 px-6 font-bold focus:border-[#C06842] transition-colors outline-none" 
+                                                 placeholder="e.g. 50000"
+                                                 value={newProject.budget}
+                                                 onChange={(e) => setNewProject({...newProject, budget: e.target.value})}
+                                             />
+                                         </div>
+                                         <div className="space-y-3">
+                                             <label className="text-[10px] font-black uppercase text-[#8C7B70] tracking-widest px-1">Associate Land</label>
                                             <select 
                                                 required
                                                 className="w-full bg-[#FDFCF8] border-2 border-[#E3DACD]/40 rounded-2xl py-4 px-6 font-bold focus:border-[#C06842] transition-colors outline-none appearance-none"

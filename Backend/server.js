@@ -326,9 +326,19 @@ const normalizePaths = async () => {
             }
         }
 
-        console.log('[Maintenance] Document synchronization complete.');
+        // 3. SMART LEDGER MIGRATION: Ensure payments table has all required columns
+        await pool.query(`
+            ALTER TABLE payments 
+            ADD COLUMN IF NOT EXISTS type TEXT DEFAULT 'adhoc',
+            ADD COLUMN IF NOT EXISTS reference_id UUID,
+            ADD COLUMN IF NOT EXISTS proof_image_path TEXT,
+            ADD COLUMN IF NOT EXISTS notes TEXT,
+            ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        `);
+
+        console.log('[Maintenance] Document synchronization and Ledger Migration complete.');
     } catch (err) {
-        console.error('[Maintenance] Path normalization failed:', err);
+        console.error('[Maintenance] Path normalization or Ledger Migration failed:', err);
     }
 };
 
@@ -347,8 +357,8 @@ const enrichProjectWithProgress = (project, team = [], tasks = [], payments = []
     if (project.design_completed) physicalPercentage += 30;
     if (project.execution_completed) physicalPercentage += 40;
 
-    const totalSpent = payments
-        .filter(p => p.project_id === project.project_id && p.status === 'Completed')
+    const totalSpent = (payments || [])
+        .filter(p => String(p.project_id) === String(project.project_id) && p.status?.toLowerCase() === 'paid')
         .reduce((sum, p) => sum + parseFloat(p.amount || 0), 0);
 
     const budget = parseFloat(project.budget || 0);
@@ -2196,9 +2206,13 @@ app.put('/api/user/:userId/sync-profile', authenticateToken, async (req, res) =>
 app.get('/api/professionals/nearby', async (req, res) => {
     const { lat, lon, category, sub_category, radius = 50, userId } = req.query;
 
-    const userLat = parseFloat(String(lat)) || null;
-    const userLon = parseFloat(String(lon)) || null;
-    const radiusKm = parseFloat(String(radius)) || 50;
+    const parseCoord = (val) => {
+        const p = parseFloat(String(val));
+        return isNaN(p) ? null : p;
+    };
+    const userLat = parseCoord(lat);
+    const userLon = parseCoord(lon);
+    const radiusKm = parseCoord(radius) || 50;
     const searchUserId = userId || req.user?.id || null;
 
     try {
@@ -2220,7 +2234,7 @@ app.get('/api/professionals/nearby', async (req, res) => {
                        (CASE 
                          -- Direct Proximity Match
                          WHEN $1::numeric IS NOT NULL AND $2::numeric IS NOT NULL AND p.latitude IS NOT NULL AND p.longitude IS NOT NULL AND 
-                               (6371 * acos(LEAST(1.0, cos(radians($1::numeric)) * cos(radians(p.latitude)) * cos(radians(p.longitude) - radians($2::numeric)) + sin(radians($1::numeric)) * sin(radians(p.latitude))))) <= $3::numeric THEN 100
+                               (6371 * acos(GREATEST(-1.0, LEAST(1.0, cos(radians($1::numeric)) * cos(radians(p.latitude)) * cos(radians(p.longitude) - radians($2::numeric)) + sin(radians($1::numeric)) * sin(radians(p.latitude)))))) <= $3::numeric THEN 100
                          
                          -- Logic Fallback 1: Same City
                          WHEN $4::uuid IS NOT NULL AND p.city IS NOT NULL AND EXISTS (SELECT 1 FROM users cur WHERE cur.user_id = $4::uuid AND cur.city IS NOT NULL AND p.city ILIKE '%' || cur.city || '%') THEN 80
@@ -2232,7 +2246,7 @@ app.get('/api/professionals/nearby', async (req, res) => {
                          ELSE 10
                        END) as relevance_score,
                        CASE WHEN $1::numeric IS NOT NULL AND $2::numeric IS NOT NULL AND p.latitude IS NOT NULL AND p.longitude IS NOT NULL THEN
-                           6371 * acos(LEAST(1.0, cos(radians($1::numeric)) * cos(radians(p.latitude)) * cos(radians(p.longitude) - radians($2::numeric)) + sin(radians($1::numeric)) * sin(radians(p.latitude))))
+                           6371 * acos(GREATEST(-1.0, LEAST(1.0, cos(radians($1::numeric)) * cos(radians(p.latitude)) * cos(radians(p.longitude) - radians($2::numeric)) + sin(radians($1::numeric)) * sin(radians(p.latitude)))))
                        ELSE NULL END AS distance
                 FROM all_pros p
                 WHERE ($5::text = 'All' OR p.category = $5::text OR p.sub_category = $5::text)
@@ -2247,10 +2261,9 @@ app.get('/api/professionals/nearby', async (req, res) => {
         const values = [userLat, userLon, radiusKm, searchUserId, category || 'All', sub_category || 'All'];
         const result = await pool.query(query, values);
         res.json(result.rows);
-
     } catch (err) {
-        console.error('Error in unified professional search:', err);
-        res.status(500).json({ error: 'Failed to discover professionals', details: err.message });
+        console.error('[Nearby API Error]:', err);
+        res.status(500).json({ error: 'Failed discover professionals. Check coordinate formats.' });
     }
 });
 
@@ -2377,6 +2390,16 @@ app.put('/api/projects/:projectId/assign/:userId/status', authenticateToken, asy
     const { status } = req.body; // 'Accepted' or 'Rejected'
 
     try {
+        // 1. Verify project still exists (Prevents "Phantom Assignments")
+        const projectCheck = await pool.query('SELECT land_owner_id, name FROM projects WHERE project_id = $1', [projectId]);
+        if (projectCheck.rows.length === 0) {
+            return res.status(404).json({ error: 'Project not found. This project may have been deleted or cancelled by the owner.' });
+        }
+
+        const projectName = projectCheck.rows[0].name;
+        const landOwnerId = projectCheck.rows[0].land_owner_id;
+
+        // 2. Proceed with assignment update
         const updateResult = await pool.query(
             'UPDATE projectassignments SET status = $1 WHERE project_id = $2 AND user_id = $3 RETURNING *',
             [status, projectId, userId]
@@ -2393,11 +2416,6 @@ app.put('/api/projects/:projectId/assign/:userId/status', authenticateToken, asy
             pool.query('SELECT name FROM PendingProfessionals WHERE id = $1', [userId])
         ]);
         const userName = userRes.rows[0]?.name || pendingUserRes.rows[0]?.name || 'Professional';
-
-        // Get project name for richer notifications
-        const projectRes = await pool.query('SELECT land_owner_id, name FROM projects WHERE project_id = $1', [projectId]);
-        const projectName = projectRes.rows[0]?.name || 'your project';
-        const landOwnerId = projectRes.rows[0]?.land_owner_id;
 
         const actionUserId = req['user'] ? (req['user'].user_id || req['user'].id) : userId;
         await logActivity(actionUserId, projectId, 'Team Update', `${userName} ${status.toLowerCase()} the project invitation`);
@@ -2602,9 +2620,15 @@ app.post('/api/projects', authenticateToken, async (req, res) => {
             }
         }
 
+        // [Validation] Prevent negative or invalid budget inputs
+        const projectBudget = parseFloat(budget || 0);
+        if (projectBudget < 0) {
+            return res.status(400).json({ error: 'Project budget cannot be negative.' });
+        }
+
         const projectRes = await pool.query(
             'INSERT INTO projects (land_owner_id, name, description, budget, status, land_id) VALUES ($1, $2, $3, $4, $5, $6) RETURNING *',
-            [owner_id, name, description, budget, 'Planning', land_id || null]
+            [owner_id, name, description, projectBudget, 'Planning', land_id || null]
         );
         const project = projectRes.rows[0];
 
@@ -2690,23 +2714,40 @@ app.patch('/api/projects/:id/phases', authenticateToken, async (req, res) => {
                 return res.status(403).json({ error: 'You do not have permission to update phases for this project.' });
             }
 
-            // Business Rule: Sequential validation
-            const checkRes = await client.query('SELECT planning_completed, design_completed FROM projects WHERE project_id = $1', [id]);
+            // ─── Phase Sequential Validation (Industrial Reliability) ───
+            const checkRes = await client.query('SELECT planning_completed, design_completed, execution_completed FROM projects WHERE project_id = $1', [id]);
             const projState = checkRes.rows[0];
 
+            // A. Prevent Skipping Forward
             if (phase === 'design' && completed && !projState.planning_completed) {
                 await client.query('ROLLBACK');
-                return res.status(400).json({ error: 'Planning must be completed before starting Design.' });
+                return res.status(400).json({ error: 'Sequence Violation: Planning must be completed before starting Design.' });
             }
-            if (phase === 'execution' && completed && !projState.design_completed) {
+            if (phase === 'execution' && completed && (!projState.planning_completed || !projState.design_completed)) {
                 await client.query('ROLLBACK');
-                return res.status(400).json({ error: 'Design MUST be completed before marking Execution as finished.' });
+                return res.status(400).json({ error: 'Sequence Violation: Both Planning and Design must be completed before finalizing Execution.' });
+            }
+
+            // B. Prevent Regression Inconsistency
+            if (phase === 'planning' && !completed && (projState.design_completed || projState.execution_completed)) {
+                await client.query('ROLLBACK');
+                return res.status(400).json({ error: 'Integrity Violation: Cannot re-open Planning while subsequent phases (Design/Execution) are finalized.' });
+            }
+            if (phase === 'design' && !completed && projState.execution_completed) {
+                await client.query('ROLLBACK');
+                return res.status(400).json({ error: 'Integrity Violation: Cannot re-open Design while the project is in finished Execution status.' });
             }
 
             const column = `${phase}_completed`;
 
-            // If marking execution as completed, also mark project status as Completed
-            const projectStatusUpdate = (phase === 'execution' && completed) ? ", status = 'Completed'" : "";
+            // Dynamic Status: If finishing execution, mark project Completed. 
+            // If reopening ANY phase, move status back to In Progress.
+            let projectStatusUpdate = "";
+            if (phase === 'execution' && completed) {
+                projectStatusUpdate = ", status = 'Completed'";
+            } else if (!completed) {
+                projectStatusUpdate = ", status = 'In Progress'";
+            }
 
             const result = await client.query(
                 `UPDATE projects SET ${column} = $1, updated_at = CURRENT_TIMESTAMP ${projectStatusUpdate} WHERE project_id = $2 RETURNING *`,
@@ -2777,12 +2818,12 @@ app.post('/api/projects/:projectId/rate', authenticateToken, async (req, res) =>
 // Get User Projects (Owner)
 app.get('/api/projects/user/:userId', async (req, res) => {
     const { userId } = req.params;
+    console.log(`[Project API] Fetching projects for user: ${userId}`);
     try {
         const result = await pool.query(`
-            SELECT p.* FROM projects p
-            JOIN lands l ON p.land_id = l.land_id
-            WHERE p.land_owner_id = $1 
-              AND l.owner_id = $1
+            SELECT DISTINCT p.* FROM projects p
+            LEFT JOIN lands l ON p.land_id = l.land_id
+            WHERE (p.land_owner_id = $1)
                OR p.project_id IN (SELECT project_id FROM projectassignments WHERE user_id = $1 AND status = 'Accepted')
             ORDER BY p.created_at DESC
         `, [userId]);
@@ -3151,6 +3192,11 @@ app.post('/api/projects/:projectId/phases', async (req, res) => {
     const { projectId } = req.params;
     const { title, status, start_date, end_date, sequence_order } = req.body;
     try {
+        // [Validation] Ensure start_date is before or equal to end_date
+        if (start_date && end_date && new Date(start_date) > new Date(end_date)) {
+            return res.status(400).json({ error: 'Start date cannot be after the end date.' });
+        }
+
         const result = await pool.query(
             'INSERT INTO projectphases (project_id, title, status, start_date, end_date, sequence_order) VALUES ($1, $2, $3, $4, $5, $6) RETURNING *',
             [projectId, title, status || 'Pending', start_date, end_date, sequence_order]
@@ -3195,6 +3241,11 @@ app.post('/api/projects/:projectId/tasks', authenticateToken, async (req, res) =
         const checkStatusRes = await pool.query('SELECT status FROM projects WHERE project_id = $1', [projectId]);
         if (checkStatusRes.rows.length > 0 && checkStatusRes.rows[0].status === 'Completed') {
             return res.status(403).json({ error: 'This project is completed and locked. Task assignments are no longer permitted.' });
+        }
+
+        // [Validation] Prevent due dates in the past
+        if (due_date && new Date(due_date) < new Date().setHours(0, 0, 0, 0)) {
+            return res.status(400).json({ error: 'Task due date cannot be in the past.' });
         }
 
         const result = await pool.query(
@@ -3266,6 +3317,11 @@ app.post('/api/tasks', authenticateToken, async (req, res) => {
                     return res.status(403).json({ error: 'Operations are suspended while this property is in an active auction.' });
                 }
             }
+        }
+
+        // [Validation] Prevent due dates in the past
+        if (due_date && new Date(due_date) < new Date().setHours(0, 0, 0, 0)) {
+            return res.status(400).json({ error: 'Task due date cannot be in the past.' });
         }
 
         const result = await pool.query(
@@ -3372,8 +3428,8 @@ app.get('/api/tasks/assigned-by/:userId', authenticateToken, async (req, res) =>
         `, [userId]);
         res.json(result.rows);
     } catch (err) {
-        console.error('Error fetching assigned tasks:', err);
-        res.status(500).json({ error: 'Failed to fetch tasks' });
+        console.error('[Tasks Assigned-By Error]:', err);
+        res.status(500).json({ error: 'Failed to fetch tasks assigned by you or your subordinates.' });
     }
 });
 
@@ -3417,7 +3473,7 @@ app.put('/api/tasks/:taskId/submit', authenticateToken, upload.single('file'), a
             FROM tasks t 
             JOIN projects p ON t.project_id = p.project_id 
             WHERE t.task_id = $1
-        `, [taskId]);
+            `, [taskId]);
 
         if (taskInfoRes.rows.length > 0) {
             const { assigned_by, title, land_owner_id, project_id } = taskInfoRes.rows[0];
@@ -3427,7 +3483,7 @@ app.put('/api/tasks/:taskId/submit', authenticateToken, upload.single('file'), a
                 assigned_by,
                 'task_completion',
                 `${assigneeName} has completed and submitted the task: "${title}".`,
-                `/dashboard/tasks`,
+                `/ dashboard / tasks`,
                 project_id
             );
 
@@ -3436,8 +3492,8 @@ app.put('/api/tasks/:taskId/submit', authenticateToken, upload.single('file'), a
                 await createNotification(
                     land_owner_id,
                     'task_completion',
-                    `Professional ${assigneeName} has submitted work for "${title}". Review needed.`,
-                    `/dashboard/tasks`,
+                    `Professional ${assigneeName} has submitted work for "${title}".Review needed.`,
+                    `/ dashboard / tasks`,
                     project_id
                 );
             }
@@ -3453,8 +3509,8 @@ app.put('/api/tasks/:taskId/submit', authenticateToken, upload.single('file'), a
                 await createNotification(
                     contractorRes.rows[0].user_id,
                     'task_completion',
-                    `Professional ${assigneeName} submitted work for "${title}". Review needed.`,
-                    `/dashboard/tasks`,
+                    `Professional ${assigneeName} submitted work for "${title}".Review needed.`,
+                    `/ dashboard / tasks`,
                     project_id
                 );
             }
@@ -3489,7 +3545,7 @@ app.put('/api/tasks/:taskId/review', authenticateToken, async (req, res) => {
                 FROM tasks t
                 JOIN projects p ON t.project_id = p.project_id
                 WHERE t.task_id = $2
-            `, [reviewer_id, taskId]);
+    `, [reviewer_id, taskId]);
 
             if (authCheck.rows.length === 0) {
                 await client.query('ROLLBACK');
@@ -3515,11 +3571,11 @@ app.put('/api/tasks/:taskId/review', authenticateToken, async (req, res) => {
             if (status === 'Approved') {
                 await client.query(
                     'INSERT INTO siteprogress (project_id, updated_by, note, image_path, alert_type, status) VALUES ($1, $2, $3, $4, $5, $6)',
-                    [task.project_id, task.assigned_to, `Completed Task: ${task.title}. ${task.description || ''}`, task.image_path, 'Completion', 'Approved']
+                    [task.project_id, task.assigned_to, `Completed Task: ${task.title}. ${task.description || ''} `, task.image_path, 'Completion', 'Approved']
                 );
             }
 
-            await logActivity(reviewer_id, task.project_id, `Task ${status}`, `Task "${task.title}" ${status.toLowerCase()} by contractor`);
+            await logActivity(reviewer_id, task.project_id, `Task ${status} `, `Task "${task.title}" ${status.toLowerCase()} by contractor`);
 
             // Notify the assigned worker
             const reviewerRes = await client.query('SELECT name FROM users WHERE user_id = $1', [reviewer_id]);
@@ -3530,9 +3586,9 @@ app.put('/api/tasks/:taskId/review', authenticateToken, async (req, res) => {
                 task.assigned_to,
                 isRejected ? 'task_rejection' : 'task_approval',
                 isRejected
-                    ? `Task "${task.title}" was REJECTED by ${reviewerName}. Reason: "${rejection_reason || 'No reason specified'}". New Deadline: ${due_date || 'None'}.`
+                    ? `Task "${task.title}" was REJECTED by ${reviewerName}.Reason: "${rejection_reason || 'No reason specified'}".New Deadline: ${due_date || 'None'}.`
                     : `Your task "${task.title}" has been APPROVED by ${reviewerName}. Project progress updated.`,
-                `/dashboard/tasks`,
+                `/ dashboard / tasks`,
                 task.project_id
             );
 
@@ -3546,7 +3602,7 @@ app.put('/api/tasks/:taskId/review', authenticateToken, async (req, res) => {
                     land_owner_id,
                     'task_update',
                     `Task "${task.title}" has been ${status.toLowerCase()} by ${reviewerName}.`,
-                    `/dashboard/tasks`,
+                    `/ dashboard / tasks`,
                     task.project_id
                 );
             }
@@ -3557,7 +3613,7 @@ app.put('/api/tasks/:taskId/review', authenticateToken, async (req, res) => {
                     contractor_id,
                     'task_update',
                     `Task "${task.title}" has been ${status.toLowerCase()} by ${reviewerName}.`,
-                    `/dashboard/tasks`,
+                    `/ dashboard / tasks`,
                     task.project_id
                 );
             }
@@ -3592,7 +3648,7 @@ app.patch('/api/tasks/:taskId/extend-deadline', authenticateToken, async (req, r
                 JOIN projects p ON t.project_id = p.project_id
                 JOIN users u ON t.assigned_to = u.user_id
                 WHERE t.task_id = $1
-            `, [taskId]);
+    `, [taskId]);
 
             if (authCheck.rows.length === 0) {
                 await client.query('ROLLBACK');
@@ -3603,7 +3659,7 @@ app.patch('/api/tasks/:taskId/extend-deadline', authenticateToken, async (req, r
             const is_contractor = (await client.query(`
                 SELECT 1 FROM projectassignments pa 
                 WHERE pa.project_id = $1 AND pa.user_id = $2 AND pa.assigned_role = 'contractor' AND pa.status = 'Accepted'
-            `, [task.project_id, reviewer_id])).rows.length > 0;
+    `, [task.project_id, reviewer_id])).rows.length > 0;
 
             const isAuthorized = String(reviewer_id) === String(task.assigned_by) || String(reviewer_id) === String(task.land_owner_id) || is_contractor;
 
@@ -3616,7 +3672,7 @@ app.patch('/api/tasks/:taskId/extend-deadline', authenticateToken, async (req, r
 
             // Notify Assignee
             const notificationMsg = `Update: The deadline for your task "${task.title}" in project "${task.project_name}" has been extended to ${new Date(new_due_date).toLocaleDateString()}.`;
-            await createNotification(task.assigned_to, 'task_update', notificationMsg, `/dashboard/tasks`, taskId);
+            await createNotification(task.assigned_to, 'task_update', notificationMsg, `/ dashboard / tasks`, taskId);
 
             await client.query('COMMIT');
             res.json({ message: 'Deadline extended successfully', new_due_date });
@@ -3692,7 +3748,7 @@ app.put('/api/documents/:docId/status', async (req, res) => {
         }
 
         const doc = result.rows[0];
-        await logActivity(null, doc.project_id, 'Document Status Update', `Document "${doc.name}" updated to ${status}`);
+        await logActivity(null, doc.project_id, 'Document Status Update', `Document "${doc.name}" updated to ${status} `);
 
         res.json({ message: `Document ${status} successfully`, doc });
     } catch (err) {
@@ -3708,7 +3764,7 @@ app.post('/api/documents', upload.single('file'), async (req, res) => {
 
     // Construct relative path for DB: uploads/category/filename
     const category = req.body.category || 'General';
-    const filePath = req.file ? `uploads/${category}/${req.file.filename}` : null;
+    const filePath = req.file ? `uploads / ${category}/${req.file.filename}` : null;
     const fileSize = (req.file.size / 1024).toFixed(2) + ' KB';
     const fileType = path.extname(req.file.originalname).substring(1).toUpperCase();
 
@@ -3894,57 +3950,226 @@ app.get('/api/activity/:projectId', async (req, res) => {
     }
 });
 
-// --- Payment Routes ---
+// --- Smart Ledger: Payment Routes ---
 
-// Create/Update Manual Payment (Simplified)
-app.post('/api/payments', async (req, res) => {
-    const { project_id, client_id, invoice_number, amount, due_date, notes } = req.body;
+/**
+ * ?? Create Modular Payment Request
+ * Supports: Quote-Based, Wages, Material, and Ad-hoc.
+ * Hierarchical Logic: 
+ * - If payee hired by contractor -> contractor is payer.
+ * - If payee hired by owner -> owner is payer.
+ */
+app.post('/api/payments', authenticateToken, upload.single('proof'), async (req, res) => {
+    const {
+        project_id, receiver_id, type, amount,
+        reference_id, notes, wage_days, invoice_number, status
+    } = req.body;
+    const initiator_id = req.user.user_id || req.user.id;
+
     try {
+        // [Hierarchy Step] Determine the responsible payer
+        const assignmentRes = await pool.query(
+            'SELECT assigned_by FROM projectassignments WHERE project_id = $1 AND user_id = $2',
+            [project_id, receiver_id]
+        );
+
+        let target_payer_id = assignmentRes.rows.length > 0 ? assignmentRes.rows[0].assigned_by : null;
+        if (!target_payer_id) {
+            const projectRes = await pool.query('SELECT land_owner_id FROM projects WHERE project_id = $1', [project_id]);
+            target_payer_id = projectRes.rows[0]?.land_owner_id;
+        }
+
+        // If the initiator belongs to a "Payer" role and is recording a payout...
+        // we can override the status to 'paid' or whatever they specified.
+        const isAuthorityInitiator = (initiator_id === target_payer_id);
+        const finalStatus = status || (isAuthorityInitiator ? 'paid' : 'pending_review');
+
+        let proof_path = null;
+        if (req.file) {
+            const doc = await storeInDocuments(pool, {
+                project_id,
+                uploaded_by: initiator_id,
+                name: `Payment Proof: ${type.toUpperCase()} - ${invoice_number || 'Record'}`,
+                file: req.file,
+                category: 'Financial',
+                source_type: 'payment_record'
+            });
+            proof_path = doc.file_path;
+        }
+
         const result = await pool.query(
-            'INSERT INTO payments (project_id, sender_id, receiver_id, amount, description, status) VALUES ($1, $2, NULL, $3, $4, $5) RETURNING *',
-            [project_id, client_id, amount, notes || `Invoice: ${invoice_number}`, 'Pending']
+            `INSERT INTO payments 
+            (project_id, sender_id, receiver_id, amount, type, status, reference_id, description, proof_image_path, notes) 
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10) RETURNING *`,
+            [
+                project_id,
+                target_payer_id,
+                receiver_id,
+                amount,
+                type || 'adhoc',
+                finalStatus,
+                reference_id || null,
+                notes || `${type.toUpperCase()} - ${invoice_number || 'Ref'}`,
+                proof_path,
+                notes
+            ]
         );
         const payment = result.rows[0];
 
-        await logActivity(client_id, project_id, 'Payment Record Created', `Invoice: ${invoice_number}, Amount: ${amount}`);
+        // Notifications
+        if (finalStatus === 'pending_review') {
+            const senderRes = await pool.query('SELECT name FROM users WHERE user_id = $1', [initiator_id]);
+            await createNotification(
+                target_payer_id,
+                'payment_request',
+                `${senderRes.rows[0]?.name || 'Professional'} submitted a request for ₹${parseFloat(amount).toLocaleString()}.`,
+                '/dashboard/payments',
+                project_id
+            );
+        } else if (finalStatus === 'paid') {
+            await createNotification(
+                receiver_id,
+                'payment_received',
+                `A payout of ₹${parseFloat(amount).toLocaleString()} has been recorded in your ledger. Status: PAID`,
+                '/dashboard/payments',
+                project_id
+            );
+        }
+
+        await logActivity(initiator_id, project_id, isAuthorityInitiator ? 'Payment Recorded' : 'Payment Requested', `${type.toUpperCase()} for ₹${amount}`);
         res.status(201).json(payment);
     } catch (err) {
-        console.error('Error creating payment record:', err);
-        res.status(500).json({ error: 'Failed to create payment record' });
+        console.error('Smart Ledger: Persistence Error:', err);
+        res.status(500).json({ error: 'System failed to finalize ledger entry.' });
     }
 });
 
-app.patch('/api/payments/:id', async (req, res) => {
+/**
+ * ?? Approve/Pay Ledger Instruction
+ * PATCH /api/payments/:id
+ */
+app.patch('/api/payments/:id', authenticateToken, async (req, res) => {
     const { id } = req.params;
     const { status, notes, amount } = req.body;
+    const action_user_id = req.user.user_id || req.user.id;
+
     try {
         const result = await pool.query(
-            'UPDATE payments SET status = COALESCE($1, status), description = COALESCE($2, description), amount = COALESCE($3, amount) WHERE payment_id = $4 RETURNING *',
+            `UPDATE payments 
+             SET status = COALESCE($1, status), 
+                 notes = COALESCE($2, notes), 
+                 amount = COALESCE($3, amount),
+                 updated_at = CURRENT_TIMESTAMP 
+             WHERE payment_id = $4 RETURNING *`,
             [status || null, notes || null, amount !== undefined ? amount : null, id]
         );
 
-        if (result.rowCount === 0) return res.status(404).json({ error: 'Payment record not found' });
+        if (result.rowCount === 0) return res.status(404).json({ error: 'Ledger entry not found.' });
         const updated = result.rows[0];
 
-        await logActivity(updated.sender_id, updated.project_id, 'Payment Updated', `Status: ${status}`);
+        // Notify the Payee (Professional/Worker)
+        const actionName = status === 'paid' ? 'marked as PAID' : status.toLowerCase();
+        await createNotification(
+            updated.receiver_id,
+            'payment_update',
+            `Your payment request for ₹${parseFloat(updated.amount).toLocaleString()} has been ${actionName}.`,
+            '/dashboard/payments',
+            updated.project_id
+        );
+
+        await logActivity(action_user_id, updated.project_id, 'Payment Updated', `Instruction ID ${id} set to ${status}`);
         res.json(updated);
     } catch (err) {
-        console.error('Error updating payment:', err);
-        res.status(500).json({ error: 'Failed to update payment' });
+        console.error('Smart Ledger: Update Error:', err);
+        res.status(500).json({ error: 'Failed to update ledger instruction.' });
     }
 });
 
-app.get('/api/payments/user/:userId', async (req, res) => {
+/**
+ * ?? Fetch Ledger History (Project or User Scoped)
+ */
+app.get('/api/payments/user/:userId', authenticateToken, async (req, res) => {
     const { userId } = req.params;
+    const { project_id } = req.query;
+
     try {
-        const result = await pool.query(
-            'SELECT * FROM payments WHERE sender_id = $1 OR receiver_id = $1 ORDER BY created_at DESC',
-            [userId]
-        );
+        let query;
+        let params;
+
+        if (project_id) {
+            // [Security & Visibility] If project_id is provided, show ALL payments for that project.
+            // Authority check: User must be either the owner or assigned to the project.
+            const accessCheck = await pool.query(
+                `SELECT 1 FROM projects WHERE project_id = $1 AND (land_owner_id = $2 OR project_id IN (SELECT project_id FROM projectassignments WHERE user_id = $2))`,
+                [project_id, userId]
+            );
+
+            if (accessCheck.rowCount === 0) return res.status(403).json({ error: 'Access denied to this project ledger.' });
+
+            query = `
+                SELECT p.*, 
+                       s.name as sender_name, s.category as sender_role,
+                       r.name as receiver_name, r.category as receiver_role,
+                       pr.name as project_name
+                FROM payments p
+                LEFT JOIN users s ON p.sender_id = s.user_id
+                LEFT JOIN users r ON p.receiver_id = r.user_id
+                JOIN projects pr ON p.project_id = pr.project_id
+                WHERE p.project_id = $1
+                ORDER BY p.created_at DESC
+            `;
+            params = [project_id];
+        } else {
+            // Show only user-related payments if no specific project selected
+            query = `
+                SELECT p.*, 
+                       s.name as sender_name, s.category as sender_role,
+                       r.name as receiver_name, r.category as receiver_role,
+                       pr.name as project_name
+                FROM payments p
+                LEFT JOIN users s ON p.sender_id = s.user_id
+                LEFT JOIN users r ON p.receiver_id = r.user_id
+                JOIN projects pr ON p.project_id = pr.project_id
+                WHERE (p.sender_id = $1 OR p.receiver_id = $1)
+                ORDER BY p.created_at DESC
+            `;
+            params = [userId];
+        }
+
+        const result = await pool.query(query, params);
         res.json(result.rows);
     } catch (err) {
-        console.error('Error fetching payments:', err);
-        res.status(500).json({ error: 'Failed to fetch payments' });
+        console.error('Smart Ledger: Fetch Error:', err);
+        res.status(500).json({ error: 'Failed to access financial repository.' });
+    }
+});
+
+// Summary Endpoint for Financial Progress
+app.get('/api/payments/summary/:projectId', authenticateToken, async (req, res) => {
+    const { projectId } = req.params;
+    try {
+        const statsRes = await pool.query(`
+            SELECT 
+                SUM(amount) as total_budget_applied,
+                SUM(CASE WHEN status = 'paid' THEN amount ELSE 0 END) as total_spent,
+                SUM(CASE WHEN status = 'pending_review' THEN amount ELSE 0 END) as pending_review,
+                SUM(CASE WHEN status = 'approved' THEN amount ELSE 0 END) as approved_unpaid,
+                SUM(CASE WHEN type = 'wage' AND status = 'paid' THEN amount ELSE 0 END) as wages_spent,
+                SUM(CASE WHEN type = 'material' AND status = 'paid' THEN amount ELSE 0 END) as materials_spent,
+                SUM(CASE WHEN (type = 'quote' OR type = 'adhoc') AND status = 'paid' THEN amount ELSE 0 END) as fees_spent
+            FROM payments
+            WHERE project_id = $1
+        `, [projectId]);
+
+        const projectBudgetRes = await pool.query('SELECT budget FROM projects WHERE project_id = $1', [projectId]);
+
+        res.json({
+            stats: statsRes.rows[0],
+            total_budget: projectBudgetRes.rows[0]?.budget || 0
+        });
+    } catch (err) {
+        console.error('Smart Ledger: Summary Error:', err);
+        res.status(500).json({ error: 'Failed to generate financial report.' });
     }
 });
 
@@ -4726,7 +4951,7 @@ app.post('/api/auctions', authenticateToken, async (req, res) => {
 
         const result = await pool.query(
             'INSERT INTO land_auctions (land_id, owner_id, base_price, reserve_price, end_time, current_highest_bid, status) VALUES ($1, $2, $3, $4, $5, $3, $6) RETURNING *',
-            [land_id, owner_id, base_price, reserve_price || null, endTime, 'active']
+            [land_id, owner_id, base_price, reserve_price || null, endTime, 'pending_verification']
         );
         const auction = result.rows[0];
 
@@ -4952,14 +5177,17 @@ async function finalizeEndedAuctions() {
                 try {
                     console.log(`[Auction] Sending win email for "${auction.land_title}" to winner: ${topBid.bidder_email}`);
                     const emailRes = await sendAuctionWinEmail(topBid.bidder_email, topBid.bidder_name, auction.land_title, topBid.amount);
+
+                    // Mark as notified immediately after notification attempt
+                    await client.query('UPDATE land_auctions SET winner_notified = TRUE WHERE auction_id = $1', [auction.auction_id]);
+
                     if (emailRes) {
-                        await client.query('UPDATE land_auctions SET winner_notified = TRUE WHERE auction_id = $1', [auction.auction_id]);
                         console.log(`[Auction] ✅ Win email successfully sent to ${topBid.bidder_email}`);
-                    } else {
-                        console.warn(`[Auction] ⚠️ Email service returned empty response for ${topBid.bidder_email}. Marking as notified anyway to prevent loop? No, retrying next cycle.`);
                     }
                 } catch (e) {
                     console.error('[Auction] ❌ Email delivery failed:', e.message);
+                    // Still mark as notified to avoid dashboard spam
+                    await client.query('UPDATE land_auctions SET winner_notified = TRUE WHERE auction_id = $1', [auction.auction_id]);
                 }
             } else if (auction.status === 'active') {
                 // No bids - mark as closed
