@@ -85,7 +85,7 @@ const Sidebar = ({ isOpen, onClose }) => {
                 { icon: Bell, label: 'Notifications', path: '/dashboard/notifications', badge: counts.notifications },
                 { icon: Map, label: 'My Lands', path: '/dashboard/lands' }
             ];
-            case 'contractor': return [...base, ...shared, { icon: Camera, label: 'Reports', path: '/dashboard/reports' }, { icon: FileText, label: 'Quotations', path: '/dashboard/quotations' }, { icon: Users, label: 'Find Professionals', path: '/dashboard/find-pros' }];
+            case 'contractor': return [...base, ...shared, { icon: FileText, label: 'Quotations', path: '/dashboard/quotations' }, { icon: Users, label: 'Find Professionals', path: '/dashboard/find-pros' }];
             case 'interior_designer':
             case 'fabrication_worker':
             case 'fabrication':

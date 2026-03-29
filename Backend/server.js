@@ -25,6 +25,7 @@ const bcrypt = require('bcrypt');
 const multer = require('multer');
 const path = require('path');
 const fs = require('fs');
+const compression = require('compression');
 const { OAuth2Client } = require('google-auth-library');
 const axios = require('axios');
 
@@ -105,6 +106,7 @@ io.on('connection', (socket) => {
 const port = process.env.PORT || 5000;
 
 // ??? Global Middleware
+app.use(compression());
 app.use(cors()); // Allow Cross-Origin requests from the React frontend
 app.use(express.json()); // Parse incoming JSON request bodies
 app.use(express.urlencoded({ extended: true })); // Parse URL-encoded bodies (form data)
@@ -247,6 +249,7 @@ pool.query("ALTER TABLE pendingprofessionals ADD COLUMN IF NOT EXISTS personal_i
 pool.query("ALTER TABLE land_auctions ADD COLUMN IF NOT EXISTS rejection_reason TEXT").catch(() => { });
 pool.query("ALTER TABLE land_auctions ADD COLUMN IF NOT EXISTS current_highest_bid NUMERIC DEFAULT 0").catch(() => { });
 pool.query("ALTER TABLE tasks ADD COLUMN IF NOT EXISTS approved_at TIMESTAMP WITH TIME ZONE").catch(() => { });
+pool.query("ALTER TABLE tasks ADD COLUMN IF NOT EXISTS submitted_at TIMESTAMP WITH TIME ZONE").catch(() => { });
 pool.query("ALTER TABLE projects ADD COLUMN IF NOT EXISTS planning_completed BOOLEAN DEFAULT FALSE").catch(() => { });
 pool.query("ALTER TABLE projects ADD COLUMN IF NOT EXISTS design_completed BOOLEAN DEFAULT FALSE").catch(() => { });
 pool.query("ALTER TABLE projects ADD COLUMN IF NOT EXISTS execution_completed BOOLEAN DEFAULT FALSE").catch(() => { });
@@ -2472,7 +2475,7 @@ app.get('/api/professionals/:userId/projects', authenticateToken, async (req, re
         const projectIds = projects.map(p => p.project_id);
         let tasks = [];
         if (projectIds.length > 0) {
-            const tasksRes = await pool.query('SELECT task_id, project_id, status, title, description, image_path, created_at FROM tasks WHERE project_id = ANY($1)', [projectIds]);
+            const tasksRes = await pool.query('SELECT task_id, project_id, status, title, description, image_path, created_at, submitted_at, approved_at FROM tasks WHERE project_id = ANY($1)', [projectIds]);
             tasks = tasksRes.rows;
         }
 
@@ -2835,7 +2838,7 @@ app.get('/api/projects/user/:userId', async (req, res) => {
         let payments = [];
         if (projectIds.length > 0) {
             const tasksRes = await pool.query(`
-                SELECT t.task_id, t.project_id, t.status, t.title, t.description, t.image_path, t.created_at, t.assigned_to, u.name as assigned_to_name, t.approved_at
+                SELECT t.task_id, t.project_id, t.status, t.title, t.description, t.image_path, t.created_at, t.assigned_to, u.name as assigned_to_name, t.approved_at, t.submitted_at
                 FROM tasks t
                 LEFT JOIN users u ON t.assigned_to = u.user_id
                 WHERE t.project_id = ANY($1)
@@ -3357,6 +3360,26 @@ app.post('/api/tasks', authenticateToken, async (req, res) => {
             project_id
         );
 
+        // Fetch project owner and contractor to notify them too (if they aren't the assigner)
+        const projectInfo = await pool.query('SELECT land_owner_id FROM projects WHERE project_id = $1', [project_id]);
+        const ownerId = projectInfo.rows[0]?.land_owner_id;
+
+        const contractorRes = await pool.query(`SELECT user_id FROM projectassignments WHERE project_id = $1 AND assigned_role ILIKE 'contractor' AND status = 'Accepted'`, [project_id]);
+        const contractorId = contractorRes.rows[0]?.user_id;
+
+        const managersToNotify = new Set([ownerId, contractorId]);
+        for (const managerId of managersToNotify) {
+            if (managerId && String(managerId) !== String(assigned_by) && String(managerId) !== String(assigned_to)) {
+                await createNotification(
+                    managerId,
+                    'task_update',
+                    `${assignerName} has created a new task "${title}" for a team member.`,
+                    `/dashboard/tasks`,
+                    project_id
+                );
+            }
+        }
+
         res.status(201).json(task);
     } catch (err) {
         console.error('Error assigning task:', err);
@@ -3406,8 +3429,8 @@ app.get('/api/tasks/to-review/:userId', authenticateToken, async (req, res) => {
             LEFT JOIN projects p ON t.project_id = p.project_id
             LEFT JOIN lands l ON p.land_id = l.land_id
             LEFT JOIN users u ON t.assigned_to = u.user_id
-            LEFT JOIN projectassignments pa ON pa.project_id = t.project_id AND pa.assigned_role = 'contractor' AND pa.status = 'Accepted'
-            WHERE (t.assigned_by = $1 OR p.land_owner_id = $1 OR pa.user_id = $1) 
+            LEFT JOIN projectassignments pa ON pa.project_id = t.project_id AND pa.assigned_role ILIKE 'contractor' AND pa.status = 'Accepted'
+            WHERE (t.assigned_by = $1::uuid OR p.land_owner_id = $1::uuid OR pa.user_id = $1::uuid) 
               AND t.status = 'Submitted'
             ORDER BY t.created_at DESC
         `, [userId]);
@@ -3432,8 +3455,8 @@ app.get('/api/tasks/assigned-by/:userId', authenticateToken, async (req, res) =>
             LEFT JOIN projects p ON t.project_id = p.project_id
             LEFT JOIN lands l ON p.land_id = l.land_id
             LEFT JOIN users u ON t.assigned_to = u.user_id
-            LEFT JOIN projectassignments pa ON pa.project_id = t.project_id AND pa.assigned_role = 'contractor' AND pa.status = 'Accepted'
-            WHERE t.assigned_by = $1 OR p.land_owner_id = $1 OR pa.user_id = $1
+            LEFT JOIN projectassignments pa ON pa.project_id = t.project_id AND pa.assigned_role ILIKE 'contractor' AND pa.status = 'Accepted'
+            WHERE t.assigned_by = $1::uuid OR p.land_owner_id = $1::uuid OR pa.user_id = $1::uuid
             ORDER BY t.created_at DESC
         `, [userId]);
         res.json(result.rows);
@@ -3468,7 +3491,7 @@ app.put('/api/tasks/:taskId/submit', authenticateToken, upload.single('file'), a
         });
 
         const result = await pool.query(
-            'UPDATE tasks SET status = $1, image_path = $2, rejection_reason = NULL WHERE task_id = $3::uuid RETURNING *',
+            'UPDATE tasks SET status = $1, image_path = $2, rejection_reason = NULL, submitted_at = CURRENT_TIMESTAMP WHERE task_id = $3::uuid RETURNING *',
             ['Submitted', doc.file_path, taskId]
         );
 
@@ -3511,7 +3534,7 @@ app.put('/api/tasks/:taskId/submit', authenticateToken, upload.single('file'), a
             // 3. Notify Contractor if they weren't the assigner or landowner
             const contractorRes = await pool.query(`
                 SELECT user_id FROM projectassignments 
-                WHERE project_id = $1::uuid AND assigned_role = 'contractor' AND status = 'Accepted' 
+                WHERE project_id = $1::uuid AND assigned_role ILIKE 'contractor' AND status = 'Accepted' 
                 AND user_id != $2::uuid AND user_id != $3::uuid
             `, [project_id, assigned_by, land_owner_id]);
 
@@ -3564,7 +3587,7 @@ app.put('/api/tasks/:taskId/review', authenticateToken, async (req, res) => {
 
             const authCheck = await client.query(`
                 SELECT t.assigned_by, p.land_owner_id, t.project_id, t.assigned_to, t.title, t.image_path, t.description,
-                (SELECT 1 FROM projectassignments pa WHERE pa.project_id = t.project_id AND pa.user_id = $1::uuid AND pa.assigned_role = 'contractor' AND pa.status = 'Accepted') as is_contractor
+                (SELECT 1 FROM projectassignments pa WHERE pa.project_id = t.project_id AND pa.user_id = $1::uuid AND pa.assigned_role ILIKE 'contractor' AND pa.status = 'Accepted') as is_contractor
                 FROM tasks t
                 JOIN projects p ON t.project_id = p.project_id
                 WHERE t.task_id = $2::uuid
@@ -3619,7 +3642,7 @@ app.put('/api/tasks/:taskId/review', authenticateToken, async (req, res) => {
                 project_id
             );
 
-            const contractorRes = await client.query(`SELECT user_id FROM projectassignments WHERE project_id = $1::uuid AND assigned_role = 'contractor' AND status = 'Accepted'`, [project_id]);
+            const contractorRes = await client.query(`SELECT user_id FROM projectassignments WHERE project_id = $1::uuid AND assigned_role ILIKE 'contractor' AND status = 'Accepted'`, [project_id]);
             const contractor_id = contractorRes.rows[0]?.user_id;
 
             if (land_owner_id && String(land_owner_id) !== String(actionUserId) && String(land_owner_id) !== String(assigned_to)) {
@@ -3637,6 +3660,17 @@ app.put('/api/tasks/:taskId/review', authenticateToken, async (req, res) => {
                     contractor_id,
                     'task_update',
                     `Task "${title}" has been ${status.toLowerCase()} by ${reviewerName}.`,
+                    `/dashboard/tasks`,
+                    project_id
+                );
+            }
+
+            // Sync with assigned_by if they are someone else (e.g. an architect who assigned a task)
+            if (assigned_by && String(assigned_by) !== String(actionUserId) && String(assigned_by) !== String(land_owner_id) && String(assigned_by) !== String(contractor_id) && String(assigned_by) !== String(assigned_to)) {
+                await createNotification(
+                    assigned_by,
+                    'task_update',
+                    `Your assigned task "${title}" has been ${status.toLowerCase()} by ${reviewerName}.`,
                     `/dashboard/tasks`,
                     project_id
                 );
@@ -3694,7 +3728,7 @@ app.patch('/api/tasks/:taskId/extend-deadline', authenticateToken, async (req, r
             const task = authCheck.rows[0];
             const is_contractor = (await client.query(`
                 SELECT 1 FROM projectassignments pa 
-                WHERE pa.project_id = $1::uuid AND pa.user_id = $2::uuid AND pa.assigned_role = 'contractor' AND pa.status = 'Accepted'
+                WHERE pa.project_id = $1::uuid AND pa.user_id = $2::uuid AND pa.assigned_role ILIKE 'contractor' AND pa.status = 'Accepted'
     `, [task.project_id, actionUserId])).rows.length > 0;
 
             const isAuthorized = String(actionUserId) === String(task.assigned_by) || String(actionUserId) === String(task.land_owner_id) || is_contractor;
@@ -3734,8 +3768,16 @@ app.get('/api/tasks/pending-count/:userId', authenticateToken, async (req, res) 
         const role = req.user.role;
         let count = 0;
 
-        if (role === 'contractor' || role === 'land_owner') {
-            const resSub = await pool.query("SELECT COUNT(*) FROM tasks WHERE status = 'Submitted' AND assigned_by = $1::uuid", [userId]);
+        const normalizedRole = String(role || '').toLowerCase();
+        if (normalizedRole === 'contractor' || normalizedRole === 'land_owner' || normalizedRole === 'land owner') {
+            const resSub = await pool.query(`
+                SELECT COUNT(DISTINCT t.task_id) 
+                FROM tasks t
+                LEFT JOIN projects p ON t.project_id = p.project_id
+                LEFT JOIN projectassignments pa ON pa.project_id = t.project_id AND pa.assigned_role ILIKE 'contractor' AND pa.status = 'Accepted'
+                WHERE t.status = 'Submitted' 
+                AND (t.assigned_by = $1::uuid OR p.land_owner_id = $1::uuid OR pa.user_id = $1::uuid)
+            `, [userId]);
             count = parseInt(resSub.rows[0].count);
         } else {
             const resPend = await pool.query("SELECT COUNT(*) FROM tasks WHERE assigned_to = $1::uuid AND (status = 'Pending' OR status = 'Rejected')", [userId]);

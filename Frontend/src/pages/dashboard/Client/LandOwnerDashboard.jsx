@@ -16,6 +16,7 @@ import SiteWorkboard from '../Site/SiteWorkboard';
 import { motion, AnimatePresence } from 'framer-motion';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
+import socket from '../../../utils/socket';
 
 // Shared Components
 import Card from '../../../components/Common/Card';
@@ -85,8 +86,18 @@ const LandOwnerDashboard = () => {
             setSearchQuery(e.detail);
         };
         window.addEventListener('planora_search', handleGlobalSearch);
+
+        // Real-time synchronization
+        socket.connect();
+        socket.on('new_notification', (noti) => {
+            if (noti.type?.includes('task') || noti.type?.includes('project')) {
+                fetchData();
+            }
+        });
+
         return () => {
             window.removeEventListener('planora_search', handleGlobalSearch);
+            socket.off('new_notification');
         };
     }, [fetchData]);
 
@@ -235,7 +246,14 @@ const LandOwnerDashboard = () => {
         doc.text(`Location: ${project.location || 'Site Location'}`, 15, 60);
 
         const todayDate = new Date().toDateString();
-        const todayTasks = (project.tasks || []).filter(t => new Date(t.created_at).toDateString() === todayDate);
+        // Updated filter to include all activity that happened today
+        const todayTasks = (project.tasks || []).filter(t => {
+            const createdToday = new Date(t.created_at).toDateString() === todayDate;
+            const submittedToday = t.submitted_at && new Date(t.submitted_at).toDateString() === todayDate;
+            const approvedToday = t.approved_at && new Date(t.approved_at).toDateString() === todayDate;
+            return createdToday || submittedToday || approvedToday;
+        });
+
         const approvedTasks = todayTasks.filter(t => t.status === 'Approved');
 
         doc.setFillColor(249, 247, 242); doc.rect(15, 70, 55, 25, 'F');
@@ -247,7 +265,10 @@ const LandOwnerDashboard = () => {
         doc.setFontSize(14); doc.text(`${approvedTasks.length}`, 78, 88);
 
         const tableData = todayTasks.length > 0 
-            ? todayTasks.map(t => [t.title, t.status.toUpperCase(), new Date(t.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }), t.assigned_to_name || '-'])
+            ? todayTasks.map(t => {
+                const activityTime = t.approved_at || t.submitted_at || t.created_at;
+                return [t.title, t.status.toUpperCase(), new Date(activityTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }), t.assigned_to_name || '-']
+            })
             : [['No tasks recorded today', '-', '-', '-']];
 
         autoTable(doc, {

@@ -50,9 +50,17 @@ export const ProjectLifecycle = ({ project, onUpdatePhase }) => {
 };
 
 export const DailyReportSummary = ({ project }) => {
-    const today = new Date().toISOString().split('T')[0];
-    const todayTasks = project.tasks?.filter(t => t.created_at?.startsWith(today)) || [];
-    const approvedTasks = todayTasks.filter(t => t.status === 'Completed' || t.status === 'Verified' || t.status === 'Approved');
+    const todayDate = new Date().toDateString();
+    const todayTasks = project.tasks?.filter(t => {
+        const createdToday = new Date(t.created_at).toDateString() === todayDate;
+        const submittedToday = t.submitted_at && new Date(t.submitted_at).toDateString() === todayDate;
+        const approvedToday = t.approved_at && new Date(t.approved_at).toDateString() === todayDate;
+        return createdToday || submittedToday || approvedToday;
+    }) || [];
+    const approvedTasks = todayTasks.filter(t => 
+        (t.status === 'Completed' || t.status === 'Verified' || t.status === 'Approved') &&
+        (t.approved_at && new Date(t.approved_at).toDateString() === todayDate)
+    );
 
     return (
         <div className="bg-[#1A1A1A] p-4 rounded-2xl space-y-3">
