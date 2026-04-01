@@ -2252,13 +2252,14 @@ app.get('/api/professionals/nearby', async (req, res) => {
                            6371 * acos(GREATEST(-1.0, LEAST(1.0, cos(radians($1::numeric)) * cos(radians(p.latitude)) * cos(radians(p.longitude) - radians($2::numeric)) + sin(radians($1::numeric)) * sin(radians(p.latitude)))))
                        ELSE NULL END AS distance
                 FROM all_pros p
-                WHERE ($5::text = 'All' OR p.category = $5::text OR p.sub_category = $5::text)
-                AND ($6::text = 'All' OR p.sub_category = $6::text)
+                WHERE ($5::text = 'All' OR p.category ILIKE $5::text OR p.sub_category ILIKE $5::text)
+                AND ($6::text = 'All' OR p.sub_category ILIKE $6::text)
             )
             SELECT *, id as user_id FROM scored_pros
             WHERE relevance_score > 0
             ORDER BY relevance_score DESC, distance ASC NULLS LAST
-            LIMIT 100
+            LIMIT 500
+
         `;
 
         const values = [userLat, userLon, radiusKm, searchUserId, category || 'All', sub_category || 'All'];
