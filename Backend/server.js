@@ -354,23 +354,23 @@ pool.connect()
     .catch(err => console.error('Database Connection error', err.stack));
 
 // Helper to compute project progress based on phases (30-30-40 ratio)
-const enrichProjectWithProgress = (project, team = [], tasks = [], payments = []) => {
+const enrichProjectWithProgress = (project, team = [], tasks = [], totalSpent = 0) => {
     let physicalPercentage = 0;
     if (project.planning_completed) physicalPercentage += 30;
     if (project.design_completed) physicalPercentage += 30;
     if (project.execution_completed) physicalPercentage += 40;
 
-    const totalSpent = (payments || [])
-        .filter(p => String(p.project_id) === String(project.project_id) && p.status?.toLowerCase() === 'paid')
-        .reduce((sum, p) => sum + parseFloat(p.amount || 0), 0);
-
+    const spent = parseFloat(totalSpent || 0);
     const budget = parseFloat(project.budget || 0);
-    const financialBurn = budget > 0 ? Math.round((totalSpent / budget) * 100) : 0;
+    // Provide raw float for precision on frontend
+    const financialBurn = budget > 0 ? Math.min((spent / budget) * 100, 100) : 0;
+
+    console.log(`[Enrich] Project "${project.name}" — Budget: ₹${budget}, Total Spent: ₹${spent}, Financial Burn: ${financialBurn}%`);
 
     return {
         ...project,
         team: team,
-        total_spent: totalSpent,
+        total_spent: spent,
         progress: {
             percentage: physicalPercentage,
             physical: physicalPercentage,
@@ -2824,8 +2824,9 @@ app.get('/api/projects/user/:userId', async (req, res) => {
     console.log(`[Project API] Fetching projects for user: ${userId}`);
     try {
         const result = await pool.query(`
-            SELECT DISTINCT p.* FROM projects p
+            SELECT DISTINCT p.*, u_owner.name as client_name FROM projects p
             LEFT JOIN lands l ON p.land_id = l.land_id
+            LEFT JOIN users u_owner ON p.land_owner_id = u_owner.user_id
             WHERE (p.land_owner_id = $1)
                OR p.project_id IN (SELECT project_id FROM projectassignments WHERE user_id = $1 AND status = 'Accepted')
             ORDER BY p.created_at DESC
@@ -2835,7 +2836,7 @@ app.get('/api/projects/user/:userId', async (req, res) => {
         const projectIds = projects.map(p => p.project_id);
 
         let tasks = [];
-        let payments = [];
+        let spentByProject = {};
         if (projectIds.length > 0) {
             const tasksRes = await pool.query(`
                 SELECT t.task_id, t.project_id, t.status, t.title, t.description, t.image_path, t.created_at, t.assigned_to, u.name as assigned_to_name, t.approved_at, t.submitted_at
@@ -2845,13 +2846,23 @@ app.get('/api/projects/user/:userId', async (req, res) => {
             `, [projectIds]);
             tasks = tasksRes.rows;
 
-            const payRes = await pool.query('SELECT amount, project_id, status FROM payments WHERE project_id = ANY($1)', [projectIds]);
-            payments = payRes.rows;
+            // Compute total spent per project directly in SQL — bulletproof, no JS UUID comparison issues
+            const spentRes = await pool.query(`
+                SELECT project_id, COALESCE(SUM(amount), 0) as total_spent
+                FROM payments 
+                WHERE project_id = ANY($1) 
+                AND LOWER(status) IN ('paid', 'completed', 'approved', 'settled')
+                GROUP BY project_id
+            `, [projectIds]);
+            for (const row of spentRes.rows) {
+                spentByProject[row.project_id] = parseFloat(row.total_spent);
+            }
+            console.log('[Financial] Spent by project:', spentByProject);
         }
 
         const enriched = await Promise.all(projects.map(async (p) => {
             const pTasks = tasks.filter(t => t.project_id === p.project_id);
-            const pPayments = payments.filter(pm => pm.project_id === p.project_id);
+            const totalSpentForProject = spentByProject[p.project_id] || 0;
 
             const teamRes = await pool.query(`
                 SELECT 
@@ -2866,8 +2877,9 @@ app.get('/api/projects/user/:userId', async (req, res) => {
                 WHERE pa.project_id = $1 AND (pa.status = 'Accepted' OR pa.status = 'Pending')
             `, [p.project_id]);
 
-            const enrichedP = enrichProjectWithProgress(p, teamRes.rows, pTasks, pPayments);
+            const enrichedP = enrichProjectWithProgress(p, teamRes.rows, pTasks, totalSpentForProject);
             enrichedP.team = teamRes.rows;
+            enrichedP.client_name = p.client_name;
 
             const ratingCheck = await pool.query("SELECT EXISTS(SELECT 1 FROM ratings WHERE project_id = $1 AND rater_id = $2) as has_rated", [p.project_id, userId]);
             enrichedP.has_rated = ratingCheck.rows[0].has_rated;
@@ -4229,12 +4241,12 @@ app.get('/api/payments/summary/:projectId', authenticateToken, async (req, res) 
         const statsRes = await pool.query(`
             SELECT 
                 SUM(amount) as total_budget_applied,
-                SUM(CASE WHEN status = 'paid' THEN amount ELSE 0 END) as total_spent,
-                SUM(CASE WHEN status = 'pending_review' THEN amount ELSE 0 END) as pending_review,
-                SUM(CASE WHEN status = 'approved' THEN amount ELSE 0 END) as approved_unpaid,
-                SUM(CASE WHEN type = 'wage' AND status = 'paid' THEN amount ELSE 0 END) as wages_spent,
-                SUM(CASE WHEN type = 'material' AND status = 'paid' THEN amount ELSE 0 END) as materials_spent,
-                SUM(CASE WHEN (type = 'quote' OR type = 'adhoc') AND status = 'paid' THEN amount ELSE 0 END) as fees_spent
+                SUM(CASE WHEN LOWER(status) IN ('paid', 'completed', 'approved', 'settled') THEN amount ELSE 0 END) as total_spent,
+                SUM(CASE WHEN LOWER(status) = 'pending_review' THEN amount ELSE 0 END) as pending_review,
+                SUM(CASE WHEN LOWER(status) = 'approved' THEN amount ELSE 0 END) as approved_unpaid,
+                SUM(CASE WHEN type = 'wage' AND LOWER(status) IN ('paid', 'completed', 'approved', 'settled') THEN amount ELSE 0 END) as wages_spent,
+                SUM(CASE WHEN type = 'material' AND LOWER(status) IN ('paid', 'completed', 'approved', 'settled') THEN amount ELSE 0 END) as materials_spent,
+                SUM(CASE WHEN (type = 'quote' OR type = 'adhoc') AND LOWER(status) IN ('paid', 'completed', 'approved', 'settled') THEN amount ELSE 0 END) as fees_spent
             FROM payments
             WHERE project_id = $1
         `, [projectId]);

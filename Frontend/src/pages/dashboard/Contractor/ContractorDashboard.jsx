@@ -6,7 +6,7 @@ import {
     Construction, ClipboardList, Clock, 
     ArrowUpRight, MapPin, Search, ChevronRight,
     Star, Briefcase, FileText, Layers, ImageIcon,
-    Activity, ShieldAlert, CheckCircle, Navigation, BarChart3, PenTool, Check, DollarSign
+    Activity, ShieldAlert, CheckCircle, Navigation, BarChart3, PenTool, Check, DollarSign, XCircle
 } from 'lucide-react';
 import ProfilePromptModal from '../../../components/dashboard/Common/ProfilePromptModal';
 import RatingModal from '../../../components/dashboard/Common/RatingModal';
@@ -31,6 +31,7 @@ const ContractorDashboard = () => {
     const [loading, setLoading] = useState(true);
     const [ratingProject, setRatingProject] = useState(null);
     const [previewImage, setPreviewImage] = useState(null);
+    const [viewingTeamProject, setViewingTeamProject] = useState(null);
 
     const fetchData = useCallback(async () => {
         if (!currentUser?.id && !currentUser?.user_id) { setLoading(false); return; }
@@ -252,8 +253,9 @@ const ContractorDashboard = () => {
                     activeProjectPipelines
                         .filter(p => !searchQuery || p.name?.toLowerCase().includes(searchQuery.toLowerCase()) || p.location?.toLowerCase().includes(searchQuery.toLowerCase()))
                         .map(project => {
-                        const progressPercent = project.progress?.percentage || 0;
+                        const progressPercent = project.progress?.physical || 0;
                         const financialBurn = project.progress?.financial || 0;
+                        const financialBurnDisplay = typeof financialBurn === 'number' ? financialBurn.toFixed(2) : financialBurn;
                         const isOverBudget = project.progress?.isOverBudget;
 
                         return (
@@ -297,7 +299,7 @@ const ContractorDashboard = () => {
                                             variant="outline" 
                                             size="sm"
                                             className="bg-white border-[#E3DACD] text-[#5D4037] hover:border-[#C06842] text-[10px] py-2"
-                                            onClick={() => navigate('/dashboard/reports')}
+                                            onClick={() => setViewingTeamProject(project)}
                                         >
                                             Project Team
                                         </Button>
@@ -346,7 +348,7 @@ const ContractorDashboard = () => {
                                             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
                                                 <div className="space-y-2">
                                                     <div className="flex justify-between items-end">
-                                                        <span className="text-[9px] font-black uppercase text-[#8C7B70] tracking-widest">Growth</span>
+                                                        <span className="text-[9px] font-black uppercase text-[#8C7B70] tracking-widest">Physical Progress</span>
                                                         <span className="text-xl font-serif font-black text-[#2A1F1D]">{progressPercent}%</span>
                                                     </div>
                                                     <div className="h-2 w-full bg-white rounded-full border border-[#E3DACD]/50 p-0.5 shadow-inner">
@@ -360,13 +362,13 @@ const ContractorDashboard = () => {
 
                                                 <div className="space-y-2">
                                                     <div className="flex justify-between items-end">
-                                                        <span className="text-[9px] font-black uppercase text-[#8C7B70] tracking-widest">Financial Burn</span>
-                                                        <span className={`text-xl font-serif font-black ${isOverBudget ? 'text-rose-600' : 'text-[#2A1F1D]'}`}>{financialBurn}%</span>
+                                                        <span className="text-[9px] font-black uppercase text-[#8C7B70] tracking-widest">Financial Progress</span>
+                                                        <span className={`text-xl font-serif font-black ${isOverBudget ? 'text-rose-600' : 'text-[#2A1F1D]'}`}>{financialBurnDisplay}%</span>
                                                     </div>
                                                     <div className="h-2 w-full bg-white rounded-full border border-[#E3DACD]/50 p-0.5 shadow-inner">
                                                         <motion.div 
                                                             initial={{ width: 0 }}
-                                                            whileInView={{ width: `${financialBurn}%` }}
+                                                            whileInView={{ width: `${Math.max(financialBurn > 0 ? 0.5 : 0, financialBurn)}%` }}
                                                             className={`h-full rounded-full transition-all duration-1000 ${isOverBudget ? 'bg-rose-500' : 'bg-[#C06842]'}`}
                                                         />
                                                     </div>
@@ -423,6 +425,78 @@ const ContractorDashboard = () => {
                 )}
             </div>
             
+            {/* Project Team Modal */}
+            <AnimatePresence>
+                {viewingTeamProject && (
+                    <div className="fixed inset-0 z-[200] flex items-center justify-center p-6 backdrop-blur-xl bg-[#2A1F1D]/40" onClick={() => setViewingTeamProject(null)}>
+                        <motion.div 
+                            initial={{ scale: 0.9, opacity: 0, y: 20 }}
+                            animate={{ scale: 1, opacity: 1, y: 0 }}
+                            exit={{ scale: 0.9, opacity: 0, y: 20 }}
+                            className="bg-white w-full max-w-2xl rounded-[3rem] overflow-hidden shadow-2xl relative"
+                            onClick={e => e.stopPropagation()}
+                        >
+                            <button 
+                                onClick={() => setViewingTeamProject(null)}
+                                className="absolute top-6 right-6 text-[#8C7B70] hover:text-[#2A1F1D] transition-colors z-10"
+                            >
+                                <XCircle size={28} strokeWidth={1.5} />
+                            </button>
+
+                            <div className="p-10 space-y-8">
+                                <div className="space-y-2">
+                                    <div className="flex items-center gap-3">
+                                        <span className="h-[1px] w-6 bg-[#C06842]" />
+                                        <span className="text-[9px] font-black uppercase tracking-[0.4em] text-[#C06842]">Project Team</span>
+                                    </div>
+                                    <h2 className="text-3xl font-serif font-black text-[#2A1F1D] tracking-tight">{viewingTeamProject.name}</h2>
+                                    <p className="text-xs text-[#8C7B70] font-bold">All assigned professionals for this project</p>
+                                </div>
+
+                                <div className="space-y-3 max-h-[400px] overflow-y-auto custom-scrollbar pr-2">
+                                    {/* Land Owner */}
+                                    <div className="flex items-center gap-4 p-4 bg-[#F9F7F2] rounded-2xl border border-[#E3DACD]/30">
+                                        <div className="w-12 h-12 rounded-xl overflow-hidden border-2 border-[#C06842]/20 shrink-0">
+                                            <img src={`https://ui-avatars.com/api/?name=${viewingTeamProject.client_name || 'Land Owner'}&background=2A1F1D&color=fff&size=96`} alt="Owner" className="w-full h-full object-cover" />
+                                        </div>
+                                        <div className="flex-1 min-w-0">
+                                            <p className="font-bold text-[#2A1F1D] text-sm truncate">{viewingTeamProject.client_name || 'Land Owner'}</p>
+                                            <p className="text-[9px] font-black uppercase text-[#C06842] tracking-widest">Land Owner</p>
+                                        </div>
+                                        <span className="text-[8px] font-black uppercase tracking-widest bg-[#2A1F1D] text-white px-3 py-1.5 rounded-full shrink-0">Owner</span>
+                                    </div>
+
+                                    {/* Team Members */}
+                                    {(viewingTeamProject.team || []).filter(m => m.status === 'Accepted').map((member, idx) => (
+                                        <div key={idx} className="flex items-center gap-4 p-4 bg-white rounded-2xl border border-[#E3DACD]/40 hover:border-[#C06842]/30 transition-colors">
+                                            <div className="w-12 h-12 rounded-xl overflow-hidden border-2 border-[#E3DACD]/30 shrink-0">
+                                                <img src={`https://ui-avatars.com/api/?name=${member.name}&background=C06842&color=fff&size=96`} alt={member.name} className="w-full h-full object-cover" />
+                                            </div>
+                                            <div className="flex-1 min-w-0">
+                                                <p className="font-bold text-[#2A1F1D] text-sm truncate">{member.name}</p>
+                                                <p className="text-[9px] font-black uppercase text-[#8C7B70] tracking-widest">{member.sub_category || member.category || member.assigned_role}</p>
+                                            </div>
+                                            <span className={`text-[8px] font-black uppercase tracking-widest px-3 py-1.5 rounded-full shrink-0 ${
+                                                member.assigned_role?.toLowerCase() === 'contractor' 
+                                                    ? 'bg-[#C06842]/10 text-[#C06842] border border-[#C06842]/20' 
+                                                    : 'bg-[#F9F7F2] text-[#8C7B70] border border-[#E3DACD]/40'
+                                            }`}>{member.assigned_role || 'Member'}</span>
+                                        </div>
+                                    ))}
+
+                                    {(viewingTeamProject.team || []).filter(m => m.status === 'Accepted').length === 0 && (
+                                        <div className="py-12 text-center">
+                                            <Users size={32} className="mx-auto text-[#E3DACD] mb-3" />
+                                            <p className="text-xs font-bold text-[#8C7B70]">No team members assigned yet</p>
+                                        </div>
+                                    )}
+                                </div>
+                            </div>
+                        </motion.div>
+                    </div>
+                )}
+            </AnimatePresence>
+
             {/* Image Preview Modal */}
             <AnimatePresence>
                 {previewImage && (

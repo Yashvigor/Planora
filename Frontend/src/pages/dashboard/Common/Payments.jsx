@@ -27,7 +27,6 @@ const Payments = () => {
     
     // Modal & Drawer States
     const [isRequestModalOpen, setIsRequestModalOpen] = useState(false);
-    const [selectedPayment, setSelectedPayment] = useState(null); // For Details Drawer
     const [requestType, setRequestType] = useState('quote'); // quote, wage, material, adhoc
     const [formData, setFormData] = useState({
         amount: '',
@@ -57,7 +56,8 @@ const Payments = () => {
             const res = await fetch(url, { headers: { 'Authorization': `Bearer ${token}` } });
             if (res.status === 401) return; 
             const data = await res.json();
-            setPayments(Array.isArray(data) ? data : []);
+            const finalPayments = Array.isArray(data) ? data : [];
+            setPayments(finalPayments);
         } catch (err) { console.error('Ledger Fetch Error:', err); }
     }, []);
 
@@ -164,7 +164,6 @@ const Payments = () => {
                 const uid = currentUser.user_id || currentUser.id;
                 fetchLedger(uid, activeProject.project_id);
                 fetchSummary(activeProject.project_id);
-                if (selectedPayment?.payment_id === paymentId) setSelectedPayment(null);
             }
         } catch (err) { console.error('Update Error:', err); } finally { setIsUpdating(false); }
     };
@@ -433,8 +432,8 @@ const Payments = () => {
             </div>
 
             {/* 2. Analytical Breakthrough & Table */}
-            <div className="grid grid-cols-1 xl:grid-cols-12 gap-10">
-                <div className="xl:col-span-8 space-y-10">
+            <div className="space-y-10">
+                <div className="space-y-10">
                     
                     {/* Investment Pulse (For Owners/Contractors) */}
                     {(isCurrentUserLandOwner || isCurrentUserContractor) && (
@@ -445,7 +444,7 @@ const Payments = () => {
                                     <p className="text-[#8C7B70] text-xs font-bold uppercase tracking-widest mt-1">Resource Allocation Matrix</p>
                                 </div>
                                 <span className={`text-[10px] font-black uppercase px-4 py-2 rounded-full border ${isCurrentUserLandOwner ? 'bg-[#F9F7F2] text-[#C06842] border-[#E3DACD]' : 'bg-white text-[#2A1F1D] border-[#E3DACD]'}`}>
-                                    {Math.round((summary?.stats?.total_spent / summary?.total_budget * 100) || 0)}% Allocated
+                                    {((summary?.stats?.total_spent / summary?.total_budget * 100) || 0).toFixed(2)}% Progress
                                 </span>
                             </div>
 
@@ -458,10 +457,14 @@ const Payments = () => {
                                     <div key={i} className="space-y-4">
                                         <div className="flex items-center justify-between text-[10px] font-black uppercase text-[#8C7B70] tracking-widest">
                                             <span className="flex items-center gap-2"><item.icon size={12} className="text-[#C06842]" /> {item.label}</span>
-                                            <span className="text-[#2A1F1D]">{Math.round(item.p)}%</span>
+                                            <span className="text-[#2A1F1D]">{item.p.toFixed(2)}%</span>
                                         </div>
                                         <div className="h-1.5 bg-[#F9F7F2] rounded-full overflow-hidden">
-                                            <motion.div initial={{ width: 0 }} animate={{ width: `${item.p}%` }} className="h-full bg-[#C06842]" />
+                                            <motion.div 
+                                                initial={{ width: 0 }} 
+                                                animate={{ width: `${Math.max(item.p > 0 ? 0.5 : 0, item.p)}%` }} 
+                                                className="h-full bg-[#C06842]" 
+                                            />
                                         </div>
                                         <p className="font-black text-lg">{formatCurrency(item.val)}</p>
                                     </div>
@@ -503,7 +506,8 @@ const Payments = () => {
                                         <th className="px-8 py-6">Entities</th>
                                         <th className="px-8 py-6">Protocol</th>
                                         <th className="px-8 py-6">Status</th>
-                                        <th className="px-8 py-6 text-right">Value</th>
+                                        <th className="px-8 py-6 text-right font-serif">Audit Value</th>
+                                        <th className="px-8 py-6 text-right">Actions</th>
                                     </tr>
                                 </thead>
                                 <tbody className="divide-y divide-[#F9F7F2]/50 font-sans">
@@ -523,8 +527,7 @@ const Payments = () => {
                                                     animate={{ opacity: 1, y: 0 }}
                                                     transition={{ delay: i * 0.05 }}
                                                     key={p.payment_id} 
-                                                    onClick={() => setSelectedPayment(p)}
-                                                    className="group hover:bg-[#FDFCF8] cursor-pointer transition-colors"
+                                                    className="group hover:bg-[#FDFCF8] transition-colors border-b border-[#F9F7F2]"
                                                 >
                                                     <td className="px-8 py-6">
                                                         <span className="font-bold text-xs">{new Date(p.created_at).toLocaleDateString()}</span>
@@ -551,6 +554,17 @@ const Payments = () => {
                                                     <td className="px-8 py-6 text-right">
                                                         <span className="font-black text-[16px] tracking-tight">{formatCurrency(p.amount)}</span>
                                                     </td>
+                                                    <td className="px-8 py-6 text-right" onClick={(e) => e.stopPropagation()}>
+                                                        <div className="flex justify-end">
+                                                            <button 
+                                                                onClick={() => handleDownloadReceipt(p)}
+                                                                className="p-3 bg-white hover:bg-[#C06842] text-[#C06842] hover:text-white rounded-xl border border-[#E3DACD] transition-all shadow-sm hover:shadow-md"
+                                                                title="Download Receipt (PDF)"
+                                                            >
+                                                                <Download size={18} />
+                                                            </button>
+                                                        </div>
+                                                    </td>
                                                 </motion.tr>
                                             )
                                         })
@@ -559,93 +573,6 @@ const Payments = () => {
                             </table>
                         </div>
                     </div>
-                </div>
-
-                {/* Sidebar Drawer */}
-                <div className="xl:col-span-4 space-y-8">
-                     <AnimatePresence mode='wait'>
-                        {selectedPayment ? (
-                            <motion.div 
-                                initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: 20 }}
-                                className="bg-[#2A1F1D] text-white p-10 rounded-[3rem] shadow-2xl space-y-8 sticky top-32"
-                            >
-                                <div className="flex items-center justify-between">
-                                    <h3 className="text-2xl font-serif font-black">Audit Vault</h3>
-                                    <button onClick={() => setSelectedPayment(null)} className="p-2 bg-white/10 rounded-xl hover:bg-white/20"><X size={20} /></button>
-                                </div>
-
-                                <div className="space-y-6 text-center">
-                                    <div className="p-6 bg-white/5 rounded-2xl border border-white/10">
-                                        <p className="text-[9px] font-black uppercase text-white/40 tracking-[0.3em] mb-2">Claim Value</p>
-                                        <h4 className="text-4xl font-serif font-black text-[#C06842]">{formatCurrency(selectedPayment.amount)}</h4>
-                                        <div className={`inline-flex items-center gap-2 px-3 py-1 rounded-full text-[9px] font-black uppercase mt-4 ${getStatusColor(selectedPayment.status).bg} ${getStatusColor(selectedPayment.status).text}`}>
-                                            {selectedPayment.status.replace('_', ' ')}
-                                        </div>
-                                    </div>
-
-                                    <div className="text-left space-y-4 font-sans">
-                                        <div className="grid grid-cols-2 gap-4 text-xs font-bold font-sans">
-                                            <div className="space-y-1">
-                                                <p className="text-white/30 uppercase text-[9px] tracking-widest font-black">Timeline</p>
-                                                <p>{new Date(selectedPayment.created_at).toLocaleString()}</p>
-                                            </div>
-                                            <div className="space-y-1">
-                                                <p className="text-white/30 uppercase text-[9px] tracking-widest font-black">Audit ID</p>
-                                                <p className="font-mono text-[10px]">#PL-{selectedPayment.payment_id.toString().padStart(6, '0')}</p>
-                                            </div>
-                                        </div>
-                                        <div className="space-y-1">
-                                            <p className="text-white/30 uppercase text-[9px] tracking-widest font-black">Description</p>
-                                            <p className="text-sm font-medium leading-relaxed opacity-80">{selectedPayment.description}</p>
-                                        </div>
-
-                                        {selectedPayment.proof_image_path && (
-                                            <div className="space-y-3">
-                                                 <p className="text-white/30 uppercase text-[9px] tracking-widest font-black">Visual Proof</p>
-                                                 <a href={`${import.meta.env.VITE_API_URL}/${selectedPayment.proof_image_path}`} target="_blank" rel="noopener noreferrer" className="block w-full h-32 bg-white/5 border border-dashed border-white/10 rounded-2xl flex flex-col items-center justify-center opacity-60 hover:opacity-100 transition-opacity">
-                                                    <ImageIcon size={20} className="mb-2" />
-                                                    <span className="text-[9px] font-black uppercase">Verify Proof</span>
-                                                 </a>
-                                            </div>
-                                        )}
-                                    </div>
-
-                                    <div className="pt-6 space-y-3">
-                                        {isPayer(selectedPayment) && selectedPayment.status === 'pending_review' && (
-                                            <button 
-                                                disabled={isUpdating}
-                                                onClick={() => handleUpdateStatus(selectedPayment.payment_id, 'approved')} 
-                                                className="w-full py-4 bg-blue-600 hover:bg-blue-700 text-white rounded-2xl font-black uppercase text-xs tracking-widest disabled:opacity-50"
-                                            >
-                                                {isUpdating ? 'Authorizing...' : 'Authorize Claim'}
-                                            </button>
-                                        )}
-                                        {isPayer(selectedPayment) && selectedPayment.status === 'approved' && (
-                                            <button 
-                                                disabled={isUpdating}
-                                                onClick={() => handleUpdateStatus(selectedPayment.payment_id, 'paid')} 
-                                                className="w-full py-4 bg-emerald-600 hover:bg-emerald-700 text-white rounded-2xl font-black uppercase text-xs tracking-widest disabled:opacity-50"
-                                            >
-                                                {isUpdating ? 'Settling...' : 'Final Settlement'}
-                                            </button>
-                                        )}
-                                        <button 
-                                            onClick={() => handleDownloadReceipt(selectedPayment)}
-                                            className="w-full py-4 bg-white/5 hover:bg-white/10 text-white border border-white/10 rounded-2xl font-black uppercase text-xs tracking-widest flex items-center justify-center gap-2"
-                                        >
-                                            <Download size={14} /> Download Receipt
-                                        </button>
-                                    </div>
-                                </div>
-                            </motion.div>
-                        ) : (
-                            <div className="h-[600px] border-2 border-dashed border-[#E3DACD] rounded-[3rem] flex flex-col items-center justify-center p-12 text-center text-[#8C7B70] sticky top-32">
-                                <LedgerHistoryIcon size={48} className="mb-6 opacity-20" />
-                                <h4 className="font-black uppercase text-[10px] tracking-widest">Select Entry</h4>
-                                <p className="text-sm font-medium mt-2">Pick a verified transaction to perform high-level secondary audit.</p>
-                            </div>
-                        )}
-                     </AnimatePresence>
                 </div>
             </div>
 
