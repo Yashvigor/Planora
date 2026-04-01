@@ -260,165 +260,184 @@ const ContractorDashboard = () => {
 
                         return (
                             <motion.div 
-                                initial={{ opacity: 0, y: 30 }}
-                                whileInView={{ opacity: 1, y: 0 }}
-                                viewport={{ once: true }}
-                                transition={{ duration: 0.6 }}
-                                key={project.project_id} 
-                                className="group relative bg-white rounded-[2rem] border border-[#E3DACD]/50 hover:border-[#C06842]/30 overflow-hidden transition-all duration-500 hover:shadow-[0_25px_50px_-12px_rgba(42,31,29,0.08)] flex flex-col"
-                            >
-                                {/* Decorative Gradient Top */}
-                                <div className="absolute top-0 left-0 right-0 h-2 bg-gradient-to-r from-[#C06842] via-[#E68A2E] to-[#C06842] opacity-0 group-hover:opacity-100 transition-opacity duration-500"></div>
+                                 initial={{ opacity: 0, y: 30 }}
+                                 whileInView={{ opacity: 1, y: 0 }}
+                                 viewport={{ once: true }}
+                                 transition={{ duration: 0.6 }}
+                                 key={project.project_id} 
+                                 className="group relative bg-white rounded-[2rem] border border-[#E3DACD]/50 hover:border-[#C06842]/30 overflow-hidden transition-all duration-500 hover:shadow-[0_25px_50px_-12px_rgba(42,31,29,0.08)] flex flex-col"
+                             >
+                                 {/* Decorative Gradient Top */}
+                                 <div className="absolute top-0 left-0 right-0 h-1.5 bg-gradient-to-r from-[#C06842] via-[#E68A2E] to-[#C06842] opacity-80 group-hover:opacity-100 transition-opacity duration-500"></div>
 
-                                {/* 1. STRATEGIC HEADER (COMPACT) */}
-                                <div className="p-6 md:p-8 border-b border-[#F9F7F2] flex flex-col xl:flex-row justify-between items-start xl:items-center gap-6 bg-gradient-to-b from-[#FDFCF8] to-white">
-                                    <div className="flex items-center gap-5">
-                                        <div className="w-14 h-14 rounded-2xl bg-[#2A1F1D] flex items-center justify-center text-[#C06842] shadow-lg rotate-3 group-hover:rotate-0 transition-transform duration-500">
-                                            <Layers size={24} strokeWidth={1.5} />
-                                        </div>
-                                        <div className="space-y-0.5">
-                                            <div className="flex items-center gap-3">
-                                                <h2 className="text-2xl font-serif font-black text-[#2A1F1D] tracking-tight group-hover:text-[#C06842] transition-colors">{project.name}</h2>
-                                                <span className="text-[9px] font-black uppercase text-[#C06842] bg-[#C06842]/5 px-2.5 py-0.5 rounded-full border border-[#C06842]/10 tracking-widest">
-                                                    {project.assigned_role || 'Lead Contractor'}
-                                                </span>
-                                            </div>
-                                            <div className="flex items-center gap-2.5 text-[10px] font-bold text-[#8C7B70] uppercase tracking-widest">
-                                                <span className="text-[#2A1F1D]">Client: {project.client_name || 'Land Owner'}</span>
-                                                <span className="w-1 h-1 rounded-full bg-[#E3DACD]" />
-                                                <span className="flex items-center gap-1">
-                                                    <MapPin size={10} className="text-[#C06842]" /> {project.location}
-                                                </span>
-                                            </div>
-                                        </div>
-                                    </div>
-                                    
-                                    <div className="flex flex-wrap gap-2.5 w-full xl:w-auto">
-                                        <Button 
-                                            icon={Users} 
-                                            variant="outline" 
-                                            size="sm"
-                                            className="bg-white border-[#E3DACD] text-[#5D4037] hover:border-[#C06842] text-[10px] py-2"
-                                            onClick={() => setViewingTeamProject(project)}
-                                        >
-                                            Project Team
-                                        </Button>
-                                        <Button 
-                                            icon={DollarSign} 
-                                            variant="outline" 
-                                            size="sm"
-                                            className="bg-white border-[#E3DACD] text-[#5D4037] hover:border-[#C06842] text-[10px] py-2"
-                                            onClick={() => navigate('/dashboard/payments')}
-                                        >
-                                            Payout Control
-                                        </Button>
-                                        <Button 
-                                            icon={FileText} 
-                                            variant="primary" 
-                                            size="sm"
-                                            className="bg-[#3E2B26] hover:bg-[#2A1F1D] text-white shadow-md text-[10px] py-2"
-                                            onClick={() => handleGenerateDailyReport(project)}
-                                        >
-                                            Export Daily Log
-                                        </Button>
-                                    </div>
-                                </div>
+                                 {/* Glassmorphic Background Accents */}
+                                 <div className="absolute -top-24 -right-24 w-64 h-64 bg-[#C06842]/5 rounded-full blur-3xl pointer-events-none group-hover:bg-[#C06842]/10 transition-colors duration-700"></div>
+                                 <div className="absolute -bottom-24 -left-24 w-64 h-64 bg-[#E68A2E]/5 rounded-full blur-3xl pointer-events-none group-hover:bg-[#E68A2E]/10 transition-colors duration-700"></div>
 
-                                {/* 2. MAIN CONTENT GRID */}
-                                <div className="p-8 md:p-10 grid grid-cols-1 md:grid-cols-2 xl:grid-cols-12 gap-10">
-                                    
-                                    {/* LEFT COLUMN (25%) - ENVIRONMENT */}
-                                    <div className="xl:col-span-3 md:col-span-1 space-y-4 order-2 xl:order-1">
-                                        <div className="flex items-center gap-2 px-1">
-                                            <Activity size={12} className="text-[#C06842] animate-pulse" />
-                                            <span className="text-[9px] font-black uppercase text-[#2A1F1D] tracking-[0.2em]">Environmental Sync</span>
-                                        </div>
-                                        <WeatherSafetyWidget location={project.location} compact={true} />
-                                    </div>
+                                 {/* 1. STRATEGIC HEADER (COMPACT & PREMIUM) */}
+                                 <div className="relative z-10 p-6 md:p-8 border-b border-[#F9F7F2] flex flex-col xl:flex-row justify-between items-start xl:items-center gap-6 bg-white/60 backdrop-blur-sm">
+                                     <div className="flex items-center gap-6">
+                                         <div className="relative group/icon">
+                                             <div className="absolute -inset-2 bg-gradient-to-tr from-[#C06842] to-[#E68A2E] rounded-3xl blur opacity-20 group-hover/icon:opacity-40 transition-opacity"></div>
+                                             <div className="relative w-16 h-16 rounded-[1.2rem] bg-[#2A1F1D] flex items-center justify-center text-[#C06842] shadow-xl shadow-[#2A1F1D]/20 transform -rotate-2 group-hover:rotate-0 transition-all duration-500">
+                                                 <Layers size={28} strokeWidth={1.5} />
+                                             </div>
+                                         </div>
+                                         <div className="space-y-1.5">
+                                             <div className="flex items-center gap-4 flex-wrap">
+                                                 <h2 className="text-3xl font-serif font-black text-[#2A1F1D] tracking-tight group-hover:text-[#C06842] transition-colors leading-none">{project.name}</h2>
+                                                 <div className="flex items-center gap-1.5 text-[9px] font-black uppercase text-[#C06842] bg-[#C06842]/5 px-3 py-1 rounded-full border border-[#C06842]/10 tracking-[0.2em] shadow-sm">
+                                                     {project.assigned_role || 'Executive Lead'}
+                                                 </div>
+                                             </div>
+                                             <div className="flex items-center gap-3 text-[10px] font-bold text-[#8C7B70] uppercase tracking-widest">
+                                                 <span className="text-[#2A1F1D] flex items-center gap-1.5"><Users size={12}/> Client: {project.client_name || 'Asset Owner'}</span>
+                                                 <span className="w-1 h-1 rounded-full bg-[#E3DACD]" />
+                                                 <span className="flex items-center gap-1.5">
+                                                     <MapPin size={12} className="text-[#C06842]" /> {project.location}
+                                                 </span>
+                                             </div>
+                                         </div>
+                                     </div>
+                                     
+                                     <div className="flex flex-wrap items-center gap-2.5">
+                                         {[
+                                             { label: 'Team', icon: Users, onClick: () => setViewingTeamProject(project) },
+                                             { label: 'Payments', icon: DollarSign, onClick: () => navigate('/dashboard/payments') },
+                                             { label: 'Site Log', icon: FileText, onClick: () => handleGenerateDailyReport(project), primary: true }
+                                         ].map((action, aidx) => (
+                                             <button
+                                                 key={aidx}
+                                                 onClick={action.onClick}
+                                                 className={`flex items-center gap-2 px-5 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all active:scale-95 ${
+                                                     action.primary 
+                                                     ? 'bg-[#3E2B26] text-white hover:bg-[#b96a41] shadow-lg shadow-[#3E2B26]/10' 
+                                                     : 'bg-[#F9F7F2] text-[#8C7B70] border border-[#E3DACD]/50 hover:border-[#b96a41] hover:text-[#b96a41]'
+                                                 }`}
+                                             >
+                                                 <action.icon size={14} />
+                                                 <span className="hidden sm:inline">{action.label}</span>
+                                             </button>
+                                         ))}
+                                     </div>
+                                 </div>
 
-                                    {/* MIDDLE COLUMN (50%) - EXECUTION ANALYTICS */}
-                                    <div className="xl:col-span-6 md:col-span-2 order-1 xl:order-2 space-y-4 bg-[#F9F7F2]/30 p-6 rounded-[2rem] border border-[#F9F7F2]">
-                                        <div className="space-y-4">
-                                            <div className="flex items-center gap-2 px-1">
-                                                <BarChart3 size={12} className="text-[#C06842]" />
-                                                <span className="text-[9px] font-black uppercase text-[#2A1F1D] tracking-[0.2em]">Execution Analytics</span>
-                                            </div>
-                                            
-                                            {/* Progress Sections */}
-                                            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                                                <div className="space-y-2">
-                                                    <div className="flex justify-between items-end">
-                                                        <span className="text-[9px] font-black uppercase text-[#8C7B70] tracking-widest">Physical Progress</span>
-                                                        <span className="text-xl font-serif font-black text-[#2A1F1D]">{progressPercent}%</span>
-                                                    </div>
-                                                    <div className="h-2 w-full bg-white rounded-full border border-[#E3DACD]/50 p-0.5 shadow-inner">
-                                                        <motion.div 
-                                                            initial={{ width: 0 }}
-                                                            whileInView={{ width: `${progressPercent}%` }}
-                                                            className="h-full bg-gradient-to-r from-[#2A1F1D] to-[#C06842] rounded-full"
-                                                        />
-                                                    </div>
-                                                </div>
+                                 {/* 2. MAIN CONTENT GRID */}
+                                 <div className="relative z-10 p-8 md:p-10 grid grid-cols-1 lg:grid-cols-12 gap-12">
+                                     
+                                     {/* EXECUTION INTELLIGENCE */}
+                                     <div className="lg:col-span-3 space-y-6">
+                                         <div className="flex items-center gap-3 mb-2">
+                                             <div className="w-8 h-8 rounded-lg bg-emerald-50 flex items-center justify-center text-emerald-600">
+                                                 <Activity size={16} className="animate-pulse" />
+                                             </div>
+                                             <span className="text-[10px] font-black uppercase text-[#2A1F1D] tracking-[0.2em]">Live Ops Sync</span>
+                                         </div>
+                                         <div className="bg-white/40 p-1 rounded-3xl border border-[#E3DACD]/30">
+                                             <WeatherSafetyWidget location={project.location} compact={true} />
+                                         </div>
+                                     </div>
 
-                                                <div className="space-y-2">
-                                                    <div className="flex justify-between items-end">
-                                                        <span className="text-[9px] font-black uppercase text-[#8C7B70] tracking-widest">Financial Progress</span>
-                                                        <span className={`text-xl font-serif font-black ${isOverBudget ? 'text-rose-600' : 'text-[#2A1F1D]'}`}>{financialBurnDisplay}%</span>
-                                                    </div>
-                                                    <div className="h-2 w-full bg-white rounded-full border border-[#E3DACD]/50 p-0.5 shadow-inner">
-                                                        <motion.div 
-                                                            initial={{ width: 0 }}
-                                                            whileInView={{ width: `${Math.max(financialBurn > 0 ? 0.5 : 0, financialBurn)}%` }}
-                                                            className={`h-full rounded-full transition-all duration-1000 ${isOverBudget ? 'bg-rose-500' : 'bg-[#C06842]'}`}
-                                                        />
-                                                    </div>
-                                                </div>
-                                            </div>
+                                     {/* PRODUCTIVITY ANALYTICS */}
+                                     <div className="lg:col-span-6 space-y-8 bg-[#FDFCF8] p-8 rounded-[2.5rem] border border-[#E3DACD]/40 shadow-inner relative overflow-hidden group/stats">
+                                         <div className="absolute top-0 right-0 w-32 h-32 bg-gradient-to-br from-[#C06842]/5 to-transparent rounded-full -mr-16 -mt-16 transition-transform duration-700 group-hover/stats:scale-150"></div>
 
-                                            {/* Phase Sync */}
-                                            <div className="pt-4 border-t border-[#E3DACD]/30">
-                                                <div className="flex items-center gap-2 mb-4 px-1">
-                                                    <Layers size={12} className="text-[#C06842]" />
-                                                    <span className="text-[9px] font-black uppercase text-[#2A1F1D] tracking-[0.2em]">Milestone Authorization</span>
-                                                </div>
-                                                <ProjectLifecycle project={project} onUpdatePhase={handlePhaseUpdate} />
-                                            </div>
-                                        </div>
-                                    </div>
+                                         <div className="flex items-center gap-3 mb-2 relative z-10">
+                                             <BarChart3 size={16} className="text-[#C06842]" />
+                                             <span className="text-[10px] font-black uppercase text-[#2A1F1D] tracking-[0.2em]">Efficiency Pulse</span>
+                                         </div>
+                                         
+                                         {/* Progress Sections */}
+                                         <div className="grid grid-cols-1 md:grid-cols-2 gap-10 relative z-10">
+                                             <div className="space-y-4">
+                                                 <div className="flex justify-between items-end px-1">
+                                                     <div className="space-y-1">
+                                                         <span className="text-[9px] font-black uppercase text-[#8C7B70] tracking-[0.2em]">Physical Completion</span>
+                                                         <p className="text-sm font-bold text-[#2A1F1D]">Milestones Staged</p>
+                                                     </div>
+                                                     <span className="text-3xl font-serif font-black text-[#2A1F1D]">{progressPercent}<span className="text-xs text-[#C06842]">%</span></span>
+                                                 </div>
+                                                 <div className="h-2.5 w-full bg-white rounded-full border border-[#E3DACD]/50 p-0.5 shadow-inner">
+                                                     <motion.div 
+                                                         initial={{ width: 0 }}
+                                                         whileInView={{ width: `${progressPercent}%` }}
+                                                         transition={{ duration: 1.5, ease: "circOut" }}
+                                                         className="h-full bg-gradient-to-r from-[#2A1F1D] to-[#C06842] rounded-full relative"
+                                                     >
+                                                         <div className="absolute top-0 right-0 w-2 h-full bg-white/20 rounded-full"></div>
+                                                     </motion.div>
+                                                 </div>
+                                             </div>
 
-                                    {/* RIGHT COLUMN (25%) - VISUALS + REPORTING */}
-                                    <div className="xl:col-span-3 md:col-span-1 space-y-6 order-3">
-                                        <div className="space-y-3">
-                                            <div className="flex items-center justify-between px-1">
-                                                <div className="flex items-center gap-2">
-                                                    <ImageIcon size={12} className="text-[#C06842]" />
-                                                    <span className="text-[9px] font-black uppercase text-[#2A1F1D] tracking-[0.2em]">Visual Feed</span>
-                                                </div>
-                                            </div>
-                                            
-                                            <div className="flex gap-3 overflow-x-auto pb-2 custom-scrollbar snap-x">
-                                                {project.tasks?.filter(t => t.image_path).length > 0 ? (
-                                                    project.tasks?.filter(t => t.image_path).map((task, tidx) => (
-                                                        <div 
-                                                            key={tidx} 
-                                                            className="relative w-40 h-28 rounded-xl overflow-hidden border border-[#E3DACD]/30 shadow-sm group/img shrink-0 snap-start cursor-pointer transition-all"
-                                                            onClick={() => setPreviewImage(`${import.meta.env.VITE_API_URL}/${task.image_path}`)}
-                                                        >
-                                                            <img src={`${import.meta.env.VITE_API_URL}/${task.image_path}`} alt="Site" className="w-full h-full object-cover group-hover/img:scale-105 transition-transform" />
-                                                        </div>
-                                                    ))
-                                                ) : (
-                                                    <div className="w-full h-28 rounded-xl border border-dashed border-[#E3DACD] bg-[#F9F7F2]/50 flex flex-col items-center justify-center text-center p-3">
-                                                        <ImageIcon size={16} className="text-[#E3DACD] mb-1" />
-                                                        <p className="text-[7px] font-black uppercase text-[#8C7B70] tracking-widest">No Visuals</p>
-                                                    </div>
-                                                )}
-                                            </div>
-                                        </div>
+                                             <div className="space-y-4">
+                                                 <div className="flex justify-between items-end px-1">
+                                                     <div className="space-y-1">
+                                                         <span className="text-[9px] font-black uppercase text-[#8C7B70] tracking-[0.2em]">Payout Utilization</span>
+                                                         <p className={`text-sm font-bold ${isOverBudget ? 'text-rose-600' : 'text-[#2A1F1D]'}`}>Financial Resource Burn</p>
+                                                     </div>
+                                                     <span className={`text-3xl font-serif font-black ${isOverBudget ? 'text-rose-600' : 'text-[#2A1F1D]'}`}>{financialBurnDisplay}<span className="text-xs">%</span></span>
+                                                 </div>
+                                                 <div className="h-2.5 w-full bg-white rounded-full border border-[#E3DACD]/50 p-0.5 shadow-inner">
+                                                     <motion.div 
+                                                         initial={{ width: 0 }}
+                                                         whileInView={{ width: `${Math.max(financialBurn > 0 ? 0.5 : 0, financialBurn)}%` }}
+                                                         transition={{ duration: 1.5, ease: "circOut", delay: 0.2 }}
+                                                         className={`h-full rounded-full relative transition-all duration-1000 ${isOverBudget ? 'bg-rose-500' : 'bg-[#E68A2E]'}`}
+                                                     >
+                                                         <div className="absolute top-0 right-0 w-2 h-full bg-white/20 rounded-full animate-pulse"></div>
+                                                     </motion.div>
+                                                 </div>
+                                             </div>
+                                         </div>
 
-                                        <DailyReportSummary project={project} />
-                                    </div>
-                                </div>
+                                         {/* Phase Sync */}
+                                         <div className="pt-8 border-t border-[#E3DACD]/30 relative z-10">
+                                             <div className="flex items-center gap-3 mb-6 px-1">
+                                                 <Layers size={16} className="text-[#C06842]" />
+                                                 <span className="text-[10px] font-black uppercase text-[#2A1F1D] tracking-[0.2em]">Contractual Lifecycle</span>
+                                             </div>
+                                             <ProjectLifecycle project={project} onUpdatePhase={handlePhaseUpdate} />
+                                         </div>
+                                     </div>
+
+                                     {/* VISUAL EVIDENCE & REPORTING */}
+                                     <div className="lg:col-span-3 space-y-8">
+                                         <div className="space-y-4">
+                                             <div className="flex items-center justify-between px-1">
+                                                 <div className="flex items-center gap-3">
+                                                     <ImageIcon size={16} className="text-[#C06842]" />
+                                                     <span className="text-[10px] font-black uppercase text-[#2A1F1D] tracking-[0.2em]">Field Visuals</span>
+                                                 </div>
+                                             </div>
+                                             
+                                             <div className="flex gap-4 overflow-x-auto pb-4 custom-scrollbar snap-x">
+                                                 {project.tasks?.filter(t => t.image_path).length > 0 ? (
+                                                     project.tasks?.filter(t => t.image_path).map((task, tidx) => (
+                                                         <div 
+                                                             key={tidx} 
+                                                             className="relative w-44 h-32 rounded-2xl overflow-hidden border-2 border-[#E3DACD]/30 shadow-lg group/img shrink-0 snap-start cursor-pointer"
+                                                             onClick={() => setPreviewImage(`${import.meta.env.VITE_API_URL}/${task.image_path}`)}
+                                                         >
+                                                             <img src={`${import.meta.env.VITE_API_URL}/${task.image_path}`} alt="Site" className="w-full h-full object-cover group-hover/img:scale-110 transition-transform duration-700" />
+                                                             <div className="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent opacity-0 group-hover/img:opacity-100 transition-opacity flex items-end p-3">
+                                                                 <span className="text-[8px] text-white font-black uppercase tracking-widest">Enlarge Log</span>
+                                                             </div>
+                                                         </div>
+                                                     ))
+                                                 ) : (
+                                                     <div className="w-full h-32 rounded-2xl border-2 border-dashed border-[#E3DACD] bg-[#FDFCF8] flex flex-col items-center justify-center text-center p-4 group-hover:border-[#C06842]/40 transition-colors">
+                                                         <div className="w-10 h-10 rounded-full bg-[#F9F7F2] flex items-center justify-center text-[#E3DACD] mb-2 group-hover:text-[#C06842] transition-colors">
+                                                            <ImageIcon size={20} />
+                                                         </div>
+                                                         <p className="text-[8px] font-black uppercase text-[#8C7B70] tracking-[0.2rem]">No Field Feed</p>
+                                                     </div>
+                                                 )}
+                                             </div>
+                                         </div>
+
+                                         <DailyReportSummary project={project} />
+                                     </div>
+                                 </div>
                             </motion.div>
                         );
                     })
