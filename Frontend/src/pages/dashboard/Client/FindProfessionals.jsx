@@ -48,20 +48,26 @@ const FindProfessionals = () => {
                 setCurrentUserCategory(category);
             }
 
-            // Fetch Projects
+            // Fetch Projects (Role-Aware)
             if (userId) {
                 try {
-                    const isLandOwner = userData.category?.toUpperCase() === 'LAND OWNER' || userData.role?.toUpperCase() === 'LAND_OWNER';
+                    const isLandOwner = userData.category?.toUpperCase() === 'LAND OWNER' || userData.role?.toUpperCase() === 'LAND_OWNER' || userData.role === 'land_owner';
                     const endpoint = isLandOwner ? `/api/projects/user/${userId}` : `/api/professionals/${userId}/projects`;
                     const res = await fetch(`${import.meta.env.VITE_API_URL}${endpoint}`, {
                         headers: { 'Authorization': `Bearer ${localStorage.getItem('planora_token')}` }
                     });
                     if (res.ok) {
                         const data = await res.json();
-                        setProjects(data);
-                        if (data.length > 0) setSelectedProjectId(data[0].project_id || data[0].id);
+                        // Filter for active/planning projects (not completed/rejected)
+                        const activeOnes = data.filter(p => !['Completed', 'Rejected', 'Cancelled'].includes(p.status));
+                        setProjects(activeOnes.length > 0 ? activeOnes : data);
+                        if (activeOnes.length > 0) {
+                            setSelectedProjectId(activeOnes[0].project_id || activeOnes[0].id);
+                        } else if (data.length > 0) {
+                            setSelectedProjectId(data[0].project_id || data[0].id);
+                        }
                     }
-                } catch (err) { console.error(err); }
+                } catch (err) { console.error("[Projects Fetch Error]", err); }
             }
 
             // 2. Location Logic (Live -> Profile -> Fallback)
@@ -239,7 +245,26 @@ const FindProfessionals = () => {
             {/* Unified Command Center (Based on Provided Image) */}
             <div className="absolute top-8 left-1/2 -translate-x-1/2 z-[10000] w-full max-w-xl px-4">
                 <div className="bg-white/95 backdrop-blur-xl rounded-[28px] border border-[#E3DACD] shadow-2xl overflow-hidden flex items-center p-1.5 h-14">
-                    {/* Left Dropdown: Phase Selection */}
+                    {/* Left Dropdown: Project Context */}
+                    <div className="relative flex-1 group h-full">
+                         <select 
+                            value={selectedProjectId} 
+                            onChange={(e) => setSelectedProjectId(e.target.value)} 
+                            className="w-full h-full pl-6 pr-10 bg-transparent border-none focus:ring-0 focus:outline-none appearance-none text-xs font-black text-[#E68A2E] cursor-pointer uppercase tracking-tighter"
+                        >
+                            <option value="">Choose Project</option>
+                            {projects.map(p => (
+                                <option key={p.project_id || p.id} value={p.project_id || p.id}>{p.name}</option>
+                            ))}
+                        </select>
+                        <div className="absolute right-4 top-1/2 -translate-y-1/2 pointer-events-none opacity-40">
+                             <Briefcase size={12} />
+                        </div>
+                    </div>
+
+                    <div className="w-[1px] h-8 bg-[#E3DACD]"></div>
+
+                    {/* Middle Dropdown: Phase Selection */}
                     <div className="relative flex-1 group h-full">
                         <select 
                             value={selectedPhase} 
@@ -272,6 +297,7 @@ const FindProfessionals = () => {
                                 <option key={role} value={role}>{role === 'All' ? `All Professionals` : role}</option>
                             ))}
                         </select>
+
                         <div className="absolute right-6 top-1/2 -translate-y-1/2 pointer-events-none opacity-40">
                             <Plus size={16} />
                         </div>
@@ -341,14 +367,34 @@ const FindProfessionals = () => {
                     <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-[#b96a41] group-hover:scale-110 transition-transform" size={20} />
                     <input type="text" placeholder="Search experts by name or specialty..." value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} className="w-full pl-12 pr-6 py-4 bg-white border border-[#E3DACD] rounded-2xl focus:outline-none focus:ring-2 focus:ring-[#b96a41]/40 shadow-sm font-medium transition-all" />
                 </div>
-                <div className="flex gap-4">
+                <div className="flex flex-wrap lg:flex-nowrap gap-4">
+                    {/* Project Selector */}
+                    <div className="relative min-w-[240px]">
+                        <Briefcase size={18} className="absolute left-4 top-1/2 -translate-y-1/2 text-[#b96a41] pointer-events-none" />
+                        <select 
+                            value={selectedProjectId} 
+                            onChange={(e) => setSelectedProjectId(e.target.value)} 
+                            className="w-full pl-12 pr-10 py-4 bg-white border border-[#E3DACD] rounded-2xl focus:outline-none focus:ring-2 focus:ring-[#b96a41]/40 font-bold text-[#3E2B26] shadow-sm appearance-none transition-all placeholder:text-gray-400"
+                        >
+                            <option value="">Select Project...</option>
+                            {projects.map(p => (
+                                <option key={p.project_id || p.id} value={p.project_id || p.id}>
+                                    {p.name} ({p.status || 'Active'})
+                                </option>
+                            ))}
+                        </select>
+                        <div className="absolute right-4 top-1/2 -translate-y-1/2 pointer-events-none opacity-40">
+                             <Filter size={14} />
+                        </div>
+                    </div>
+
                     <select 
                         value={selectedPhase} 
                         onChange={(e) => {
                             setSelectedPhase(e.target.value);
                             setSelectedRole('All');
                         }} 
-                        className="px-6 py-4 bg-white border border-[#E3DACD] rounded-2xl focus:outline-none focus:ring-2 focus:ring-[#b96a41]/40 font-bold text-[#3E2B26] shadow-sm appearance-none min-w-[200px]"
+                        className="px-6 py-4 bg-white border border-[#E3DACD] rounded-2xl focus:outline-none focus:ring-2 focus:ring-[#b96a41]/40 font-bold text-[#3E2B26] shadow-sm appearance-none min-w-[180px]"
                     >
                         {Object.keys(PHASES).map(phase => (
                             <option key={phase} value={phase}>{phase}</option>
@@ -357,7 +403,7 @@ const FindProfessionals = () => {
                     <select 
                         value={selectedRole} 
                         onChange={(e) => setSelectedRole(e.target.value)} 
-                        className="px-6 py-4 bg-white border border-[#E3DACD] rounded-2xl focus:outline-none focus:ring-2 focus:ring-[#b96a41]/40 font-bold text-[#5D4037] shadow-sm appearance-none min-w-[200px]"
+                        className="px-6 py-4 bg-white border border-[#E3DACD] rounded-2xl focus:outline-none focus:ring-2 focus:ring-[#b96a41]/40 font-bold text-[#5D4037] shadow-sm appearance-none min-w-[180px]"
                     >
                         {PHASES[selectedPhase].map(role => (
                             <option key={role} value={role}>{role === 'All' ? `All Professionals` : role}</option>

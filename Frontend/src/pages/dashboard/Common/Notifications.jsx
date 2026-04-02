@@ -15,7 +15,15 @@ import Button from '../../../components/Common/Button';
 import SectionHeader from '../../../components/Common/SectionHeader';
 
 const NotificationCardItem = ({ n, onRead, onResponse, onNavigate }) => {
+    // 🕵️ Diagnostic: Monitor notification data consistency
+    React.useEffect(() => {
+        if (n.type === 'invitation') {
+            console.log(`[Notification Card] Rendering: ${n.project_name || 'Project'} | ID: ${n.id} | Related: ${n.related_id}`);
+        }
+    }, [n]);
+
     const getIcon = (type) => {
+
         const iconBaseStyle = "w-12 h-12 rounded-xl flex items-center justify-center transition-all duration-300 shadow-sm border-2";
         switch (type) {
             case 'invitation': return <div className={`${iconBaseStyle} bg-blue-50 border-blue-100 text-blue-600`}><Bell size={20} /></div>;
@@ -137,14 +145,34 @@ const Notifications = () => {
     const handleInvitationResponse = async (notificationId, projectId, status) => {
         try {
             const uid = currentUser.user_id || currentUser.id;
-            const res = await fetch(`${import.meta.env.VITE_API_URL}/api/projects/${projectId}/assign/${uid}/status`, {
+            const url = `${import.meta.env.VITE_API_URL}/api/projects/${projectId}/assign/${uid}/status`;
+            console.log(`[Invitation] Responding ${status} to: ${url}`);
+            
+            const res = await fetch(url, {
                 method: 'PUT',
-                headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${localStorage.getItem('planora_token') || localStorage.getItem('token')}` },
+                headers: { 
+                    'Content-Type': 'application/json', 
+                    'Authorization': `Bearer ${localStorage.getItem('planora_token') || localStorage.getItem('token')}` 
+                },
                 body: JSON.stringify({ status })
             });
-            if (res.ok) { await markAsRead(notificationId); fetchNotifications(); }
-        } catch (err) { console.error(err); }
+
+            console.log(`[Invitation] Server response status: ${res.status}`);
+            
+            if (res.ok) { 
+                await markAsRead(notificationId); 
+                fetchNotifications(); 
+            } else {
+                const errData = await res.json().catch(() => ({}));
+                console.error(`[Invitation] Failed with status ${res.status}:`, errData);
+                alert(`Error: ${errData.error || 'The status update failed on the server. Please try again later.'}`);
+            }
+        } catch (err) { 
+            console.error("[Invitation Response Error]", err); 
+            alert("Failed to reach the server. Please check your connection.");
+        }
     };
+
 
     const grouped = useMemo(() => {
         const groups = { Today: [], Yesterday: [], Earlier: [] };

@@ -2393,35 +2393,45 @@ app.post('/api/projects/:projectId/assign', authenticateToken, async (req, res) 
 });
 
 /**
- * Update Project Assignment Status
- * Endpoint: PUT /api/projects/:projectId/assign/:userId/status
+ * 🕵️ Diagnostic: Catch all project-related status updates to find route mismatches
  */
-app.put('/api/projects/:projectId/assign/:userId/status', authenticateToken, async (req, res) => {
+app.all(['/api/projects/:projectId/assign/:userId/status', '/api/projects/:projectId/assignment/:userId/status'], (req, res, next) => {
+    console.log(`[Diagnostic Log] HIT - Method: ${req.method} | Path: ${req.originalUrl}`);
+    next();
+});
+
+/**
+ * Handle Project Assignment Status
+ * Logic moved here to share between PUT and PATCH and ensure consistency.
+ */
+const handleProjectAssignmentStatusUpdate = async (req, res) => {
     const { projectId, userId } = req.params;
-    const { status } = req.body; // 'Accepted' or 'Rejected'
+    const { status } = req.body;
+
+    console.log(`[Status Update] Attempting to set ${status} for Project: ${projectId} User: ${userId}`);
 
     try {
-        // 1. Verify project still exists (Prevents "Phantom Assignments")
         const projectCheck = await pool.query('SELECT land_owner_id, name FROM projects WHERE project_id = $1', [projectId]);
         if (projectCheck.rows.length === 0) {
-            return res.status(404).json({ error: 'Project not found. This project may have been deleted or cancelled by the owner.' });
+            return res.status(404).json({ error: 'Project not found.' });
         }
 
         const projectName = projectCheck.rows[0].name;
         const landOwnerId = projectCheck.rows[0].land_owner_id;
 
-        // 2. Proceed with assignment update
         const updateResult = await pool.query(
             'UPDATE projectassignments SET status = $1 WHERE project_id = $2 AND user_id = $3 RETURNING *',
             [status, projectId, userId]
         );
 
         if (updateResult.rowCount === 0) {
+            console.error(`[Status Update] ❌ Record missing for Project: ${projectId} User: ${userId}`);
             return res.status(404).json({ error: 'Assignment not found' });
         }
 
         const updated = updateResult.rows[0];
 
+        // Fetch names for logging and notifications
         const [userRes, pendingUserRes] = await Promise.all([
             pool.query('SELECT name FROM users WHERE user_id = $1', [userId]),
             pool.query('SELECT name FROM PendingProfessionals WHERE id = $1', [userId])
@@ -2429,25 +2439,14 @@ app.put('/api/projects/:projectId/assign/:userId/status', authenticateToken, asy
         const userName = userRes.rows[0]?.name || pendingUserRes.rows[0]?.name || 'Professional';
 
         const actionUserId = req['user'] ? (req['user'].user_id || req['user'].id) : userId;
-        await logActivity(actionUserId, projectId, 'Team Update', `${userName} ${status.toLowerCase()} the project invitation`);
+        await logActivity(actionUserId, projectId, 'Team Update', `${userName} ${status.toLowerCase()} the invitation`);
 
-        // Notify the project land owner
+        // Notify Land Owner
         if (landOwnerId) {
             await createNotification(
                 landOwnerId,
                 'invitation_response',
-                `${userName} has ${status.toLowerCase()} the invitation for project "${projectName}" as ${updated.assigned_role || 'Team Member'}.`,
-                `/dashboard/notifications`,
-                projectId
-            );
-        }
-
-        // Notify the actual assigner (Contractor) if different from land owner
-        if (updated.assigned_by && updated.assigned_by !== landOwnerId) {
-            await createNotification(
-                updated.assigned_by,
-                'invitation_response',
-                `${userName} has ${status.toLowerCase()} the invitation for project "${projectName}" as ${updated.assigned_role || 'Team Member'}.`,
+                `${userName} has ${status.toLowerCase()} the invitation for project "${projectName}".`,
                 `/dashboard/notifications`,
                 projectId
             );
@@ -2455,10 +2454,30 @@ app.put('/api/projects/:projectId/assign/:userId/status', authenticateToken, asy
 
         res.json(updated);
     } catch (err) {
-        console.error('Error updating assignment status:', err);
-        res.status(500).json({ error: 'Failed to update assignment status' });
+        console.error('[Status Update] ❌ Internal Error:', err);
+        res.status(500).json({ error: 'Internal server error during status update' });
     }
+};
+
+// Map both 'assign' and 'assignment' for maximum compatibility using regex-like flexibility
+app.put(/^\/api\/projects\/([^\/]+)\/(?:assign|assignment)\/([^\/]+)\/status$/, authenticateToken, (req, res) => {
+    req.params.projectId = req.params[0];
+    req.params.userId = req.params[1];
+    return handleProjectAssignmentStatusUpdate(req, res);
 });
+
+app.patch(/^\/api\/projects\/([^\/]+)\/(?:assign|assignment)\/([^\/]+)\/status$/, authenticateToken, (req, res) => {
+    req.params.projectId = req.params[0];
+    req.params.userId = req.params[1];
+    return handleProjectAssignmentStatusUpdate(req, res);
+});
+
+// Original literal routes as fallback
+app.put('/api/projects/:projectId/assign/:userId/status', authenticateToken, handleProjectAssignmentStatusUpdate);
+app.patch('/api/projects/:projectId/assign/:userId/status', authenticateToken, handleProjectAssignmentStatusUpdate);
+
+
+
 
 
 // Get Projects for a Professional
@@ -5361,14 +5380,15 @@ setInterval(() => {
     runAuctionSanitySync();
 }, 30 * 1000);
 
-// Also run immediately on startup
-setTimeout(() => {
-    finalizeEndedAuctions();
-    runAuctionSanitySync();
-}, 2000);
+// ??? Catch-all 404 logger to debug missing routes
+app.use((req, res, next) => {
+    console.warn(`[404 Monitor] Path not found: ${req.method} ${req.originalUrl}`);
+    next();
+});
 
 // ??? Global Error Handling Middleware (Imported from middleware/error.js)
 app.use(errorHandler);
+
 
 server.listen(port, () => {
     console.log(`Server successfully started on port ${port} with Socket.io enabled.`);
