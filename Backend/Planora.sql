@@ -213,13 +213,17 @@ CREATE TABLE IF NOT EXISTS professional_designs (
     professional_id character varying(255) NOT NULL,
     project_id character varying(255),
     title character varying(255) NOT NULL,
+    description text,
     category character varying(100),
     style character varying(100),
     client_name character varying(255),
     status character varying(50) DEFAULT 'draft',
     likes integer DEFAULT 0,
     views integer DEFAULT 0,
-    image_url text,
+    file_path text,
+    file_type varchar(10) DEFAULT 'Image',
+    project_type varchar(20) DEFAULT 'Personal',
+    role varchar(50) DEFAULT 'interior_designer',
     created_at timestamp without time zone DEFAULT CURRENT_TIMESTAMP
 );
 

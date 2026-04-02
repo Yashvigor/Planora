@@ -349,8 +349,8 @@ const Materials = () => {
                                             type="number"
                                             required
                                             min="0"
-                                            value={newMaterial.quantity}
-                                            onChange={e => setNewMaterial({ ...newMaterial, quantity: parseInt(e.target.value, 10) })}
+                                            value={newMaterial.quantity || ''}
+                                            onChange={e => setNewMaterial({ ...newMaterial, quantity: e.target.value === '' ? '' : parseInt(e.target.value, 10) })}
                                             className="w-full px-4 py-3 rounded-xl border border-[#E3DACD] bg-[#F9F7F2] focus:bg-white focus:outline-none focus:border-[#C06842] transition-all font-medium"
                                             placeholder="0"
                                         />
@@ -372,8 +372,8 @@ const Materials = () => {
                                             type="number"
                                             required
                                             min="0"
-                                            value={newMaterial.unit_price}
-                                            onChange={e => setNewMaterial({ ...newMaterial, unit_price: parseFloat(e.target.value) })}
+                                            value={newMaterial.unit_price || ''}
+                                            onChange={e => setNewMaterial({ ...newMaterial, unit_price: e.target.value === '' ? '' : parseFloat(e.target.value) })}
                                             className="w-full px-4 py-3 rounded-xl border border-[#E3DACD] bg-[#F9F7F2] focus:bg-white focus:outline-none focus:border-[#C06842] transition-all font-medium"
                                             placeholder="0.00"
                                         />
@@ -472,8 +472,8 @@ const Materials = () => {
                                             type="number"
                                             required
                                             min="0"
-                                            value={editMaterial.quantity}
-                                            onChange={e => setEditMaterial({ ...editMaterial, quantity: parseInt(e.target.value, 10) })}
+                                            value={editMaterial.quantity || ''}
+                                            onChange={e => setEditMaterial({ ...editMaterial, quantity: e.target.value === '' ? '' : parseInt(e.target.value, 10) })}
                                             className="w-full px-4 py-3 rounded-xl border border-[#E3DACD] bg-[#F9F7F2] focus:bg-white focus:outline-none focus:border-[#C06842] transition-all font-medium"
                                         />
                                     </div>
@@ -493,8 +493,8 @@ const Materials = () => {
                                             type="number"
                                             required
                                             min="0"
-                                            value={editMaterial.unit_price}
-                                            onChange={e => setEditMaterial({ ...editMaterial, unit_price: parseFloat(e.target.value) })}
+                                            value={editMaterial.unit_price || ''}
+                                            onChange={e => setEditMaterial({ ...editMaterial, unit_price: e.target.value === '' ? '' : parseFloat(e.target.value) })}
                                             className="w-full px-4 py-3 rounded-xl border border-[#E3DACD] bg-[#F9F7F2] focus:bg-white focus:outline-none focus:border-[#C06842] transition-all font-medium"
                                         />
                                     </div>

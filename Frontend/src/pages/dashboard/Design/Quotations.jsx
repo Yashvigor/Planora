@@ -702,8 +702,8 @@ const Quotations = () => {
                                                             type="number"
                                                             required
                                                             min="1"
-                                                            value={item.quantity}
-                                                            onChange={e => handleItemChange(idx, 'quantity', e.target.value)}
+                                                            value={item.quantity || ''}
+                                                            onChange={e => handleItemChange(idx, 'quantity', e.target.value === '' ? '' : parseInt(e.target.value, 10))}
                                                             className="w-full px-3 py-2 rounded-lg border border-[#E3DACD] focus:border-[#C06842] outline-none text-sm font-bold text-center print:border-none print:p-0 print:bg-transparent print:text-center"
                                                         />
                                                     </div>
@@ -712,8 +712,8 @@ const Quotations = () => {
                                                             type="number"
                                                             required
                                                             min="0"
-                                                            value={item.unit_price}
-                                                            onChange={e => handleItemChange(idx, 'unit_price', e.target.value)}
+                                                            value={item.unit_price || ''}
+                                                            onChange={e => handleItemChange(idx, 'unit_price', e.target.value === '' ? '' : parseFloat(e.target.value))}
                                                             className="w-full px-3 py-2 rounded-lg border border-[#E3DACD] focus:border-[#C06842] outline-none text-sm font-bold text-right print:border-none print:p-0 print:bg-transparent print:text-right"
                                                         />
                                                     </div>

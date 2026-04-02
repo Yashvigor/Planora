@@ -753,8 +753,8 @@ const LandOwnerDashboard = () => {
                                                 min="0"
                                                 className="w-full bg-[#FDFCF8] border-2 border-[#E3DACD]/40 rounded-2xl py-4 px-6 font-bold focus:border-[#C06842] transition-colors outline-none"
                                                 placeholder="e.g. 50000"
-                                                value={newProject.budget}
-                                                onChange={(e) => setNewProject({ ...newProject, budget: e.target.value })}
+                                                value={newProject.budget || ''}
+                                                onChange={(e) => setNewProject({ ...newProject, budget: e.target.value === '' ? '' : parseFloat(e.target.value) })}
                                             />
                                         </div>
                                         <div className="space-y-3">

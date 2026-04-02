@@ -256,6 +256,13 @@ pool.query("ALTER TABLE projects ADD COLUMN IF NOT EXISTS execution_completed BO
 pool.query("ALTER TABLE land_auctions ADD COLUMN IF NOT EXISTS winner_id UUID REFERENCES users(user_id)").catch(() => { });
 pool.query("ALTER TABLE land_auctions ADD COLUMN IF NOT EXISTS winner_notified BOOLEAN DEFAULT FALSE").catch(() => { });
 
+// Designs Migration
+pool.query("ALTER TABLE professional_designs ADD COLUMN IF NOT EXISTS description TEXT").catch(() => { });
+pool.query("ALTER TABLE professional_designs ADD COLUMN IF NOT EXISTS file_type VARCHAR(10) DEFAULT 'Image'").catch(() => { });
+pool.query("ALTER TABLE professional_designs RENAME COLUMN image_url TO file_path").catch(() => { });
+pool.query("ALTER TABLE professional_designs ADD COLUMN IF NOT EXISTS project_type VARCHAR(20) DEFAULT 'Personal'").catch(() => { });
+pool.query("ALTER TABLE professional_designs ADD COLUMN IF NOT EXISTS role VARCHAR(50) DEFAULT 'interior_designer'").catch(() => { });
+
 
 // Maintenance: Ingest local files and synchronize all paths to use the universal database URL
 const normalizePaths = async () => {
@@ -2939,15 +2946,15 @@ app.get('/api/lands/user/:userId', async (req, res) => {
         const result = await pool.query(`
             SELECT l.*, a.status as auction_status, a.rejection_reason as auction_rejection_reason, a.current_highest_bid
             FROM lands l
-            LEFT JOIN land_auctions a ON l.land_id = a.land_id
-            WHERE l.owner_id = $1 
-              AND NOT EXISTS (
-                  SELECT 1 FROM land_auctions la 
-                  WHERE la.land_id = l.land_id 
-                    AND la.status = 'completed' 
-                    AND la.winner_id IS NOT NULL 
-                    AND la.winner_id != $1
-              )
+            LEFT JOIN LATERAL (
+                SELECT status, rejection_reason, current_highest_bid
+                FROM land_auctions
+                WHERE land_id = l.land_id
+                  AND status NOT IN ('completed', 'closed') 
+                ORDER BY created_at DESC
+                LIMIT 1
+            ) a ON TRUE
+            WHERE l.owner_id = $1
             ORDER BY l.created_at DESC
         `, [userId]);
         res.json(result.rows);
@@ -4653,13 +4660,14 @@ app.get('/api/designs/:professionalId', async (req, res) => {
 });
 
 // Create Design (triggers approval workflow if project_type is 'Team')
-app.post('/api/designs', async (req, res) => {
+app.post('/api/designs', authenticateToken, upload.single('design_file'), async (req, res) => {
     const client = await pool.connect();
     try {
-        const { professional_id, project_id, project_type, title, category, style, client_name, image_url } = req.body;
+        const { project_id, project_type, title, category, style, client_name, description, role } = req.body;
+        const professional_id = req.user.user_id || req.user.id; // Get from token for security
 
-        if (!professional_id || !title) {
-            return res.status(400).json({ error: 'professional_id and title are required' });
+        if (!title) {
+            return res.status(400).json({ error: 'Title is required' });
         }
 
         await client.query('BEGIN');
@@ -4667,13 +4675,30 @@ app.post('/api/designs', async (req, res) => {
         // Personal projects are auto-approved. Team projects go into pending_review.
         const initialStatus = project_type === 'Team' ? 'pending_review' : 'approved';
 
+        let final_file_path = req.body.image_url; // Default if no file uploaded
+        let file_type = 'Image';
+
+        if (req.file) {
+            const ext = path.extname(req.file.originalname).toLowerCase();
+            file_type = ext === '.pdf' ? 'PDF' : 'Image';
+
+            const doc = await storeInDocuments(client, {
+                project_id: project_type === 'Team' ? project_id : null,
+                uploaded_by: professional_id,
+                name: `Design: ${title}`,
+                file: req.file,
+                category: 'Portfolio',
+                source_type: 'professional_design'
+            });
+            final_file_path = doc.file_path;
+        }
+
         // Insert the design
-        const { role } = req.body;
         const designResult = await client.query(
             `INSERT INTO professional_designs 
-            (professional_id, project_id, title, category, style, client_name, image_url, status, project_type, role) 
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10) RETURNING *`,
-            [professional_id, project_type === 'Team' ? project_id : null, title, category || 'Uncategorized', style || 'Standard', client_name || 'N/A', image_url || null, initialStatus, project_type, role || 'interior_designer']
+            (professional_id, project_id, title, category, style, client_name, file_path, status, project_type, role, description, file_type) 
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12) RETURNING *`,
+            [professional_id, project_type === 'Team' ? project_id : null, title, category || 'Uncategorized', style || 'Standard', client_name || 'N/A', final_file_path || null, initialStatus, project_type, role || 'interior_designer', description || '', file_type]
         );
         const design = designResult.rows[0];
 
@@ -4745,12 +4770,15 @@ app.post('/api/designs', async (req, res) => {
 app.put('/api/designs/:id', async (req, res) => {
     try {
         const { id } = req.params;
-        const { title, category, style, client_name, image_url, status, project_type, role } = req.body;
+        const { title, category, style, client_name, file_path, status, project_type, role, description, file_type } = req.body;
         const result = await pool.query(
             `UPDATE professional_designs 
-            SET title=$1, category=$2, style=$3, client_name=$4, image_url=$5, status=COALESCE($6, status), project_type=COALESCE($7, project_type), role=COALESCE($8, role)
-            WHERE id=$9 RETURNING *`,
-            [title, category, style, client_name, image_url, status, project_type, role, id]
+            SET title=$1, category=$2, style=$3, client_name=$4, file_path=$5, 
+                status=COALESCE($6, status), project_type=COALESCE($7, project_type), 
+                role=COALESCE($8, role), description=COALESCE($9, description), 
+                file_type=COALESCE($10, file_type)
+            WHERE id=$11 RETURNING *`,
+            [title, category, style, client_name, file_path, status, project_type, role, description, file_type, id]
         );
         if (result.rows.length === 0) return res.status(404).json({ error: 'Design not found' });
         res.json(result.rows[0]);
@@ -5030,6 +5058,12 @@ app.post('/api/auctions', authenticateToken, async (req, res) => {
     const endTime = new Date(Date.now() + (totalMinutes || 1440) * 60 * 1000);
 
     try {
+        // [Security] Prevent multiple concurrent auctions for the same land
+        const existingAuction = await pool.query("SELECT status FROM land_auctions WHERE land_id = $1 AND status IN ('active', 'pending_verification')", [land_id]);
+        if (existingAuction.rows.length > 0) {
+            return res.status(403).json({ error: 'This land is already listed in an active or pending auction.' });
+        }
+
         // Security Check: Ensure the land is verified before allowing an auction
         const landRes = await pool.query('SELECT verification_status, name FROM lands WHERE land_id = $1', [land_id]);
         if (landRes.rows.length === 0) return res.status(404).json({ error: 'Land not found' });

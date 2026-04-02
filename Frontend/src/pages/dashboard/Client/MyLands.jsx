@@ -422,24 +422,20 @@ const MyLands = () => {
                                             <span className="text-gray-400 text-sm italic">No docs attached</span>
                                         )}
                                         <div className="flex space-x-2">
-                                            {land.auction_status ? (
+                                            {(land.auction_status === 'active' || land.auction_status === 'pending_verification') ? (
                                                 <div className={`px-3 py-1 rounded text-[10px] font-bold uppercase tracking-wider flex flex-col items-end ${
                                                     land.auction_status === 'active' ? 'bg-green-50 text-green-600' :
-                                                    land.auction_status === 'pending_verification' ? 'bg-blue-50 text-blue-600' :
-                                                    land.auction_status === 'completed' ? 'bg-green-50 text-green-700 border border-green-100' :
-                                                    land.auction_status === 'closed' ? 'bg-gray-50 text-gray-500 border border-gray-100' :
-                                                    'bg-red-50 text-red-600'
+                                                    'bg-blue-50 text-blue-600'
                                                 }`}>
                                                     <span>{
                                                         land.auction_status === 'pending_verification' ? 'Auction Pending' : 
                                                         land.auction_status === 'active' ? 'Auction Live' : 
-                                                        land.auction_status === 'completed' ? 'Auction Completed' :
                                                         land.auction_status === 'closed' ? 'Auction Closed' :
                                                         'Auction Rejected'
                                                     }</span>
-                                                    {(land.auction_status === 'active' || land.auction_status === 'completed') && land.current_highest_bid && (
-                                                        <span className={`${land.auction_status === 'completed' ? 'text-green-800' : 'text-green-700'} text-[9px] font-black mt-0.5`}>
-                                                            {land.auction_status === 'completed' ? 'Final:' : 'High:'} ₹{parseFloat(land.current_highest_bid).toLocaleString()}
+                                                    {(land.auction_status === 'active') && land.current_highest_bid && (
+                                                        <span className={`text-green-700 text-[9px] font-black mt-0.5`}>
+                                                            High: ₹{parseFloat(land.current_highest_bid).toLocaleString()}
                                                         </span>
                                                     )}
                                                 </div>
