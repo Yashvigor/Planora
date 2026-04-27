@@ -6,7 +6,7 @@ Planora enables users to manage construction projects, track site progress in re
 
 ✨ Features
 - **🔐 Multi-Role Authentication**: Secure login system with JWT and Google SSO integration.
-- **📝 Professional Verification**: Administrative workflow for verifying professional credentials and certifications.
+- **📝 Professional Verification**: Administrative workflow for verifying professional credentials and certifications.s
 - **🗺️ ExpertMap System**: Geospatial discovery of professionals using distance-based queries.
 - **🏠 Land Auction System**: Live bidding platform for land parcels with automated finalization logic.
 - **💬 Real-Time Collaboration**: Instant notifications and updates powered by Socket.io.
