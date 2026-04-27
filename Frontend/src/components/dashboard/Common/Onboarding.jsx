@@ -147,9 +147,9 @@ const Onboarding = ({ isOpen, onClose, user, onComplete }) => {
                     {/* Right Form Area */}
                     <div className="flex-1 p-8 md:p-12 overflow-y-auto max-h-[85vh]">
                         {user.status === 'Rejected' && (
-                            <motion.div 
-                                initial={{ opacity: 0, y: -10 }} 
-                                animate={{ opacity: 1, y: 0 }} 
+                            <motion.div
+                                initial={{ opacity: 0, y: -10 }}
+                                animate={{ opacity: 1, y: 0 }}
                                 className="mb-8 p-6 bg-red-50 border border-red-100 rounded-[2rem] flex items-start gap-4"
                             >
                                 <div className="w-12 h-12 bg-red-100 rounded-2xl flex items-center justify-center text-red-600 shrink-0">
@@ -170,44 +170,44 @@ const Onboarding = ({ isOpen, onClose, user, onComplete }) => {
                             {step === 1 && (
                                 <motion.div initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} className="space-y-6">
                                     <h3 className="text-xl font-serif font-bold text-[#3E2B26]">Contact & Location</h3>
-                                        <div className="grid grid-cols-2 gap-4">
-                                            <div>
-                                                <label className="block text-[10px] font-black text-[#8C7B70] uppercase tracking-widest mb-2">Phone Number</label>
-                                                <input required name="phone" type="tel" value={formData.phone} onChange={handleChange} className="w-full bg-[#F9F7F2] border-2 border-transparent focus:border-[#A65D3B] p-4 rounded-2xl outline-none" placeholder="+91 00000 00000" />
-                                            </div>
-                                            <div>
-                                                <label className="block text-[10px] font-black text-[#8C7B70] uppercase tracking-widest mb-2">Birth Date</label>
-                                                <input required name="birthdate" type="date" value={formData.birthdate} onChange={handleChange} className="w-full bg-[#F9F7F2] border-2 border-transparent focus:border-[#A65D3B] p-4 rounded-2xl outline-none" />
-                                            </div>
+                                    <div className="grid grid-cols-2 gap-4">
+                                        <div>
+                                            <label className="block text-[10px] font-black text-[#8C7B70] uppercase tracking-widest mb-2">Phone Number</label>
+                                            <input required name="phone" type="tel" value={formData.phone} onChange={handleChange} className="w-full bg-[#F9F7F2] border-2 border-transparent focus:border-[#A65D3B] p-4 rounded-2xl outline-none" placeholder="+91 00000 00000" />
                                         </div>
                                         <div>
-                                            <label className="block text-[10px] font-black text-[#8C7B70] uppercase tracking-widest mb-2">Office/Site Address</label>
-                                            <textarea required name="address" value={formData.address} onChange={handleChange} className="w-full bg-[#F9F7F2] border-2 border-transparent focus:border-[#A65D3B] p-4 rounded-2xl outline-none min-h-[80px]" placeholder="Enter full address for map visibility" />
+                                            <label className="block text-[10px] font-black text-[#8C7B70] uppercase tracking-widest mb-2">Birth Date</label>
+                                            <input required name="birthdate" type="date" value={formData.birthdate} onChange={handleChange} className="w-full bg-[#F9F7F2] border-2 border-transparent focus:border-[#A65D3B] p-4 rounded-2xl outline-none" />
                                         </div>
-                                        <div className="grid grid-cols-3 gap-4">
-                                            <div>
-                                                <label className="block text-[10px] font-black text-[#8C7B70] uppercase tracking-widest mb-2">City</label>
-                                                <input required name="city" type="text" value={formData.city} onChange={handleChange} className="w-full bg-[#F9F7F2] border-2 border-transparent focus:border-[#A65D3B] p-4 rounded-2xl outline-none" placeholder="City" />
-                                            </div>
-                                            <div>
-                                                <label className="block text-[10px] font-black text-[#8C7B70] uppercase tracking-widest mb-2">State</label>
-                                                <input required name="state" type="text" value={formData.state} onChange={handleChange} className="w-full bg-[#F9F7F2] border-2 border-transparent focus:border-[#A65D3B] p-4 rounded-2xl outline-none" placeholder="State" />
-                                            </div>
-                                            <div>
-                                                <label className="block text-[10px] font-black text-[#8C7B70] uppercase tracking-widest mb-2">Zip Code</label>
-                                                <input required name="zip_code" type="text" value={formData.zip_code} onChange={handleChange} className="w-full bg-[#F9F7F2] border-2 border-transparent focus:border-[#A65D3B] p-4 rounded-2xl outline-none" placeholder="Zip" />
-                                            </div>
+                                    </div>
+                                    <div>
+                                        <label className="block text-[10px] font-black text-[#8C7B70] uppercase tracking-widest mb-2">Office/Site Address</label>
+                                        <textarea required name="address" value={formData.address} onChange={handleChange} className="w-full bg-[#F9F7F2] border-2 border-transparent focus:border-[#A65D3B] p-4 rounded-2xl outline-none min-h-[80px]" placeholder="Enter full address for map visibility" />
+                                    </div>
+                                    <div className="grid grid-cols-3 gap-4">
+                                        <div>
+                                            <label className="block text-[10px] font-black text-[#8C7B70] uppercase tracking-widest mb-2">City</label>
+                                            <input required name="city" type="text" value={formData.city} onChange={handleChange} className="w-full bg-[#F9F7F2] border-2 border-transparent focus:border-[#A65D3B] p-4 rounded-2xl outline-none" placeholder="City" />
                                         </div>
                                         <div>
-                                            <label className="block text-[10px] font-black text-[#8C7B70] uppercase tracking-widest mb-2">Identity Proof (Aadhar Card)</label>
-                                            <div className="relative border-2 border-dashed border-[#E3DACD] rounded-2xl p-4 text-center hover:border-[#A65D3B] transition-colors cursor-pointer" onClick={() => document.getElementById('aadhar-upload').click()}>
-                                                <input id="aadhar-upload" type="file" className="hidden" onChange={(e) => handleFileChange(e, 'aadhar')} accept=".pdf,image/*" />
-                                                <div className="flex items-center justify-center gap-4">
-                                                    <ShieldCheck className="text-[#8C7B70]" size={20} />
-                                                    <span className="text-[10px] font-bold text-[#8C7B70] line-clamp-1">{aadhar ? aadhar.name : 'Click to Upload Aadhar Card (PDF/JPG)'}</span>
-                                                </div>
+                                            <label className="block text-[10px] font-black text-[#8C7B70] uppercase tracking-widest mb-2">State</label>
+                                            <input required name="state" type="text" value={formData.state} onChange={handleChange} className="w-full bg-[#F9F7F2] border-2 border-transparent focus:border-[#A65D3B] p-4 rounded-2xl outline-none" placeholder="State" />
+                                        </div>
+                                        <div>
+                                            <label className="block text-[10px] font-black text-[#8C7B70] uppercase tracking-widest mb-2">Zip Code</label>
+                                            <input required name="zip_code" type="text" value={formData.zip_code} onChange={handleChange} className="w-full bg-[#F9F7F2] border-2 border-transparent focus:border-[#A65D3B] p-4 rounded-2xl outline-none" placeholder="Zip" />
+                                        </div>
+                                    </div>
+                                    <div>
+                                        <label className="block text-[10px] font-black text-[#8C7B70] uppercase tracking-widest mb-2">Identity Proof (Aadhar Card)</label>
+                                        <div className="relative border-2 border-dashed border-[#E3DACD] rounded-2xl p-4 text-center hover:border-[#A65D3B] transition-colors cursor-pointer" onClick={() => document.getElementById('aadhar-upload').click()}>
+                                            <input id="aadhar-upload" type="file" className="hidden" onChange={(e) => handleFileChange(e, 'aadhar')} accept=".pdf,image/*" />
+                                            <div className="flex items-center justify-center gap-4">
+                                                <ShieldCheck className="text-[#8C7B70]" size={20} />
+                                                <span className="text-[10px] font-bold text-[#8C7B70] line-clamp-1">{aadhar ? aadhar.name : 'Click to Upload Aadhar Card (PDF/JPG)'}</span>
                                             </div>
                                         </div>
+                                    </div>
                                 </motion.div>
                             )}
 

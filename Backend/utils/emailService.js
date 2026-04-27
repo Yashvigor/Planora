@@ -60,7 +60,7 @@ const sendWelcomeEmail = async (toEmail, name) => {
                             </ul>
 
                             <div style="text-align: center;">
-                                <a href="http://localhost:5173/login" class="cta-button">Go to Your Dashboard</a>
+                                <a href="${process.env.FRONTEND_URL || 'http://localhost:5173'}/login" class="cta-button">Go to Your Dashboard</a>
                             </div>
 
                             <p class="body-text">We are committed to providing you with the most efficient platform to bring your construction vision to life. Should you have any inquiries regarding the platform's capabilities, our specialist support team is available to assist you.</p>

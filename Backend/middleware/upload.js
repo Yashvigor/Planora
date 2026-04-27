@@ -1,28 +1,20 @@
 const multer = require('multer');
-const path = require('path');
-const fs = require('fs');
 
 /**
- * 📂 Multer Configuration for Dynamic File Uploads
+ * 📂 Multer Configuration — Memory Storage (Database-Only)
  * 
- * Organizes files into sub-folders based on 'category'.
+ * Files are held in memory (as Buffer) and then stored directly
+ * into the PostgreSQL database. No disk writes occur.
+ * This ensures all teammates and deployment environments can
+ * access files without needing a shared filesystem.
  */
-const storage = multer.diskStorage({
-    destination: (req, file, cb) => {
-        const category = req.body.category || 'General';
-        const uploadsRoot = path.resolve(__dirname, '..', 'uploads');
-        const dest = path.join(uploadsRoot, category);
+const storage = multer.memoryStorage();
 
-        if (!fs.existsSync(dest)) {
-            fs.mkdirSync(dest, { recursive: true });
-        }
-        cb(null, dest);
-    },
-    filename: (req, file, cb) => {
-        cb(null, Date.now() + '-' + file.originalname);
+const upload = multer({
+    storage,
+    limits: {
+        fileSize: 10 * 1024 * 1024 // 10 MB max file size
     }
 });
-
-const upload = multer({ storage });
 
 module.exports = { upload };

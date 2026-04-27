@@ -1,8 +1,11 @@
 const jwt = require('jsonwebtoken');
 const { Pool } = require('pg');
+require('dotenv').config({ path: require('path').resolve(__dirname, '..', '.env') });
 
+// Build connection from environment — never hardcode credentials in source
 const pool = new Pool({
-    connectionString: process.env.DATABASE_URL || 'postgresql://neondb_owner:npg_vjWLpTxam85A@ep-spring-block-am4uwdq8-pooler.c-5.us-east-1.aws.neon.tech/neondb?sslmode=require&channel_binding=require'
+    connectionString: process.env.DATABASE_URL || `postgresql://${process.env.DB_USER}:${process.env.DB_PASSWORD}@${process.env.DB_HOST}/${process.env.DB_NAME}?sslmode=require`,
+    ssl: { rejectUnauthorized: false }
 });
 
 const authenticateToken = async (req, res, next) => {
@@ -14,7 +17,7 @@ const authenticateToken = async (req, res, next) => {
     }
 
     try {
-        const decoded = jwt.verify(token, process.env.JWT_SECRET || 'secret-planora-key');
+        const decoded = jwt.verify(token, process.env.JWT_SECRET);
         
         // Correcting property mismatch: jwt.sign uses { id: ... } not user_id
         // Handle both id and user_id for compatibility with existing code

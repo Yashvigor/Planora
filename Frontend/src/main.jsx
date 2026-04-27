@@ -9,7 +9,7 @@ import ErrorBoundary from './components/ErrorBoundary'
 
 import { GoogleOAuthProvider } from '@react-oauth/google';
 
-const GOOGLE_CLIENT_ID = import.meta.env.VITE_GOOGLE_CLIENT_ID || "446181259368-e60g9uuqblo11citseptu3ic4ltpilkg.apps.googleusercontent.com"; // Fallback to hardcoded if env missing
+const GOOGLE_CLIENT_ID = import.meta.env.VITE_GOOGLE_CLIENT_ID;
 
 // --- Global Fetch Interceptor for JWT Token ---
 const originalFetch = window.fetch;

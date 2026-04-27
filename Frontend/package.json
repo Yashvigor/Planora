@@ -4,7 +4,8 @@
   "version": "0.0.0",
   "type": "module",
   "scripts": {
-    "dev": "concurrently \"vite\" \"npm run dev --prefix ../Backend\"",
+    "dev": "vite",
+    "dev:all": "concurrently \"vite\" \"npm run dev --prefix ../Backend\"",
     "build": "vite build",
     "lint": "eslint .",
     "preview": "vite preview"
@@ -40,5 +41,9 @@
     "postcss": "^8.5.6",
     "tailwindcss": "^4.1.18",
     "vite": "^7.2.4"
+  },
+  "engines": {
+    "node": ">=18.0.0",
+    "npm": ">=9.0.0"
   }
 }

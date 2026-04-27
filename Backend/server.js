@@ -31,6 +31,27 @@ const axios = require('axios');
 
 dotenv.config();
 
+// ⚠️ Startup Environment Validation — warn teammates about missing config
+const REQUIRED_ENV = ['DB_USER', 'DB_HOST', 'DB_NAME', 'DB_PASSWORD', 'JWT_SECRET'];
+const OPTIONAL_ENV = ['GOOGLE_CLIENT_ID', 'SMTP_HOST', 'SMTP_USER', 'SMTP_PASS', 'SENDER_EMAIL', 'FRONTEND_URL', 'CORS_ORIGIN'];
+const missingRequired = REQUIRED_ENV.filter(key => !process.env[key]);
+const missingOptional = OPTIONAL_ENV.filter(key => !process.env[key]);
+
+if (missingRequired.length > 0) {
+    console.error('\n❌ FATAL: Missing required environment variables:');
+    missingRequired.forEach(key => console.error(`   • ${key}`));
+    console.error('\n   → Copy Backend/.env.example to Backend/.env and fill in your values.\n');
+    process.exit(1);
+}
+if (missingOptional.length > 0) {
+    console.warn('\n⚠️  Missing optional environment variables (some features may not work):');
+    missingOptional.forEach(key => console.warn(`   • ${key}`));
+    console.warn('');
+}
+
+// 🔐 Centralized secrets — guaranteed to be set by startup validation above
+const JWT_SECRET = process.env.JWT_SECRET;
+
 const http = require('http');
 const { Server } = require('socket.io');
 
@@ -54,24 +75,23 @@ const server = http.createServer(app);
 
 /**
  * 💾 Centrally store any uploaded file into the Documents table for cross-device access.
+ * Uses in-memory buffers (from multer.memoryStorage) — no local disk writes.
  * Returns the record that was created.
  */
 async function storeInDocuments(client, { project_id, uploaded_by, name, file, category, source_type = 'document', source_id = null }) {
     if (!file) return null;
 
-    // Read file content for DB storage (solves local storage isolation issue)
-    const file_data = fs.readFileSync(file.path);
+    // file.buffer comes from multer.memoryStorage() — no disk reads needed
+    const file_data = file.buffer;
     const file_type = path.extname(file.originalname).substring(1).toUpperCase();
     const file_size = (file.size / 1024).toFixed(2) + ' KB';
 
-    const local_path = `uploads/${category}/${file.filename}`;
-
     const result = await client.query(
         `INSERT INTO Documents 
-         (project_id, uploaded_by, name, file_path, file_type, file_size, status, file_data, source_type, source_id, local_path_ref) 
-         VALUES ($1, $2, $3, $4, $5, $6, 'Pending', $7, $8, $9, $10) 
+         (project_id, uploaded_by, name, file_path, file_type, file_size, status, file_data, source_type, source_id) 
+         VALUES ($1, $2, $3, $4, $5, $6, 'Pending', $7, $8, $9) 
          RETURNING *`,
-        [project_id, uploaded_by, name || file.originalname, local_path, file_type, file_size, file_data, source_type, source_id, local_path]
+        [project_id, uploaded_by, name || file.originalname, 'pending', file_type, file_size, file_data, source_type, source_id]
     );
 
     const doc = result.rows[0];
@@ -83,10 +103,15 @@ async function storeInDocuments(client, { project_id, uploaded_by, name, file, c
     return { ...doc, file_path: internalPath };
 }
 
+// Parse allowed origins from environment for production safety
+const allowedOrigins = process.env.CORS_ORIGIN
+    ? process.env.CORS_ORIGIN.split(',')
+    : ['http://localhost:5173', 'http://localhost:3000'];
+
 const io = new Server(server, {
     cors: {
-        origin: "*",
-        methods: ["GET", "POST"]
+        origin: process.env.NODE_ENV === 'production' ? allowedOrigins : '*',
+        methods: ['GET', 'POST']
     }
 });
 
@@ -107,34 +132,32 @@ const port = process.env.PORT || 5000;
 
 // ??? Global Middleware
 app.use(compression());
-app.use(cors()); // Allow Cross-Origin requests from the React frontend
+
+// Environment-aware CORS — restrictive in production, open in development
+const corsOptions = {
+    origin: process.env.NODE_ENV === 'production'
+        ? allowedOrigins
+        : '*',
+    credentials: true,
+    methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
+    allowedHeaders: ['Content-Type', 'Authorization']
+};
+app.use(cors(corsOptions));
+
 app.use(express.json()); // Parse incoming JSON request bodies
 app.use(express.urlencoded({ extended: true })); // Parse URL-encoded bodies (form data)
 
-// Serve uploaded files statically using __dirname for environment consistency
-const uploadsPath = path.resolve(__dirname, 'uploads');
-if (!fs.existsSync(uploadsPath)) fs.mkdirSync(uploadsPath, { recursive: true });
-
 /**
- * 🛠️ Self-Healing Middleware for Missing Local Files
- * If a teammate has uploaded a file on their machine, but it doesn't exist here,
- * this interceptor fetches it from the database using its legacy path reference.
+ * 🔄 Legacy URL Redirect: /uploads/* → Database
+ * Handles any old references to uploads/ paths by looking up the file in the database.
+ * Since all files are now stored in PostgreSQL, this serves as a compatibility layer.
  */
-app.get('/uploads/:category/:filename', async (req, res, next) => {
-    const { category, filename } = req.params;
-    const localRelPath = `uploads/${category}/${filename}`;
-    const absPath = path.resolve(process.cwd(), localRelPath);
-
-    // If it exists locally, just serve it
-    if (fs.existsSync(absPath)) {
-        return next();
-    }
-
-    // Try to recover from the database
+app.get('/uploads/:category/:filename', async (req, res) => {
+    const { filename } = req.params;
     try {
         const result = await pool.query(
-            'SELECT name, file_type, file_data FROM Documents WHERE local_path_ref = $1 OR file_path LIKE $2',
-            [localRelPath, `%${filename}`]
+            'SELECT name, file_type, file_data FROM Documents WHERE local_path_ref LIKE $1 OR name = $2',
+            [`%${filename}`, filename]
         );
 
         if (result.rows.length > 0 && result.rows[0].file_data) {
@@ -144,31 +167,31 @@ app.get('/uploads/:category/:filename', async (req, res, next) => {
                 'PNG': 'image/png',
                 'JPG': 'image/jpeg',
                 'JPEG': 'image/jpeg',
-                'GIF': 'image/gif'
+                'GIF': 'image/gif',
+                'WEBP': 'image/webp',
+                'SVG': 'image/svg+xml'
             };
             const contentType = mimeTypes[doc.file_type] || 'application/octet-stream';
             res.setHeader('Content-Type', contentType);
-            console.warn(`[Auto-Recovery] Serving missing local file "${filename}" from central database.`);
+            res.setHeader('Content-Disposition', 'inline');
             return res.send(doc.file_data);
         }
-    } catch (err) {
-        console.error('Document recovery lookup failed:', err);
-    }
 
-    next();
+        res.status(404).json({ error: 'File not found in database' });
+    } catch (err) {
+        console.error('Legacy file lookup failed:', err);
+        res.status(500).json({ error: 'Internal server error' });
+    }
 });
 
-app.use('/uploads', express.static(uploadsPath, { dotfiles: 'allow' }));
-
 /**
- * 🖼️ Universal File Serving API
- * Serves files from the database if available (for cross-device compatibility),
- * falling back to the local disk if they are legacy or large files.
+ * 🖼️ Universal File Serving API (Database-Only)
+ * All files are stored as BYTEA in the Documents table.
+ * This endpoint serves them with correct MIME types for inline viewing.
  */
 app.get('/api/documents/view/:id', async (req, res) => {
     const { id } = req.params;
     try {
-        // Find document by ID, Name, or Path snippet (Robust lookup for legacy vs modern records)
         const result = await pool.query(
             `SELECT name, file_path, file_type, file_data 
              FROM documents 
@@ -180,37 +203,27 @@ app.get('/api/documents/view/:id', async (req, res) => {
 
         const doc = result.rows[0];
 
-        // If file_data exists in database, serve it (Solves the "Cannot GET /uploads" issue)
-        if (doc.file_data) {
-            const mimeTypes = {
-                'PDF': 'application/pdf',
-                'PNG': 'image/png',
-                'JPG': 'image/jpeg',
-                'JPEG': 'image/jpeg',
-                'GIF': 'image/gif',
-                'DOCX': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-                'DOC': 'application/msword',
-                'XLSX': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-                'XLS': 'application/vnd.ms-excel'
-            };
-            const contentType = mimeTypes[doc.file_type] || 'application/octet-stream';
-            res.setHeader('Content-Type', contentType);
-            // Ensure no download headers for inline viewing
-            res.setHeader('Content-Disposition', 'inline');
-            return res.send(doc.file_data);
+        if (!doc.file_data) {
+            return res.status(404).json({ error: 'File data not found in database' });
         }
 
-        // Fallback to local disk only if it's a relative path starting with uploads/
-        if (doc.file_path && (doc.file_path.startsWith('uploads/') || doc.file_path.startsWith('api/documents/view/'))) {
-            // Resolve actual path from DB if it was a legacy upload
-            const relativePath = doc.file_path.startsWith('api/') ? `uploads/${doc.name}` : doc.file_path;
-            const absolutePath = path.resolve(process.cwd(), relativePath);
-            if (fs.existsSync(absolutePath)) {
-                return res.sendFile(absolutePath);
-            }
-        }
-
-        res.status(404).json({ error: 'File content missing from both database and disk' });
+        const mimeTypes = {
+            'PDF': 'application/pdf',
+            'PNG': 'image/png',
+            'JPG': 'image/jpeg',
+            'JPEG': 'image/jpeg',
+            'GIF': 'image/gif',
+            'WEBP': 'image/webp',
+            'SVG': 'image/svg+xml',
+            'DOCX': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+            'DOC': 'application/msword',
+            'XLSX': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+            'XLS': 'application/vnd.ms-excel'
+        };
+        const contentType = mimeTypes[doc.file_type] || 'application/octet-stream';
+        res.setHeader('Content-Type', contentType);
+        res.setHeader('Content-Disposition', 'inline');
+        return res.send(doc.file_data);
     } catch (err) {
         console.error('Error serving document:', err);
         res.status(500).json({ error: 'Internal server error' });
@@ -223,14 +236,24 @@ app.get('/', (req, res) => {
     res.send('Planora Backend Running');
 });
 
-// ??? Database Connection Pool (Neon PostgreSQL)
+// 🏥 Health Check — used by deployment platforms (Render, Railway, etc.)
+app.get('/health', (req, res) => {
+    res.status(200).json({
+        status: 'healthy',
+        uptime: process.uptime(),
+        environment: process.env.NODE_ENV || 'development',
+        timestamp: new Date().toISOString()
+    });
+});
+
+// ⚙️ Database Connection Pool (Neon PostgreSQL)
 const pool = new Pool({
     user: process.env.DB_USER,
     host: process.env.DB_HOST,
     database: process.env.DB_NAME,
     password: process.env.DB_PASSWORD,
     port: parseInt(process.env.DB_PORT || '5432', 10),
-    ssl: true
+    ssl: { rejectUnauthorized: false }
 });
 
 
@@ -264,52 +287,13 @@ pool.query("ALTER TABLE professional_designs ADD COLUMN IF NOT EXISTS project_ty
 pool.query("ALTER TABLE professional_designs ADD COLUMN IF NOT EXISTS role VARCHAR(50) DEFAULT 'interior_designer'").catch(() => { });
 
 
-// Maintenance: Ingest local files and synchronize all paths to use the universal database URL
+// Maintenance: Normalize legacy paths and ensure DB schema is up to date
 const normalizePaths = async () => {
     try {
-        console.log('[Maintenance] Syncing document database and unifying paths...');
+        console.log('[Maintenance] Running database maintenance...');
 
-        // 1. INGESTION: Scan local uploads folder and ensure everything is backed up in DB
-        const walkDir = (dir) => {
-            let files = [];
-            if (!fs.existsSync(dir)) return files;
-            fs.readdirSync(dir).forEach(f => {
-                const p = path.join(dir, f);
-                if (fs.statSync(p).isDirectory()) files = [...files, ...walkDir(p)];
-                else files.push(p);
-            });
-            return files;
-        };
-
-        const allFiles = walkDir(uploadsPath);
-        for (const fullPath of allFiles) {
-            const relativePath = path.relative(process.cwd(), fullPath).replace(/\\/g, '/');
-            const fileName = path.basename(fullPath);
-
-            // Check if already in Documents
-            const check = await pool.query('SELECT doc_id FROM Documents WHERE local_path_ref = $1 OR file_path LIKE $2', [relativePath, `%${fileName}`]);
-            if (check.rows.length === 0) {
-                try {
-                    const data = fs.readFileSync(fullPath);
-                    const size = (fs.statSync(fullPath).size / 1024).toFixed(2) + ' KB';
-                    const type = path.extname(fullPath).substring(1).toUpperCase();
-
-                    const ins = await pool.query(
-                        `INSERT INTO Documents (name, file_path, file_type, file_size, status, file_data, local_path_ref) 
-                         VALUES ($1, $2, $3, $4, 'Approved', $5, $6) RETURNING doc_id`,
-                        [fileName, relativePath, type, size, data, relativePath]
-                    );
-                    const newId = ins.rows[0].doc_id;
-                    const internalUrl = `api/documents/view/${newId}`;
-                    await pool.query('UPDATE Documents SET file_path = $1 WHERE doc_id = $2', [internalUrl, newId]);
-                    console.log(`[Maintenance] Successfully ingested and synchronized: ${fileName}`);
-                } catch (e) {
-                    console.error(`[Maintenance] Failed to ingest ${fileName}:`, e.message);
-                }
-            }
-        }
-
-        // 2. UNIFICATION: Update all feature tables to use the universal api/documents/view/:id URL
+        // 1. UNIFICATION: Update all feature tables to use the universal api/documents/view/:id URL
+        //    (Converts any remaining legacy uploads/ paths to database-backed URLs)
         const tables = [
             { name: 'users', cols: ['resume_path', 'degree_path', 'personal_id_document_path'], pk: 'user_id' },
             { name: 'lands', cols: ['documents_path'], pk: 'land_id' },
@@ -320,14 +304,12 @@ const normalizePaths = async () => {
 
         for (const t of tables) {
             for (const col of t.cols) {
-                // Find records that have any legacy 'uploads/' paths
                 const legacyItems = await pool.query(`SELECT * FROM ${t.name} WHERE ${col} LIKE '%uploads/%' OR ${col} LIKE '%\\uploads\\%'`);
                 for (const item of legacyItems.rows) {
                     const legacyPath = item[col].replace(/\\/g, '/');
                     const fileName = path.basename(legacyPath);
 
-                    // Match against the central Documents table
-                    const docMatch = await pool.query('SELECT file_path FROM Documents WHERE local_path_ref = $1 OR file_path LIKE $2', [legacyPath, `%${fileName}`]);
+                    const docMatch = await pool.query('SELECT file_path FROM Documents WHERE local_path_ref = $1 OR name = $2', [legacyPath, fileName]);
                     if (docMatch.rows.length > 0) {
                         const newUrl = docMatch.rows[0].file_path;
                         await pool.query(`UPDATE ${t.name} SET ${col} = $1 WHERE ${t.pk} = $2`, [newUrl, item[t.pk]]);
@@ -336,7 +318,7 @@ const normalizePaths = async () => {
             }
         }
 
-        // 3. SMART LEDGER MIGRATION: Ensure payments table has all required columns
+        // 2. SMART LEDGER MIGRATION: Ensure payments table has all required columns
         await pool.query(`
             ALTER TABLE payments 
             ADD COLUMN IF NOT EXISTS type TEXT DEFAULT 'adhoc',
@@ -346,9 +328,9 @@ const normalizePaths = async () => {
             ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         `);
 
-        console.log('[Maintenance] Document synchronization and Ledger Migration complete.');
+        console.log('[Maintenance] Database maintenance complete.');
     } catch (err) {
-        console.error('[Maintenance] Path normalization or Ledger Migration failed:', err);
+        console.error('[Maintenance] Database maintenance failed:', err);
     }
 };
 
@@ -640,7 +622,7 @@ app.post('/api/signup', async (req, res) => {
         // ??? SECURITY: Sign a JWT for the new user to enable secure, stateless sessions immediately after signup.
         const token = jwt.sign(
             { id: userId, email: email, role: role },
-            process.env.JWT_SECRET || 'secret-planora-key',
+            JWT_SECRET,
             { expiresIn: '24h' }
         );
 
@@ -825,7 +807,7 @@ app.post('/api/login', async (req, res) => {
                 // Return a token for them to access their data securely
                 const token = jwt.sign(
                     { id: pending.id, email: pending.email, role: pending.sub_category ? roleMap[pending.sub_category] : 'user' },
-                    process.env.JWT_SECRET || 'secret-planora-key',
+                    JWT_SECRET,
                     { expiresIn: '24h' }
                 );
 
@@ -881,7 +863,7 @@ app.post('/api/login', async (req, res) => {
         // ??? SECURITY: Sign a JWT for the user to enable secure, stateless sessions.
         const token = jwt.sign(
             { id: user.user_id, email: user.email, role: roleKey },
-            process.env.JWT_SECRET || 'secret-planora-key',
+            JWT_SECRET,
             { expiresIn: '24h' }
         );
 
@@ -929,11 +911,19 @@ app.post('/api/auth/appeal', upload.single('document'), async (req, res) => {
         return res.status(400).json({ error: 'Email, password, and appeal reason are required.' });
     }
 
-    if (req.file) {
-        documentPath = `uploads/appeals/${req.file.filename}`;
-    }
-
     try {
+        if (req.file) {
+            const doc = await storeInDocuments(pool, {
+                project_id: null,
+                uploaded_by: null,
+                name: `Appeal Document`,
+                file: req.file,
+                category: 'Appeals',
+                source_type: 'appeal'
+            });
+            documentPath = doc.file_path;
+        }
+
         const result = await pool.query('SELECT * FROM users WHERE email = $1', [email]);
         if (result.rows.length === 0) return res.status(401).json({ error: 'Invalid security credentials.' });
 
@@ -1009,13 +999,18 @@ app.put('/api/user/:id', authenticateToken, upload.single('aadhar_card'), async 
     const { name, mobile_number, birthdate, address, city, state, zip_code } = req.body;
     let personal_id_document_path = null;
 
-    if (req.file) {
-        // Store relative path: uploads/category/filename
-        const category = req.body.category || 'General';
-        personal_id_document_path = `uploads/${category}/${req.file.filename}`;
-    }
-
     try {
+        if (req.file) {
+            const doc = await storeInDocuments(pool, {
+                project_id: null,
+                uploaded_by: id,
+                name: 'Aadhar Card',
+                file: req.file,
+                category: req.body.category || 'General',
+                source_type: 'identity_document'
+            });
+            personal_id_document_path = doc.file_path;
+        }
         // Build dynamic query
         let query = 'UPDATE users SET name = COALESCE($1, name), mobile_number = COALESCE($2, mobile_number), birthdate = COALESCE($3, birthdate), address = COALESCE($4, address), city = COALESCE($5, city), state = COALESCE($6, state), zip_code = COALESCE($7, zip_code), updated_at = CURRENT_TIMESTAMP';
         const values = [name, mobile_number, birthdate, address, city, state, zip_code];
@@ -1575,9 +1570,15 @@ app.post('/api/user/appeal', authenticateToken, upload.single('appealDocument'),
             return res.status(400).json({ error: 'An appeal is already pending review. Please wait for an administrative response.' });
         }
         if (req.file) {
-            // Use the established storeInDocuments utility if possible, 
-            // but for simplicity here we just store the path in users table or rejection_reason
-            appeal_doc_path = `/api/documents/view/${req.file.filename}`;
+            const doc = await storeInDocuments(pool, {
+                project_id: null,
+                uploaded_by: userId,
+                name: 'Appeal Document',
+                file: req.file,
+                category: 'Appeals',
+                source_type: 'appeal'
+            });
+            appeal_doc_path = doc.file_path;
         }
 
         const appealCombined = `[APPEAL SUBMITTED] ${message}${appeal_doc_path ? ` | DOC: ${appeal_doc_path}` : ''}`;
@@ -1676,7 +1677,7 @@ app.post('/api/auth/google', async (req, res) => {
 
             const jwtToken = jwt.sign(
                 { id: userId, email: email, role: 'user' },
-                process.env.JWT_SECRET || 'secret-planora-key',
+                JWT_SECRET,
                 { expiresIn: '24h' }
             );
 
@@ -1706,7 +1707,7 @@ app.post('/api/auth/google', async (req, res) => {
         if ((!user.profile_completed && !isInherentlyComplete) || isRejected) {
             const jwtToken = jwt.sign(
                 { id: user.user_id, email: user.email, role: 'user' },
-                process.env.JWT_SECRET || 'secret-planora-key',
+                JWT_SECRET,
                 { expiresIn: '24h' }
             );
 
@@ -1753,7 +1754,7 @@ app.post('/api/auth/google', async (req, res) => {
 
         const jwtToken = jwt.sign(
             { id: user.user_id, email: user.email, role: roleKey },
-            process.env.JWT_SECRET || 'secret-planora-key',
+            JWT_SECRET,
             { expiresIn: '24h' }
         );
 
@@ -2994,8 +2995,16 @@ app.put('/api/lands/:id', upload.single('document'), async (req, res) => {
         let paramCount = 5;
 
         if (req.file) {
+            const doc = await storeInDocuments(pool, {
+                project_id: null,
+                uploaded_by: req.body.owner_id || null,
+                name: `Land Document: ${name}`,
+                file: req.file,
+                category: 'Lands',
+                source_type: 'land_document'
+            });
             queryStr += `, documents_path = $${paramCount}`;
-            values.push(req.file.path.replace(/\\/g, "/"));
+            values.push(doc.file_path);
             paramCount++;
         }
 
@@ -3879,11 +3888,7 @@ app.post('/api/documents', upload.single('file'), async (req, res) => {
     const { project_id, uploaded_by, name } = req.body;
     if (!req.file) return res.status(400).json({ error: 'No file uploaded' });
 
-    // Construct relative path for DB: uploads/category/filename
     const category = req.body.category || 'General';
-    const filePath = req.file ? `uploads / ${category}/${req.file.filename}` : null;
-    const fileSize = (req.file.size / 1024).toFixed(2) + ' KB';
-    const fileType = path.extname(req.file.originalname).substring(1).toUpperCase();
 
     try {
         const doc = await storeInDocuments(pool, {
@@ -3902,7 +3907,7 @@ app.post('/api/documents', upload.single('file'), async (req, res) => {
     }
 });
 
-// Delete Document
+// Delete Document (DB-only — no disk files to clean up)
 app.delete('/api/documents/:id', async (req, res) => {
     const { id } = req.params;
     try {
@@ -3910,14 +3915,6 @@ app.delete('/api/documents/:id', async (req, res) => {
         if (docResult.rows.length === 0) return res.status(404).json({ error: 'Document not found' });
 
         const doc = docResult.rows[0];
-        // Construct absolute path for disk operation using process.cwd()
-        const absolutePath = path.resolve(process.cwd(), doc.file_path);
-
-        // Remove file from disk
-        if (fs.existsSync(absolutePath)) {
-            fs.unlinkSync(absolutePath);
-        }
-
         await pool.query('DELETE FROM Documents WHERE doc_id = $1', [id]);
         logActivity(doc.uploaded_by, doc.project_id, 'Document Deleted', `Deleted: ${doc.name}`);
         res.json({ message: 'Document deleted successfully' });
@@ -4026,18 +4023,18 @@ app.put('/api/drawings/:drawingId', async (req, res) => {
     }
 });
 
-// Delete Drawing
+// Delete Drawing (DB-only — no disk files to clean up)
 app.delete('/api/drawings/:drawingId', async (req, res) => {
     const { drawingId } = req.params;
     try {
         const findResult = await pool.query('SELECT * FROM architect_drawings WHERE drawing_id = $1', [drawingId]);
         if (findResult.rowCount === 0) return res.status(404).json({ error: 'Drawing not found' });
 
+        // Also clean up from central Documents table
         const drawing = findResult.rows[0];
-        const absolutePath = path.resolve(process.cwd(), drawing.file_path);
-
-        if (fs.existsSync(absolutePath)) {
-            fs.unlinkSync(absolutePath);
+        if (drawing.file_path) {
+            const docId = drawing.file_path.replace('api/documents/view/', '');
+            await pool.query('DELETE FROM Documents WHERE doc_id::text = $1', [docId]).catch(() => { });
         }
 
         await pool.query('DELETE FROM architect_drawings WHERE drawing_id = $1', [drawingId]);
@@ -5262,7 +5259,13 @@ app.post('/api/auctions/:auctionId/bid', authenticateToken, async (req, res) => 
 // Finalize Auctions that have ended
 async function finalizeEndedAuctions() {
     // console.log('[Maintenance] Checking for ended auctions to finalize or notify...'); // Reduced noise
-    const client = await pool.connect();
+    let client;
+    try {
+        client = await pool.connect();
+    } catch (err) {
+        console.error('[Maintenance] DB connection failed (transient), will retry:', err.message);
+        return;
+    }
     try {
         await client.query('BEGIN');
 
@@ -5391,6 +5394,28 @@ app.use(errorHandler);
 
 
 server.listen(port, () => {
-    console.log(`Server successfully started on port ${port} with Socket.io enabled.`);
+    console.log(`\n${'='.repeat(60)}`);
+    console.log(`  Planora Backend Server`);
+    console.log(`${'='.repeat(60)}`);
+    console.log(`  ✅ Port:         ${port}`);
+    console.log(`  ✅ Environment:  ${process.env.NODE_ENV || 'development'}`);
+    console.log(`  ✅ CORS Origin:  ${process.env.NODE_ENV === 'production' ? (process.env.CORS_ORIGIN || 'RESTRICTED') : 'ALL (development mode)'}`);
+    console.log(`  ✅ Socket.io:    Enabled`);
+    console.log(`  ✅ Database:     ${process.env.DB_HOST}`);
+    console.log(`${'='.repeat(60)}\n`);
 });
 
+// 🛡️ Global Process Error Handlers — prevent crashes from unhandled async errors
+process.on('unhandledRejection', (reason, promise) => {
+    console.error('[Process] Unhandled Rejection at:', promise, 'reason:', reason);
+    // Don't exit — let the server continue running
+});
+
+process.on('uncaughtException', (err) => {
+    console.error('[Process] Uncaught Exception:', err);
+    // In production, you may want to gracefully shut down
+    if (process.env.NODE_ENV === 'production') {
+        console.error('[Process] Shutting down due to uncaught exception...');
+        process.exit(1);
+    }
+});

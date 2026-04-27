@@ -1,7 +1,7 @@
 {
-  "name": "backend",
+  "name": "planora-backend",
   "version": "1.0.0",
-  "description": "",
+  "description": "Planora Backend API - Digital Construction Management Platform",
   "main": "server.js",
   "scripts": {
     "start": "node server.js",
@@ -28,5 +28,9 @@
   },
   "devDependencies": {
     "nodemon": "^3.1.11"
+  },
+  "engines": {
+    "node": ">=18.0.0",
+    "npm": ">=9.0.0"
   }
 }
