@@ -80,27 +80,32 @@ const server = http.createServer(app);
  */
 async function storeInDocuments(client, { project_id, uploaded_by, name, file, category, source_type = 'document', source_id = null }) {
     if (!file) return null;
+    console.log(`[Docs] Storing document: ${name || file.originalname} (${file.size} bytes)`);
 
-    // file.buffer comes from multer.memoryStorage() — no disk reads needed
-    const file_data = file.buffer;
-    const file_type = path.extname(file.originalname).substring(1).toUpperCase();
-    const file_size = (file.size / 1024).toFixed(2) + ' KB';
+    try {
+        const file_data = file.buffer;
+        const file_type = path.extname(file.originalname).substring(1).toUpperCase() || 'UNKNOWN';
+        const file_size = (file.size / 1024).toFixed(2) + ' KB';
 
-    const result = await client.query(
-        `INSERT INTO documents 
-         (project_id, uploaded_by, name, file_path, file_type, file_size, status, file_data, source_type, source_id) 
-         VALUES ($1::uuid, $2::uuid, $3, $4, $5, $6, 'Pending', $7::bytea, $8, $9) 
-         RETURNING *`,
-        [project_id, uploaded_by, name || file.originalname, 'pending', file_type, file_size, file_data, source_type, source_id]
-    );
+        // Use queryWithRetry for the large binary insert to handle Neon transient timeouts
+        const result = await queryWithRetry(
+            `INSERT INTO documents 
+             (project_id, uploaded_by, name, file_path, file_type, file_size, status, file_data, source_type, source_id) 
+             VALUES ($1::uuid, $2::uuid, $3, $4, $5, $6, 'Pending', $7::bytea, $8, $9) 
+             RETURNING *`,
+            [project_id, uploaded_by, name || file.originalname, 'pending', file_type, file_size, file_data, source_type, source_id]
+        );
 
-    const doc = result.rows[0];
-    const internalPath = `api/documents/view/${doc.doc_id}`;
+        const doc = result.rows[0];
+        const internalPath = `api/documents/view/${doc.doc_id}`;
 
-    // Update path to point to our central serving API
-    await client.query('UPDATE documents SET file_path = $1 WHERE doc_id = $2::uuid', [internalPath, doc.doc_id]);
-
-    return { ...doc, file_path: internalPath };
+        await queryWithRetry('UPDATE documents SET file_path = $1 WHERE doc_id = $2::uuid', [internalPath, doc.doc_id]);
+        console.log(`[Docs] Success: ${doc.doc_id} -> ${internalPath}`);
+        return { ...doc, file_path: internalPath };
+    } catch (err) {
+        console.error('[Docs] Error in storeInDocuments:', err.message);
+        throw err;
+    }
 }
 
 // Parse allowed origins from environment for production safety
@@ -254,21 +259,28 @@ const pool = new Pool({
     ssl: { rejectUnauthorized: false },
     max: 20, // Increased for stability during peak UI usage
     idleTimeoutMillis: 60000,
-    connectionTimeoutMillis: 20000, // 20s timeout for resilient connections
+    connectionTimeoutMillis: 60000, // 60s timeout for resilient large file transfers
 });
 
 // Robust Connection Wrapper with Retries
-const queryWithRetry = async (text, params, retries = 3) => {
+const queryWithRetry = async (text, params, retries = 5) => {
     for (let i = 0; i < retries; i++) {
         try {
             return await pool.query(text, params);
         } catch (err) {
-            const isTimeout = err.message.includes('timeout') || err.code === 'ETIMEDOUT';
-            if (isTimeout && i < retries - 1) {
-                console.warn(`[DB Retry] Attempt ${i + 1} failed, retrying...`);
-                await new Promise(resolve => setTimeout(resolve, 1000 * (i + 1)));
+            const isTransient = err.message.includes('timeout') ||
+                err.message.includes('Connection terminated') ||
+                err.message.includes('deadlock') ||
+                err.code === 'ETIMEDOUT' ||
+                err.code === '57P01'; // admin_shutdown
+
+            if (isTransient && i < retries - 1) {
+                const delay = Math.pow(2, i) * 1000;
+                console.warn(`[DB Retry] ${i + 1}/${retries} for "${text.substring(0, 40)}...": ${err.message}. Retrying in ${delay}ms`);
+                await new Promise(res => setTimeout(res, delay));
                 continue;
             }
+            console.error(`[DB Error] Final failure: ${err.message}`);
             throw err;
         }
     }
@@ -970,51 +982,89 @@ app.post('/api/login', async (req, res) => {
 app.post('/api/auth/appeal', upload.single('document'), async (req, res) => {
     const { email, password, reason } = req.body;
     let documentPath = null;
+    const client = await pool.connect(); // Use a dedicated client for the transaction
+
+    console.log(`[Appeal] Starting Rebuilt Logic for: ${email}`);
 
     if (!email || !password || !reason) {
+        client.release();
         return res.status(400).json({ error: 'Email, password, and appeal reason are required.' });
     }
 
     try {
-        if (req.file) {
-            const doc = await storeInDocuments(pool, {
-                project_id: null,
-                uploaded_by: null,
-                name: `Appeal Document`,
-                file: req.file,
-                category: 'Appeals',
-                source_type: 'appeal'
-            });
-            documentPath = doc.file_path;
+        await client.query('BEGIN'); // Start transaction
+
+        // 1. Verify User & Status (Case-insensitive email)
+        const userRes = await client.query('SELECT * FROM users WHERE LOWER(email) = LOWER($1)', [email]);
+        if (userRes.rows.length === 0) {
+            await client.query('ROLLBACK');
+            client.release();
+            return res.status(401).json({ error: 'Invalid security credentials.' });
         }
 
-        const result = await queryWithRetry('SELECT * FROM users WHERE LOWER(email) = LOWER($1)', [email]);
-        if (result.rows.length === 0) return res.status(401).json({ error: 'Invalid security credentials.' });
-
-        const user = result.rows[0];
+        const user = userRes.rows[0];
         const isMatch = await bcrypt.compare(password, user.password_hash);
-        if (!isMatch) return res.status(401).json({ error: 'Invalid security credentials.' });
+        if (!isMatch) {
+            await client.query('ROLLBACK');
+            client.release();
+            return res.status(401).json({ error: 'Invalid security credentials.' });
+        }
 
         if (user.status !== 'Disabled') {
-            return res.status(400).json({ error: 'Account is active. Appeals are only for suspended workspaces.' });
+            await client.query('ROLLBACK');
+            client.release();
+            return res.status(400).json({ error: 'Account is already active or not in a suspendable state.' });
         }
 
-        // We use isAppeal=true in the column and also prefix rejection_reason for legacy compat
-        await queryWithRetry(
+        // 2. Handle Document Upload (Binary Storage)
+        if (req.file) {
+            console.log(`[Appeal] Processing binary document: ${req.file.originalname} (${req.file.size} bytes)`);
+            const file_data = req.file.buffer;
+            const file_type = path.extname(req.file.originalname).substring(1).toUpperCase() || 'UNKNOWN';
+            const file_size = (req.file.size / 1024).toFixed(2) + ' KB';
+
+            // Insert directly into documents within the same transaction
+            const docResult = await client.query(
+                `INSERT INTO documents 
+                 (project_id, uploaded_by, name, file_path, file_type, file_size, status, file_data, source_type, source_id) 
+                 VALUES (NULL, $1::uuid, $2, 'pending', $3, $4, 'Pending', $5::bytea, 'appeal', NULL) 
+                 RETURNING doc_id`,
+                [user.user_id, `Appeal Document - ${user.email}`, file_type, file_size, file_data]
+            );
+
+            const docId = docResult.rows[0].doc_id;
+            documentPath = `api/documents/view/${docId}`;
+
+            // Sync the internal path back to the document record
+            await client.query('UPDATE documents SET file_path = $1 WHERE doc_id = $2::uuid', [documentPath, docId]);
+        }
+
+        // 3. Update User Record with Appeal Details
+        await client.query(
             'UPDATE users SET appeal_reason = $1, appeal_document_path = $2, rejection_reason = $3 WHERE user_id = $4::uuid',
             [reason, documentPath, `[APPEAL SUBMITTED] ${reason}`, user.user_id]
         );
 
-        await logActivity(user.user_id, null, 'Appeal Submitted', 'Formal appeal submitted for account reinstatement.');
+        // 4. Log Activity
+        await client.query(
+            'INSERT INTO activitylog (user_id, project_id, action, details) VALUES ($1::uuid, NULL, $2, $3)',
+            [user.user_id, 'Appeal Submitted', 'A formal reinstatement appeal has been filed.']
+        );
 
-        res.json({ message: 'Your appeal has been submitted successfully and is awaiting review.' });
+        await client.query('COMMIT'); // Commit transaction
+        console.log(`[Appeal] Rebuilt Logic Success: ${email}`);
+        res.json({ message: 'Reinstatement request received. Our administration team will review your clarification shortly.' });
+
     } catch (err) {
-        console.error('Error submitting appeal:', err);
+        await client.query('ROLLBACK'); // Rollback on any failure
+        console.error('[Appeal] Rebuilt Logic Failure:', err);
         res.status(500).json({
-            error: 'Infrastructure failure during appeal submission.',
+            error: 'Infrastructure reset during high-payload transfer.',
             details: err.message,
-            stack: process.env.NODE_ENV === 'development' ? err.stack : undefined
+            code: err.code
         });
+    } finally {
+        client.release(); // Return client to pool
     }
 });
 

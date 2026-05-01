@@ -44,7 +44,10 @@ const authenticateToken = async (req, res, next) => {
 
         if (userCheck.rows[0].status === 'Disabled') {
             // 🛡️ Strategic Exception: Allow users to submit appeals even if deactivated
-            if (req.path === '/user/appeal' || req.originalUrl === '/api/user/appeal') {
+            const isAppealPath = req.path === '/user/appeal' || 
+                                req.originalUrl === '/api/user/appeal' || 
+                                req.originalUrl === '/api/auth/appeal';
+            if (isAppealPath) {
                 return next();
             }
 
