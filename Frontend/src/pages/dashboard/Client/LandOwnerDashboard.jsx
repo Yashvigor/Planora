@@ -36,70 +36,42 @@ const LandOwnerDashboard = () => {
         }).format(amount || 0);
     };
     const navigate = useNavigate();
-    const { currentUser, setAuthUser } = useMockApp();
-    const [projects, setProjects] = useState([]);
+    const { 
+        currentUser, 
+        setAuthUser, 
+        projects, 
+        lands, 
+        loadingData, 
+        refreshAllData 
+    } = useMockApp();
+
     const [searchQuery, setSearchQuery] = useState('');
-    const [loading, setLoading] = useState(true);
     const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
     const [newProject, setNewProject] = useState({ name: '', type: 'Residential', location: '', budget: '', land_id: '' });
-    const [lands, setLands] = useState([]);
     const [isProfilePromptOpen, setIsProfilePromptOpen] = useState(false);
     const [ratingProject, setRatingProject] = useState(null);
     const [previewImage, setPreviewImage] = useState(null);
     const [viewingTeamProject, setViewingTeamProject] = useState(null);
 
     const fetchData = useCallback(async () => {
-        if (!currentUser?.id && !currentUser?.user_id) { setLoading(false); return; }
-        setLoading(true);
-        try {
-            const userId = currentUser.id || currentUser.user_id;
-            const headers = { 'Authorization': `Bearer ${localStorage.getItem('planora_token') || localStorage.getItem('token')}` };
-            const [projRes, landRes] = await Promise.all([
-                fetch(`${import.meta.env.VITE_API_URL}/api/projects/user/${userId}`, { headers }),
-                fetch(`${import.meta.env.VITE_API_URL}/api/lands/user/${userId}`, { headers })
-            ]);
-
-            if (projRes.ok) {
-                const data = await projRes.json();
-                console.log("[Dashboard] Projects Fetched:", data);
-                setProjects(data);
-            }
-            if (landRes.ok) {
-                const ldata = await landRes.json();
-                console.log("[Dashboard] Lands Fetched:", ldata);
-                setLands(ldata);
-            }
-
-            if (!currentUser.profile_completed && !localStorage.getItem('profile_prompt_dismissed')) {
-                setIsProfilePromptOpen(true);
-            }
-        } catch (err) {
-            console.error('Error fetching dashboard data:', err);
-        } finally {
-            setLoading(false);
+        if (!currentUser?.id && !currentUser?.user_id) return;
+        await refreshAllData();
+        
+        if (!currentUser.profile_completed && !localStorage.getItem('profile_prompt_dismissed')) {
+            setIsProfilePromptOpen(true);
         }
-    }, [currentUser]);
+    }, [currentUser, refreshAllData]);
 
     useEffect(() => {
-        fetchData();
         const handleGlobalSearch = (e) => {
             setSearchQuery(e.detail);
         };
         window.addEventListener('planora_search', handleGlobalSearch);
 
-        // Real-time synchronization
-        socket.connect();
-        socket.on('new_notification', (noti) => {
-            if (noti.type?.includes('task') || noti.type?.includes('project')) {
-                fetchData();
-            }
-        });
-
         return () => {
             window.removeEventListener('planora_search', handleGlobalSearch);
-            socket.off('new_notification');
         };
-    }, [fetchData]);
+    }, []);
 
     const handlePhaseUpdate = async (projectId, phase, completed) => {
         try {
@@ -316,7 +288,7 @@ const LandOwnerDashboard = () => {
     const completedProjectsCount = useMemo(() => projects.filter(p => p.status === 'Completed').length, [projects]);
     const pendingRatings = useMemo(() => projects.filter(p => p.status === 'Completed' && !p.has_rated), [projects]);
 
-    if (loading) return (
+    if (loadingData && projects.length === 0) return (
         <div className="flex flex-col items-center justify-center min-vh-screen space-y-6 bg-[#FDFCF8]">
             <div className="w-14 h-14 border-[5px] border-[#C06842]/10 border-t-[#C06842] rounded-full animate-spin" />
             <p className="text-[#8C7B70] font-black uppercase text-[11px] tracking-[0.4em]">Loading Dashboard...</p>

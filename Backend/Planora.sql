@@ -164,6 +164,9 @@ CREATE TABLE IF NOT EXISTS documents (
     file_type character varying(50),
     file_size character varying(50),
     status character varying(20) DEFAULT 'Pending',
+    file_data bytea,
+    source_type character varying(50),
+    source_id character varying(255),
     rejection_reason text,
     created_at timestamp with time zone DEFAULT CURRENT_TIMESTAMP
 );

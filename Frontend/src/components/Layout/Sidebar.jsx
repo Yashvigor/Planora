@@ -11,48 +11,26 @@ import socket from '../../utils/socket';
 import { motion, AnimatePresence } from 'framer-motion';
 
 const Sidebar = ({ isOpen, onClose }) => {
-    const { currentUser, logout } = useMockApp();
-    const [counts, setCounts] = useState({ lands: 0, accounts: 0, auctions: 0, tasks: 0, notifications: 0 });
+    const { 
+        currentUser, 
+        logout, 
+        notifications, 
+        pendingTasksCount 
+    } = useMockApp();
+    
+    // Notifications count
+    const unreadNotificationsCount = notifications.filter(n => !n.is_read).length;
 
     const getToken = () => localStorage.getItem('planora_token') || localStorage.getItem('token') || '';
 
-    useEffect(() => {
-        if (!currentUser) return;
-        const fetchCounts = async () => {
-            try {
-                const uid = currentUser.user_id || currentUser.id;
-                // Admin counts
-                if (currentUser.role === 'admin') {
-                    const res = await fetch(`${import.meta.env.VITE_API_URL}/api/admin/pending-counts`);
-                    if (res.ok) {
-                        const data = await res.json();
-                        setCounts(prev => ({ ...prev, ...data }));
-                    }
-                }
-                // Professional Task counts
-                const resTask = await fetch(`${import.meta.env.VITE_API_URL}/api/tasks/pending-count/${uid}`, {
-                    headers: { 'Authorization': `Bearer ${getToken()}` }
-                });
-                if (resTask.ok) {
-                    const data = await resTask.json();
-                    setCounts(prev => ({ ...prev, tasks: data.count }));
-                }
-                // Notification counts
-                const resNotify = await fetch(`${import.meta.env.VITE_API_URL}/api/notifications/${uid}`, {
-                    headers: { 'Authorization': `Bearer ${getToken()}` }
-                });
-                if (resNotify.ok) {
-                    const data = await resNotify.json();
-                    setCounts(prev => ({ ...prev, notifications: data.filter(n => !n.is_read).length }));
-                }
-            } catch (err) { console.warn("Search sidebar counts error:", err); }
-        };
-        fetchCounts();
-        const interval = setInterval(fetchCounts, 60000);
-        socket.on('new_notification', fetchCounts);
-        window.addEventListener('planora_notification_read', fetchCounts);
-        return () => { clearInterval(interval); socket.off('new_notification'); window.removeEventListener('planora_notification_read', fetchCounts); };
-    }, [currentUser]);
+    // Sidebar no longer handles its own fetching - relies on global context state
+    const counts = {
+        tasks: pendingTasksCount,
+        notifications: unreadNotificationsCount,
+        lands: 0, // Admin counts can be added to context if needed
+        accounts: 0,
+        auctions: 0
+    };
 
     const getMenuItems = () => {
         const role = (currentUser?.role || '').toLowerCase().replace(/ /g, '_') || (currentUser?.sub_category || '').toLowerCase().replace(/ /g, '_') || (currentUser?.category || '').toLowerCase().replace(/ /g, '_');

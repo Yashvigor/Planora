@@ -22,10 +22,10 @@ const cors = require('cors');
 const { Pool } = require('pg');
 const dotenv = require('dotenv');
 const bcrypt = require('bcrypt');
+const compression = require('compression');
 const multer = require('multer');
 const path = require('path');
 const fs = require('fs');
-const compression = require('compression');
 const { OAuth2Client } = require('google-auth-library');
 const axios = require('axios');
 
@@ -87,9 +87,9 @@ async function storeInDocuments(client, { project_id, uploaded_by, name, file, c
     const file_size = (file.size / 1024).toFixed(2) + ' KB';
 
     const result = await client.query(
-        `INSERT INTO Documents 
+        `INSERT INTO documents 
          (project_id, uploaded_by, name, file_path, file_type, file_size, status, file_data, source_type, source_id) 
-         VALUES ($1, $2, $3, $4, $5, $6, 'Pending', $7, $8, $9) 
+         VALUES ($1::uuid, $2::uuid, $3, $4, $5, $6, 'Pending', $7::bytea, $8, $9) 
          RETURNING *`,
         [project_id, uploaded_by, name || file.originalname, 'pending', file_type, file_size, file_data, source_type, source_id]
     );
@@ -98,7 +98,7 @@ async function storeInDocuments(client, { project_id, uploaded_by, name, file, c
     const internalPath = `api/documents/view/${doc.doc_id}`;
 
     // Update path to point to our central serving API
-    await client.query('UPDATE Documents SET file_path = $1 WHERE doc_id = $2', [internalPath, doc.doc_id]);
+    await client.query('UPDATE documents SET file_path = $1 WHERE doc_id = $2::uuid', [internalPath, doc.doc_id]);
 
     return { ...doc, file_path: internalPath };
 }
@@ -131,8 +131,6 @@ io.on('connection', (socket) => {
 const port = process.env.PORT || 5000;
 
 // ??? Global Middleware
-app.use(compression());
-
 // Environment-aware CORS — restrictive in production, open in development
 const corsOptions = {
     origin: process.env.NODE_ENV === 'production'
@@ -143,7 +141,7 @@ const corsOptions = {
     allowedHeaders: ['Content-Type', 'Authorization']
 };
 app.use(cors(corsOptions));
-
+app.use(compression()); // Enable Gzip compression
 app.use(express.json()); // Parse incoming JSON request bodies
 app.use(express.urlencoded({ extended: true })); // Parse URL-encoded bodies (form data)
 
@@ -253,38 +251,104 @@ const pool = new Pool({
     database: process.env.DB_NAME,
     password: process.env.DB_PASSWORD,
     port: parseInt(process.env.DB_PORT || '5432', 10),
-    ssl: { rejectUnauthorized: false }
+    ssl: { rejectUnauthorized: false },
+    max: 20, // Increased for stability during peak UI usage
+    idleTimeoutMillis: 60000,
+    connectionTimeoutMillis: 20000, // 20s timeout for resilient connections
 });
+
+// Robust Connection Wrapper with Retries
+const queryWithRetry = async (text, params, retries = 3) => {
+    for (let i = 0; i < retries; i++) {
+        try {
+            return await pool.query(text, params);
+        } catch (err) {
+            const isTimeout = err.message.includes('timeout') || err.code === 'ETIMEDOUT';
+            if (isTimeout && i < retries - 1) {
+                console.warn(`[DB Retry] Attempt ${i + 1} failed, retrying...`);
+                await new Promise(resolve => setTimeout(resolve, 1000 * (i + 1)));
+                continue;
+            }
+            throw err;
+        }
+    }
+};
 
 
 // Enforce standard schema selection for all dynamically scaled Neon DB connections
-pool.on('connect', client => {
-    client.query('SET search_path TO public');
-});
+// Enforce standard schema selection - Public is default, removing listener to prevent race conditions
+// pool.on('connect', client => {
+//     client.query('SET search_path TO public');
+// });
 
 // Migration: Ensure land_auctions has rejection_reason
 // Migration: Ensure necessary columns exist
 // Migration: Ensure necessary columns exist in both users and pending tables
-pool.query("ALTER TABLE pendingprofessionals ADD COLUMN IF NOT EXISTS personal_id_document_path TEXT")
-    .then(() => console.log('? Database: pendingprofessionals table synced'))
-    .catch(err => console.error('? Migration Error (pendingprofessionals):', err.message));
+// 🏗️ Database Initialization & Migrations
+const initializeDatabase = async () => {
+    try {
+        console.log('[DB] Running migrations...');
 
-pool.query("ALTER TABLE land_auctions ADD COLUMN IF NOT EXISTS rejection_reason TEXT").catch(() => { });
-pool.query("ALTER TABLE land_auctions ADD COLUMN IF NOT EXISTS current_highest_bid NUMERIC DEFAULT 0").catch(() => { });
-pool.query("ALTER TABLE tasks ADD COLUMN IF NOT EXISTS approved_at TIMESTAMP WITH TIME ZONE").catch(() => { });
-pool.query("ALTER TABLE tasks ADD COLUMN IF NOT EXISTS submitted_at TIMESTAMP WITH TIME ZONE").catch(() => { });
-pool.query("ALTER TABLE projects ADD COLUMN IF NOT EXISTS planning_completed BOOLEAN DEFAULT FALSE").catch(() => { });
-pool.query("ALTER TABLE projects ADD COLUMN IF NOT EXISTS design_completed BOOLEAN DEFAULT FALSE").catch(() => { });
-pool.query("ALTER TABLE projects ADD COLUMN IF NOT EXISTS execution_completed BOOLEAN DEFAULT FALSE").catch(() => { });
-pool.query("ALTER TABLE land_auctions ADD COLUMN IF NOT EXISTS winner_id UUID REFERENCES users(user_id)").catch(() => { });
-pool.query("ALTER TABLE land_auctions ADD COLUMN IF NOT EXISTS winner_notified BOOLEAN DEFAULT FALSE").catch(() => { });
+        // Users & Professional Tables
+        await pool.query("ALTER TABLE pendingprofessionals ADD COLUMN IF NOT EXISTS personal_id_document_path TEXT").catch(e => console.warn('Migration Skip:', e.message));
+        await pool.query("ALTER TABLE users ADD COLUMN IF NOT EXISTS appeal_reason TEXT").catch(e => console.warn('Migration Skip:', e.message));
+        await pool.query("ALTER TABLE users ADD COLUMN IF NOT EXISTS appeal_document_path TEXT").catch(e => console.warn('Migration Skip:', e.message));
 
-// Designs Migration
-pool.query("ALTER TABLE professional_designs ADD COLUMN IF NOT EXISTS description TEXT").catch(() => { });
-pool.query("ALTER TABLE professional_designs ADD COLUMN IF NOT EXISTS file_type VARCHAR(10) DEFAULT 'Image'").catch(() => { });
-pool.query("ALTER TABLE professional_designs RENAME COLUMN image_url TO file_path").catch(() => { });
-pool.query("ALTER TABLE professional_designs ADD COLUMN IF NOT EXISTS project_type VARCHAR(20) DEFAULT 'Personal'").catch(() => { });
-pool.query("ALTER TABLE professional_designs ADD COLUMN IF NOT EXISTS role VARCHAR(50) DEFAULT 'interior_designer'").catch(() => { });
+        // Auctions Table
+        await pool.query("ALTER TABLE land_auctions ADD COLUMN IF NOT EXISTS rejection_reason TEXT").catch(() => { });
+        await pool.query("ALTER TABLE land_auctions ADD COLUMN IF NOT EXISTS current_highest_bid NUMERIC DEFAULT 0").catch(() => { });
+        await pool.query("ALTER TABLE land_auctions ADD COLUMN IF NOT EXISTS winner_id UUID REFERENCES users(user_id)").catch(() => { });
+        await pool.query("ALTER TABLE land_auctions ADD COLUMN IF NOT EXISTS winner_notified BOOLEAN DEFAULT FALSE").catch(() => { });
+
+        // Tasks & Projects
+        await pool.query("ALTER TABLE tasks ADD COLUMN IF NOT EXISTS approved_at TIMESTAMP WITH TIME ZONE").catch(() => { });
+        await pool.query("ALTER TABLE tasks ADD COLUMN IF NOT EXISTS submitted_at TIMESTAMP WITH TIME ZONE").catch(() => { });
+        await pool.query("ALTER TABLE projects ADD COLUMN IF NOT EXISTS planning_completed BOOLEAN DEFAULT FALSE").catch(() => { });
+        await pool.query("ALTER TABLE projects ADD COLUMN IF NOT EXISTS design_completed BOOLEAN DEFAULT FALSE").catch(() => { });
+        await pool.query("ALTER TABLE projects ADD COLUMN IF NOT EXISTS execution_completed BOOLEAN DEFAULT FALSE").catch(() => { });
+
+        // Documents Table: Support database-backed storage and source tracking
+        await pool.query("ALTER TABLE documents ADD COLUMN IF NOT EXISTS file_data BYTEA").catch(e => console.warn('Docs Migration Skip:', e.message));
+        await pool.query("ALTER TABLE documents ADD COLUMN IF NOT EXISTS source_type VARCHAR(50)").catch(e => console.warn('Docs Migration Skip:', e.message));
+        await pool.query("ALTER TABLE documents ADD COLUMN IF NOT EXISTS source_id VARCHAR(255)").catch(e => console.warn('Docs Migration Skip:', e.message));
+
+        // Designs Table
+        await pool.query("ALTER TABLE professional_designs ADD COLUMN IF NOT EXISTS description TEXT").catch(() => { });
+        await pool.query("ALTER TABLE professional_designs ADD COLUMN IF NOT EXISTS file_type VARCHAR(10) DEFAULT 'Image'").catch(() => { });
+        await pool.query("ALTER TABLE professional_designs ADD COLUMN IF NOT EXISTS project_type VARCHAR(20) DEFAULT 'Personal'").catch(() => { });
+        await pool.query("ALTER TABLE professional_designs ADD COLUMN IF NOT EXISTS role VARCHAR(50) DEFAULT 'interior_designer'").catch(() => { });
+
+        console.log('[DB] Migrations completed successfully.');
+        await optimizeDb();
+        await normalizePaths();
+    } catch (err) {
+        console.error('[DB] Critical Initialization Error:', err);
+    }
+};
+
+// Start DB Initialization
+initializeDatabase();
+
+// Performance Optimization: Ensure high-traffic columns are indexed
+const optimizeDb = async () => {
+    const indexes = [
+        "CREATE INDEX IF NOT EXISTS idx_projects_land_owner_id ON projects(land_owner_id)",
+        "CREATE INDEX IF NOT EXISTS idx_projectassignments_project_id ON projectassignments(project_id)",
+        "CREATE INDEX IF NOT EXISTS idx_projectassignments_user_id ON projectassignments(user_id)",
+        "CREATE INDEX IF NOT EXISTS idx_tasks_project_id ON tasks(project_id)",
+        "CREATE INDEX IF NOT EXISTS idx_payments_project_id ON payments(project_id)",
+        "CREATE INDEX IF NOT EXISTS idx_notifications_user_id ON notifications(user_id)",
+        "CREATE INDEX IF NOT EXISTS idx_documents_project_id ON documents(project_id)"
+    ];
+    for (const sql of indexes) {
+        try {
+            await pool.query(sql);
+        } catch (e) {
+            console.warn(`[DB Optimize] Index skipped: ${e.message}`);
+        }
+    }
+};
+optimizeDb();
 
 
 // Maintenance: Normalize legacy paths and ensure DB schema is up to date
@@ -354,7 +418,7 @@ const enrichProjectWithProgress = (project, team = [], tasks = [], totalSpent = 
     // Provide raw float for precision on frontend
     const financialBurn = budget > 0 ? Math.min((spent / budget) * 100, 100) : 0;
 
-    console.log(`[Enrich] Project "${project.name}" — Budget: ₹${budget}, Total Spent: ₹${spent}, Financial Burn: ${financialBurn}%`);
+    // console.log(`[Enrich] Project "${project.name}" — Budget: ₹${budget}, Total Spent: ₹${spent}, Financial Burn: ${financialBurn}%`);
 
     return {
         ...project,
@@ -381,7 +445,7 @@ const logActivity = async (userId, projectId, action, details) => {
             [userId, projectId, action, details]
         );
     } catch (err) {
-        console.error('Activity Logging Error:', err);
+        console.error('[ActivityLog] Error:', err.message);
     }
 };
 
@@ -415,20 +479,20 @@ async function createNotification(userId, type, message, link = '', relatedId = 
 app.get('/api/notifications/:userId', authenticateToken, async (req, res) => {
     const { userId } = req.params;
     try {
-        const result = await pool.query(
+        const result = await queryWithRetry(
             `SELECT n.id, n.type, n.message, n.link, n.is_read, n.created_at, n.related_id,
                     p.name AS project_name, p.description AS project_description, 
                     pa.assigned_role
              FROM notifications n
              LEFT JOIN projects p ON n.related_id IS NOT NULL AND n.related_id = p.project_id::text
              LEFT JOIN projectassignments pa ON pa.project_id = p.project_id AND pa.user_id = n.user_id
-             WHERE n.user_id = $1 ORDER BY n.created_at DESC`,
+             WHERE n.user_id = $1 ORDER BY n.created_at DESC LIMIT 50`,
             [userId]
         );
         res.json(result.rows);
     } catch (err) {
         console.error('Error fetching notifications:', err);
-        res.status(500).json({ error: 'Failed to fetch notifications' });
+        res.status(500).json({ error: 'Failed to fetch notifications', details: err.message });
     }
 });
 
@@ -783,12 +847,12 @@ app.post('/api/login', async (req, res) => {
     }
 
     try {
-        const result = await pool.query('SELECT * FROM users WHERE email = $1', [email]);
+        const result = await queryWithRetry('SELECT * FROM users WHERE LOWER(email) = LOWER($1)', [email]);
 
         if (result.rows.length === 0) {
             // Check if they are a pending professional awaiting admin approval
-            const pendingRes = await pool.query(
-                'SELECT * FROM PendingProfessionals WHERE email = $1',
+            const pendingRes = await queryWithRetry(
+                'SELECT * FROM PendingProfessionals WHERE LOWER(email) = LOWER($1)',
                 [email]
             );
             if (pendingRes.rows.length > 0) {
@@ -924,7 +988,7 @@ app.post('/api/auth/appeal', upload.single('document'), async (req, res) => {
             documentPath = doc.file_path;
         }
 
-        const result = await pool.query('SELECT * FROM users WHERE email = $1', [email]);
+        const result = await queryWithRetry('SELECT * FROM users WHERE LOWER(email) = LOWER($1)', [email]);
         if (result.rows.length === 0) return res.status(401).json({ error: 'Invalid security credentials.' });
 
         const user = result.rows[0];
@@ -936,8 +1000,8 @@ app.post('/api/auth/appeal', upload.single('document'), async (req, res) => {
         }
 
         // We use isAppeal=true in the column and also prefix rejection_reason for legacy compat
-        await pool.query(
-            'UPDATE users SET appeal_reason = $1, appeal_document_path = $2, rejection_reason = $3 WHERE user_id = $4',
+        await queryWithRetry(
+            'UPDATE users SET appeal_reason = $1, appeal_document_path = $2, rejection_reason = $3 WHERE user_id = $4::uuid',
             [reason, documentPath, `[APPEAL SUBMITTED] ${reason}`, user.user_id]
         );
 
@@ -946,7 +1010,11 @@ app.post('/api/auth/appeal', upload.single('document'), async (req, res) => {
         res.json({ message: 'Your appeal has been submitted successfully and is awaiting review.' });
     } catch (err) {
         console.error('Error submitting appeal:', err);
-        res.status(500).json({ error: 'Infrastructure failure during appeal submission.' });
+        res.status(500).json({
+            error: 'Infrastructure failure during appeal submission.',
+            details: err.message,
+            stack: process.env.NODE_ENV === 'development' ? err.stack : undefined
+        });
     }
 });
 
@@ -2271,7 +2339,7 @@ app.get('/api/professionals/nearby', async (req, res) => {
         `;
 
         const values = [userLat, userLon, radiusKm, searchUserId, category || 'All', sub_category || 'All'];
-        const result = await pool.query(query, values);
+        const result = await queryWithRetry(query, values);
         res.json(result.rows);
     } catch (err) {
         console.error('[Nearby API Error]:', err);
@@ -2283,7 +2351,7 @@ app.get('/api/professionals/nearby', async (req, res) => {
 app.get('/api/professionals/all', async (req, res) => {
     const { sub_category, category } = req.query;
     try {
-        const result = await pool.query(`
+        const result = await queryWithRetry(`
             SELECT 
                 u.user_id, u.name, u.email, u.category, u.sub_category, u.address, u.city, u.state,
                 u.experience_years, u.specialization, u.bio, u.resume_path, u.portfolio_url, u.latitude, u.longitude,
@@ -2498,58 +2566,55 @@ app.get('/api/professionals/:userId/projects', authenticateToken, async (req, re
         `, [userId]);
 
         const projects = result.rows;
-
-        // Fetch tasks to calculate progress for each
         const projectIds = projects.map(p => p.project_id);
+
         let tasks = [];
+        let teamByProject = {};
         if (projectIds.length > 0) {
+            // 1. Batch Fetch Tasks
             const tasksRes = await pool.query('SELECT task_id, project_id, status, title, description, image_path, created_at, submitted_at, approved_at FROM tasks WHERE project_id = ANY($1)', [projectIds]);
             tasks = tasksRes.rows;
-        }
 
-        // Fetch team and check if rated
-        const enriched = await Promise.all(projects.map(async (p) => {
-            try {
-                const pTasks = tasks.filter(t => t.project_id === p.project_id);
-                const enrichedP = enrichProjectWithProgress(p, [], pTasks);
+            // 2. Batch Fetch Team Members
+            const teamRes = await pool.query(`
+                SELECT 
+                    pa.project_id,
+                    COALESCE(u.user_id, pp.id) as user_id, 
+                    COALESCE(u.name, pp.name) as name, 
+                    COALESCE(u.email, pp.email) as email, 
+                    COALESCE(u.category, pp.category) as category, 
+                    COALESCE(u.sub_category, pp.sub_category) as sub_category,
+                    pa.assigned_role, pa.status
+                FROM projectassignments pa
+                LEFT JOIN users u ON pa.user_id = u.user_id
+                LEFT JOIN PendingProfessionals pp ON pa.user_id = pp.id
+                WHERE pa.project_id = ANY($1) AND (pa.status = 'Accepted' OR pa.status = 'Pending')
+            `, [projectIds]);
 
-                // Fetch fully resolved team for this project (including pending ones)
-                const teamRes = await pool.query(`
-                    SELECT 
-                        COALESCE(u.user_id, pp.id) as user_id, 
-                        COALESCE(u.name, pp.name) as name, 
-                        COALESCE(u.email, pp.email) as email, 
-                        COALESCE(u.category, pp.category) as category, 
-                        COALESCE(u.sub_category, pp.sub_category) as sub_category,
-                        pa.assigned_role, pa.status
-                    FROM projectassignments pa
-                    LEFT JOIN users u ON pa.user_id = u.user_id
-                    LEFT JOIN PendingProfessionals pp ON pa.user_id = pp.id
-                    WHERE pa.project_id = $1 AND (pa.status = 'Accepted' OR pa.status = 'Pending')
-                `, [p.project_id]);
-                enrichedP.team = teamRes.rows;
-
-                // Check if current user (rater) has submitted any ratings for this project
-                try {
-                    const ratingCheck = await pool.query(
-                        "SELECT EXISTS(SELECT 1 FROM ratings WHERE project_id = $1 AND rater_id = $2) as has_rated",
-                        [p.project_id, userId]
-                    );
-                    enrichedP.has_rated = ratingCheck.rows[0].has_rated;
-                } catch (e) {
-                    console.error('Rating check error:', e);
-                    enrichedP.has_rated = false;
-                }
-
-                return enrichedP;
-            } catch (err) {
-                console.error(`Error enriching project ${p.project_id}:`, err);
-                return p; // Return base project if enrichment fails
+            for (const row of teamRes.rows) {
+                if (!teamByProject[row.project_id]) teamByProject[row.project_id] = [];
+                teamByProject[row.project_id].push(row);
             }
-        }));
 
-        res.json(enriched);
+            // 3. Batch Fetch Rating Status
+            const ratingsRes = await pool.query(`
+                SELECT DISTINCT project_id FROM ratings WHERE rater_id = $1 AND project_id = ANY($2)
+            `, [userId, projectIds]);
+            const ratedProjectIds = new Set(ratingsRes.rows.map(r => r.project_id));
 
+            const enriched = projects.map(p => {
+                const pTasks = tasks.filter(t => t.project_id === p.project_id);
+                const team = teamByProject[p.project_id] || [];
+                const enrichedP = enrichProjectWithProgress(p, team, pTasks);
+                enrichedP.team = team;
+                enrichedP.has_rated = ratedProjectIds.has(p.project_id);
+                return enrichedP;
+            });
+
+            res.json(enriched);
+        } else {
+            res.json([]);
+        }
     } catch (err) {
         console.error('Error fetching professional projects:', err);
         res.status(500).json({ error: 'Failed to fetch professional projects' });
@@ -2849,9 +2914,8 @@ app.post('/api/projects/:projectId/rate', authenticateToken, async (req, res) =>
 // Get User Projects (Owner)
 app.get('/api/projects/user/:userId', async (req, res) => {
     const { userId } = req.params;
-    console.log(`[Project API] Fetching projects for user: ${userId}`);
     try {
-        const result = await pool.query(`
+        const result = await queryWithRetry(`
             SELECT DISTINCT p.*, u_owner.name as client_name FROM projects p
             LEFT JOIN lands l ON p.land_id = l.land_id
             LEFT JOIN users u_owner ON p.land_owner_id = u_owner.user_id
@@ -2865,8 +2929,11 @@ app.get('/api/projects/user/:userId', async (req, res) => {
 
         let tasks = [];
         let spentByProject = {};
+        let teamByProject = {};
+
         if (projectIds.length > 0) {
-            const tasksRes = await pool.query(`
+            // 1. Batch Fetch Tasks
+            const tasksRes = await queryWithRetry(`
                 SELECT t.task_id, t.project_id, t.status, t.title, t.description, t.image_path, t.created_at, t.assigned_to, u.name as assigned_to_name, t.approved_at, t.submitted_at
                 FROM tasks t
                 LEFT JOIN users u ON t.assigned_to = u.user_id
@@ -2874,8 +2941,8 @@ app.get('/api/projects/user/:userId', async (req, res) => {
             `, [projectIds]);
             tasks = tasksRes.rows;
 
-            // Compute total spent per project directly in SQL — bulletproof, no JS UUID comparison issues
-            const spentRes = await pool.query(`
+            // 2. Batch Fetch Spent Amounts
+            const spentRes = await queryWithRetry(`
                 SELECT project_id, COALESCE(SUM(amount), 0) as total_spent
                 FROM payments 
                 WHERE project_id = ANY($1) 
@@ -2885,15 +2952,11 @@ app.get('/api/projects/user/:userId', async (req, res) => {
             for (const row of spentRes.rows) {
                 spentByProject[row.project_id] = parseFloat(row.total_spent);
             }
-            console.log('[Financial] Spent by project:', spentByProject);
-        }
 
-        const enriched = await Promise.all(projects.map(async (p) => {
-            const pTasks = tasks.filter(t => t.project_id === p.project_id);
-            const totalSpentForProject = spentByProject[p.project_id] || 0;
-
-            const teamRes = await pool.query(`
+            // 3. Batch Fetch Team Members (Solves N+1 problem)
+            const teamRes = await queryWithRetry(`
                 SELECT 
+                    pa.project_id,
                     COALESCE(u.user_id, pp.id) as user_id, 
                     COALESCE(u.name, pp.name) as name, 
                     COALESCE(u.category, pp.category) as category, 
@@ -2902,20 +2965,36 @@ app.get('/api/projects/user/:userId', async (req, res) => {
                 FROM projectassignments pa
                 LEFT JOIN users u ON pa.user_id = u.user_id
                 LEFT JOIN PendingProfessionals pp ON pa.user_id = pp.id
-                WHERE pa.project_id = $1 AND (pa.status = 'Accepted' OR pa.status = 'Pending')
-            `, [p.project_id]);
 
-            const enrichedP = enrichProjectWithProgress(p, teamRes.rows, pTasks, totalSpentForProject);
-            enrichedP.team = teamRes.rows;
-            enrichedP.client_name = p.client_name;
+            WHERE pa.project_id = ANY($1) AND (pa.status = 'Accepted' OR pa.status = 'Pending')
+            `, [projectIds]);
 
-            const ratingCheck = await pool.query("SELECT EXISTS(SELECT 1 FROM ratings WHERE project_id = $1 AND rater_id = $2) as has_rated", [p.project_id, userId]);
-            enrichedP.has_rated = ratingCheck.rows[0].has_rated;
+            for (const row of teamRes.rows) {
+                if (!teamByProject[row.project_id]) teamByProject[row.project_id] = [];
+                teamByProject[row.project_id].push(row);
+            }
 
-            return enrichedP;
-        }));
+            // 4. Batch Fetch Rating Status
+            const ratingsRes = await queryWithRetry(`
+                SELECT DISTINCT project_id FROM ratings WHERE rater_id = $1 AND project_id = ANY($2)
+            `, [userId, projectIds]);
+            const ratedProjectIds = new Set(ratingsRes.rows.map(r => r.project_id));
 
-        res.json(enriched);
+            const enriched = projects.map(p => {
+                const pTasks = tasks.filter(t => t.project_id === p.project_id);
+                const totalSpentForProject = spentByProject[p.project_id] || 0;
+                const team = teamByProject[p.project_id] || [];
+                const enrichedP = enrichProjectWithProgress(p, team, pTasks, totalSpentForProject);
+                enrichedP.team = team;
+                enrichedP.has_rated = ratedProjectIds.has(p.project_id);
+                enrichedP.client_name = p.client_name;
+                return enrichedP;
+            });
+
+            res.json(enriched);
+        } else {
+            res.json([]);
+        }
     } catch (err) {
         console.error('Error fetching user projects:', err);
         res.status(500).json({ error: 'Failed', details: err.message });
@@ -3439,7 +3518,7 @@ app.post('/api/tasks', authenticateToken, async (req, res) => {
 app.get('/api/tasks/user/:userId', authenticateToken, async (req, res) => {
     const { userId } = req.params;
     try {
-        const result = await pool.query(`
+        const result = await queryWithRetry(`
             SELECT 
                 t.*, 
                 p.name AS project_name, 
@@ -3451,11 +3530,12 @@ app.get('/api/tasks/user/:userId', authenticateToken, async (req, res) => {
             LEFT JOIN users u ON t.assigned_by = u.user_id
             WHERE t.assigned_to = $1 
             ORDER BY t.created_at DESC
+            LIMIT 100
         `, [userId]);
         res.json(result.rows);
     } catch (err) {
         console.error('Error fetching user tasks:', err);
-        res.status(500).json({ error: 'Failed to fetch tasks' });
+        res.status(500).json({ error: 'Failed to fetch tasks', details: err.message });
     }
 });
 

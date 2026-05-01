@@ -1,0 +1,16 @@
+{
+  "name": "planora",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Planora — Digital Construction Management Platform",
+  "scripts": {
+    "dev": "concurrently --kill-others \"npm run dev:backend\" \"npm run dev:frontend\"",
+    "dev:backend": "cd Backend && npm run dev",
+    "dev:frontend": "cd Frontend && npm run dev",
+    "start": "node Backend/server.js",
+    "install:all": "cd Backend && npm install && cd ../Frontend && npm install"
+  },
+  "devDependencies": {
+    "concurrently": "^9.1.2"
+  }
+}

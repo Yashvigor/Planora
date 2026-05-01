@@ -41,13 +41,12 @@ export const MockAppProvider = ({ children }) => {
         }
     });
 
-    // 🏞️ MOCK LAND ASSETS
-    const [lands, setLands] = useState([
-        { id: 1, ownerId: 'user_1', name: 'Green Valley Plot', location: 'Austin, TX', area: '5000 sqft', type: 'Residential', documents: [] },
-    ]);
-
-    // 🏗️ REAL PROJECTS DATA (Fetched via API)
+    // 🏗️ REAL DATA (Fetched via API)
     const [projects, setProjects] = useState([]);
+    const [lands, setLands] = useState([]);
+    const [notifications, setNotifications] = useState([]);
+    const [pendingTasksCount, setPendingTasksCount] = useState(0);
+    const [loadingData, setLoadingData] = useState(false);
 
     // 👷 MOCK PROFESSIONALS (ExpertMap fallback if API fails)
     const [professionals, setProfessionals] = useState([
@@ -79,14 +78,81 @@ export const MockAppProvider = ({ children }) => {
         }
     });
 
+    // --- DATA FETCHING ACTIONS ---
+    const refreshProjects = async (uid) => {
+        const userId = uid || currentUser?.user_id || currentUser?.id;
+        if (!userId) return;
+        try {
+            const res = await fetch(`${import.meta.env.VITE_API_URL}/api/projects/user/${userId}`);
+            if (res.ok) {
+                const data = await res.json();
+                setProjects(data);
+            }
+        } catch (err) {
+            console.error("Error refreshing projects:", err);
+        }
+    };
+
+    const refreshLands = async (uid) => {
+        const userId = uid || currentUser?.user_id || currentUser?.id;
+        if (!userId) return;
+        try {
+            const res = await fetch(`${import.meta.env.VITE_API_URL}/api/lands/user/${userId}`);
+            if (res.ok) {
+                const data = await res.json();
+                setLands(data);
+            }
+        } catch (err) {
+            console.error("Error refreshing lands:", err);
+        }
+    };
+
+    const refreshNotifications = async (uid) => {
+        const userId = uid || currentUser?.user_id || currentUser?.id;
+        if (!userId) return;
+        try {
+            const res = await fetch(`${import.meta.env.VITE_API_URL}/api/notifications/${userId}`);
+            if (res.ok) {
+                const data = await res.json();
+                setNotifications(data);
+            }
+        } catch (err) {
+            console.error("Error refreshing notifications:", err);
+        }
+    };
+
+    const refreshPendingTasksCount = async (uid) => {
+        const userId = uid || currentUser?.user_id || currentUser?.id;
+        if (!userId) return;
+        try {
+            const res = await fetch(`${import.meta.env.VITE_API_URL}/api/tasks/pending-count/${userId}`);
+            if (res.ok) {
+                const data = await res.json();
+                setPendingTasksCount(data.count || 0);
+            }
+        } catch (err) {
+            console.error("Error refreshing task counts:", err);
+        }
+    };
+
+    const refreshAllData = async (uid) => {
+        const userId = uid || currentUser?.user_id || currentUser?.id;
+        if (!userId) return;
+        setLoadingData(true);
+        await Promise.all([
+            refreshProjects(userId), 
+            refreshLands(userId), 
+            refreshNotifications(userId),
+            refreshPendingTasksCount(userId)
+        ]);
+        setLoadingData(false);
+    };
+
     // --- EFFECTS: REAL DATA FETCHING ---
     useEffect(() => {
         if (currentUser) {
             const uid = currentUser.user_id || currentUser.id;
-            fetch(`${import.meta.env.VITE_API_URL}/api/projects/user/${uid}`)
-                .then(res => res.json())
-                .then(data => setProjects(data))
-                .catch(err => console.error("Error fetching projects:", err));
+            refreshAllData(uid);
 
             // Socket connection for real-time updates - improved stability
             if (!socket.connected) {
@@ -102,14 +168,30 @@ export const MockAppProvider = ({ children }) => {
                 }) : null);
             };
 
+            const handleProjectUpdate = () => refreshProjects(uid);
+            const handleLandUpdate = () => refreshLands(uid);
+
             socket.on('account_status_changed', handleStatusChange);
+            socket.on('new_notification', (noti) => {
+                refreshNotifications(uid);
+                if (noti.type?.includes('task') || noti.type?.includes('project')) {
+                    refreshProjects(uid);
+                    refreshPendingTasksCount(uid);
+                }
+            });
+
+            const handleNotiRead = () => refreshNotifications(uid);
+            window.addEventListener('planora_notification_read', handleNotiRead);
 
             return () => {
                 socket.off('account_status_changed', handleStatusChange);
-                // Only disconnect if the component is actually unmounting or user is logging out
+                socket.off('new_notification');
+                window.removeEventListener('planora_notification_read', handleNotiRead);
             };
         } else {
             if (socket.connected) socket.disconnect();
+            setProjects([]);
+            setLands([]);
         }
     }, [currentUser?.user_id || currentUser?.id]);
 
@@ -347,8 +429,18 @@ export const MockAppProvider = ({ children }) => {
     const value = {
         currentUser,
         users,
-        lands,
         projects,
+        setProjects,
+        lands,
+        setLands,
+        notifications,
+        pendingTasksCount,
+        loadingData,
+        refreshProjects,
+        refreshLands,
+        refreshNotifications,
+        refreshPendingTasksCount,
+        refreshAllData,
         professionals,
         messages,
         documents,
